@@ -1,0 +1,80 @@
+plugins {
+	id 'java'
+}
+
+repositories {
+	mavenLocal()
+	maven {
+		url = 'https://repo.runelite.net'
+		content {
+			includeGroupByRegex("net\\.runelite.*")
+		}
+	}
+	mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+def pluginMainClass = 'com.flippingrs.FlippingRsPluginTest'
+
+dependencies {
+	compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+	// The version the RuneLite plugin template pins. Lombok patches
+	// com.sun.tools.javac internals, so each release only knows about the JDKs
+	// that existed when it shipped: 1.18.30 tops out at JDK 21. Building on
+	// anything newer fails with "com.sun.tools.javac.code.TypeTag :: UNKNOWN",
+	// which never mentions Lombok. See the JDK note in the README.
+	compileOnly 'org.projectlombok:lombok:1.18.30'
+	annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+	testImplementation 'junit:junit:4.13.2'
+	// Pinned to the OkHttp that runelite-client brings in, so the test server
+	// and the client under test share one version. Test-only: the Plugin Hub
+	// replaces this file in `standard` mode, so it is never distributed.
+	testImplementation 'com.squareup.okhttp3:mockwebserver:3.14.9'
+	testImplementation 'org.mockito:mockito-core:5.14.2'
+	testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+	testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+}
+
+group = 'com.flippingrs'
+version = '1.0.0'
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+	options.release.set(11)
+}
+
+tasks.register('run', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = pluginMainClass
+
+	jvmArgs "-ea"
+	args "--developer-mode", "--debug"
+}
+
+tasks.register('shadowJar', Jar) {
+	dependsOn configurations.testRuntimeClasspath
+	manifest {
+		attributes('Main-Class': pluginMainClass, 'Multi-Release': true)
+	}
+
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from sourceSets.main.output
+	from sourceSets.test.output
+	from {
+		configurations.testRuntimeClasspath.collect { file ->
+			file.isDirectory() ? file : zipTree(file)
+		}
+	}
+
+	exclude 'META-INF/INDEX.LIST'
+	exclude 'META-INF/*.SF'
+	exclude 'META-INF/*.DSA'
+	exclude 'META-INF/*.RSA'
+	exclude '**/module-info.class'
+
+	group = BasePlugin.BUILD_GROUP
+	archiveClassifier.set('shadow')
+	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
+}
