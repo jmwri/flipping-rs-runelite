@@ -246,8 +246,18 @@ public class FlippingRsPlugin extends Plugin
 		// disable and on exit -- the exact failure this whole arrangement is
 		// meant to avoid. shutdown() lets already-queued disk work finish.
 		submit(sendExecutor, this::drain);
-		sendExecutor.shutdown();
-		diskExecutor.shutdown();
+		// Null-guarded because startUp can throw part way through -- a toolbar
+		// that will not take the nav button, say -- and RuneLite still calls
+		// shutDown on a plugin whose startUp failed. An NPE here would bury the
+		// real cause under a second, less useful stack trace.
+		if (sendExecutor != null)
+		{
+			sendExecutor.shutdown();
+		}
+		if (diskExecutor != null)
+		{
+			diskExecutor.shutdown();
+		}
 
 		if (navButton != null)
 		{
@@ -361,7 +371,9 @@ public class FlippingRsPlugin extends Plugin
 		switch (event.getKey())
 		{
 			case "apiKey":
-			case "baseUrl":
+			// Turning recording back on has to re-check the key and reload the
+			// journals, because nothing was contacted while it was off.
+			case "enabled":
 				submit(sendExecutor, this::connect);
 				break;
 			case "syncSeconds":
@@ -379,6 +391,13 @@ public class FlippingRsPlugin extends Plugin
 		if (syncTask != null)
 		{
 			syncTask.cancel(false);
+			syncTask = null;
+		}
+		// Same race the submit helper exists for: a ConfigChanged already in
+		// flight can land after shutDown has stopped the executor.
+		if (sendExecutor == null || sendExecutor.isShutdown())
+		{
+			return;
 		}
 		final long seconds = Math.max(5, config.syncSeconds());
 		syncTask = sendExecutor.scheduleWithFixedDelay(this::drain, seconds, seconds, TimeUnit.SECONDS);
@@ -399,6 +418,16 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private void drain()
 	{
+		// Checked before anything else, and before connect's equivalent check,
+		// because "Record trades" being off is a promise that the plugin is not
+		// talking to flippingrs.com at all -- not merely that it has stopped
+		// capturing. Anything already queued stays on disk and goes out when
+		// recording is turned back on; it was captured while the user wanted it
+		// recorded, so discarding it would be its own kind of surprise.
+		if (!config.enabled())
+		{
+			return;
+		}
 		if (!sending.compareAndSet(false, true))
 		{
 			return;
@@ -453,7 +482,7 @@ public class FlippingRsPlugin extends Plugin
 			final FlippingRsApi.IngestResult result;
 			try
 			{
-				result = api.submit(config.baseUrl(), key, accountId, batch);
+				result = api.submit(key, accountId, batch);
 			}
 			catch (FlippingRsApi.PermanentException e)
 			{
@@ -545,6 +574,17 @@ public class FlippingRsPlugin extends Plugin
 	/** Checks the key and loads the journals it can file trades under. */
 	private void connect()
 	{
+		if (!config.enabled())
+		{
+			onPanel(p -> {
+				p.setAccounts(Collections.emptyList(), null);
+				p.setStatus("Recording is off. Nothing is being captured and nothing is being sent to "
+					+ "flippingrs.com. Turn \"Record trades\" back on in the plugin settings to resume.",
+					ColorScheme.LIGHT_GRAY_COLOR);
+			});
+			return;
+		}
+
 		final String key = config.apiKey().trim();
 		if (key.isEmpty())
 		{
@@ -558,7 +598,7 @@ public class FlippingRsPlugin extends Plugin
 
 		try
 		{
-			final List<FlippingRsApi.GameAccount> accounts = api.accounts(config.baseUrl(), key);
+			final List<FlippingRsApi.GameAccount> accounts = api.accounts(key);
 			final String chosen = chosenAccount();
 			onPanel(p -> {
 				p.setAccounts(accounts, chosen);

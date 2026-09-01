@@ -33,15 +33,13 @@ public class FlippingRsApiTest
 {
 	private MockWebServer server;
 	private FlippingRsApi api;
-	private String baseUrl;
 
 	@Before
 	public void setUp() throws IOException
 	{
 		server = new MockWebServer();
 		server.start();
-		baseUrl = server.url("/").toString();
-		api = new FlippingRsApi(new OkHttpClient(), new Gson());
+		api = new FlippingRsApi(new OkHttpClient(), new Gson(), server.url("/"));
 	}
 
 	@After
@@ -79,7 +77,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setBody(
 			"{\"accounts\":[{\"id\":\"a1\",\"label\":\"Main\",\"isDefault\":true}]}"));
 
-		final List<FlippingRsApi.GameAccount> accounts = api.accounts(baseUrl, "frs_secret");
+		final List<FlippingRsApi.GameAccount> accounts = api.accounts("frs_secret");
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("GET", request.getMethod());
@@ -100,7 +98,7 @@ public class FlippingRsApiTest
 	{
 		server.enqueue(new MockResponse().setBody("{\"accepted\":1}"));
 
-		api.submit(baseUrl, "frs_secret", "acct-9", oneFill());
+		api.submit("frs_secret", "acct-9", oneFill());
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("POST", request.getMethod());
@@ -128,7 +126,7 @@ public class FlippingRsApiTest
 			"{\"accepted\":2,\"duplicate\":1,\"rejected\":3,\"flipsOpened\":1,"
 				+ "\"flipsClosed\":1,\"unmatchedSellQty\":7,\"problems\":[\"row 4: bad side\"]}"));
 
-		final FlippingRsApi.IngestResult result = api.submit(baseUrl, "k", "a", oneFill());
+		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
 
 		assertEquals(1, result.getFlipsOpened());
 		assertEquals(1, result.getFlipsClosed());
@@ -149,7 +147,7 @@ public class FlippingRsApiTest
 			server.enqueue(new MockResponse().setResponseCode(code));
 			try
 			{
-				api.submit(baseUrl, "k", "a", oneFill());
+				api.submit("k", "a", oneFill());
 				fail("HTTP " + code + " should have thrown");
 			}
 			catch (FlippingRsApi.PermanentException e)
@@ -176,7 +174,7 @@ public class FlippingRsApiTest
 			server.enqueue(new MockResponse().setResponseCode(code));
 			try
 			{
-				api.submit(baseUrl, "k", "a", oneFill());
+				api.submit("k", "a", oneFill());
 				fail("HTTP " + code + " should have thrown");
 			}
 			catch (FlippingRsApi.PermanentException expected)
@@ -194,7 +192,7 @@ public class FlippingRsApiTest
 
 		try
 		{
-			api.accounts(baseUrl, "frs_stale");
+			api.accounts("frs_stale");
 			fail("expected a failure");
 		}
 		catch (IOException e)
@@ -210,7 +208,7 @@ public class FlippingRsApiTest
 
 		try
 		{
-			api.submit(baseUrl, "k", "a", oneFill());
+			api.submit("k", "a", oneFill());
 			fail("expected a failure");
 		}
 		catch (IOException e)
@@ -229,7 +227,7 @@ public class FlippingRsApiTest
 
 		try
 		{
-			api.submit(baseUrl, "k", "a", oneFill());
+			api.submit("k", "a", oneFill());
 			fail("expected a failure rather than a bogus result");
 		}
 		catch (FlippingRsApi.PermanentException e)
@@ -259,7 +257,7 @@ public class FlippingRsApiTest
 
 		try
 		{
-			api.submit(baseUrl, "k", "a", oneFill());
+			api.submit("k", "a", oneFill());
 			fail("expected a parse failure");
 		}
 		catch (IOException expected)
@@ -272,11 +270,11 @@ public class FlippingRsApiTest
 	public void anAccountsPayloadWithNoAccountsIsEmptyNotNull() throws Exception
 	{
 		server.enqueue(new MockResponse().setBody("{}"));
-		assertTrue(api.accounts(baseUrl, "k").isEmpty());
+		assertTrue(api.accounts("k").isEmpty());
 
 		server.enqueue(new MockResponse().setBody("{\"accounts\":null}"));
 		assertTrue("a null array must not become an NPE in the panel",
-			api.accounts(baseUrl, "k").isEmpty());
+			api.accounts("k").isEmpty());
 	}
 
 	@Test
@@ -284,33 +282,11 @@ public class FlippingRsApiTest
 	{
 		server.enqueue(new MockResponse().setBody("null"));
 
-		final FlippingRsApi.IngestResult result = api.submit(baseUrl, "k", "a", oneFill());
+		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
 
 		assertNotNull("callers read this without a null check", result);
 		assertEquals(0, result.getRejected());
 		assertTrue(result.getProblems().isEmpty());
-	}
-
-	/**
-	 * A base URL the user has mistyped can never work, so it must not be
-	 * retried forever.
-	 */
-	@Test
-	public void anUnusableBaseUrlIsPermanent()
-	{
-		try
-		{
-			api.submit("not a url", "k", "a", oneFill());
-			fail("expected a failure");
-		}
-		catch (FlippingRsApi.PermanentException expected)
-		{
-			assertTrue(expected.getMessage().contains("not a url"));
-		}
-		catch (IOException e)
-		{
-			fail("a malformed base URL will never start working: " + e);
-		}
 	}
 
 	@Test
@@ -319,7 +295,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setBody(
 			"{\"accounts\":[{\"id\":\"a1\",\"label\":\"\"},{\"id\":\"a2\"}]}"));
 
-		final List<FlippingRsApi.GameAccount> accounts = api.accounts(baseUrl, "k");
+		final List<FlippingRsApi.GameAccount> accounts = api.accounts("k");
 
 		assertEquals("a1", accounts.get(0).toString());
 		assertEquals("a2", accounts.get(1).toString());

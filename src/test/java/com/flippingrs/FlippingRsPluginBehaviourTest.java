@@ -162,7 +162,7 @@ public class FlippingRsPluginBehaviourTest
 	public void anEmptyQueueSendsNothing() throws Exception
 	{
 		support.drain();
-		verify(support.api, never()).submit(anyString(), anyString(), anyString(), anyList());
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
 	}
 
 	@Test
@@ -174,7 +174,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.drain();
 
-		verify(support.api, never()).submit(anyString(), anyString(), anyString(), anyList());
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
 		assertEquals("the fill must be kept, not dropped", 1, support.queue().size());
 	}
 
@@ -185,7 +185,7 @@ public class FlippingRsPluginBehaviourTest
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
-		when(support.api.submit(anyString(), anyString(), anyString(), anyList()))
+		when(support.api.submit(anyString(), anyString(), anyList()))
 			.thenReturn(new FlippingRsApi.IngestResult());
 
 		support.drain();
@@ -200,7 +200,7 @@ public class FlippingRsPluginBehaviourTest
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
-		when(support.api.submit(anyString(), anyString(), anyString(), anyList()))
+		when(support.api.submit(anyString(), anyString(), anyList()))
 			.thenThrow(new java.io.IOException("connection reset"));
 
 		support.drain();
@@ -232,7 +232,7 @@ public class FlippingRsPluginBehaviourTest
 		arrivedDuringTheRequest.grossValue = 1000;
 		arrivedDuringTheRequest.occurredAt = "2026-08-31T12:00:00Z";
 
-		when(support.api.submit(anyString(), anyString(), anyString(), anyList()))
+		when(support.api.submit(anyString(), anyString(), anyList()))
 			.thenAnswer(inv ->
 			{
 				support.queue().add(arrivedDuringTheRequest);
@@ -270,7 +270,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.drain();
 
-		verify(support.api, never()).submit(anyString(), anyString(), anyString(), anyList());
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
 		assertEquals("the trade waits for the next tick rather than being misfiled",
 			1, queue.size());
 	}
@@ -286,6 +286,47 @@ public class FlippingRsPluginBehaviourTest
 
 		support.drain();
 
-		verify(support.api, never()).submit(anyString(), anyString(), anyString(), any());
+		verify(support.api, never()).submit(anyString(), anyString(), any());
+	}
+
+	/**
+	 * "Record trades" off is a promise that the plugin is not talking to
+	 * flippingrs.com at all, not merely that it has stopped capturing. What is
+	 * already queued has to survive it, though: those fills were captured while
+	 * the user did want them recorded.
+	 */
+	@Test
+	public void recordingOffSendsNothingButKeepsWhatIsQueued() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		when(support.config.enabled()).thenReturn(false);
+		support.drain();
+
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
+		assertEquals("switching off must not discard what was already captured",
+			1, support.queue().size());
+
+		// And it goes out once recording is switched back on.
+		when(support.config.enabled()).thenReturn(true);
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+
+		support.drain();
+
+		assertTrue(support.queue().isEmpty());
+	}
+
+	/** The key is not even checked while recording is off. */
+	@Test
+	public void recordingOffDoesNotContactTheServerAtAll() throws Exception
+	{
+		when(support.config.enabled()).thenReturn(false);
+
+		support.connect();
+
+		verify(support.api, never()).accounts(anyString());
 	}
 }

@@ -18,14 +18,6 @@ public interface FlippingRsConfig extends Config
 	)
 	String connectionSection = "connection";
 
-	@ConfigSection(
-		name = "Advanced",
-		description = "You should not normally need to change these",
-		position = 10,
-		closedByDefault = true
-	)
-	String advancedSection = "advanced";
-
 	@ConfigItem(
 		keyName = "apiKey",
 		name = "API key",
@@ -42,7 +34,11 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "enabled",
 		name = "Record trades",
-		description = "Turn off to stop sending. Trades that happen while it is off are not recorded at all, not queued.",
+		description = "Sends your Grand Exchange fills -- item, quantity, price, gp value, slot, world and time -- "
+			+ "together with your IP address, to flippingrs.com, a third party server not controlled or verified "
+			+ "by the RuneLite developers. Your RuneScape display name is not sent. Turn off to stop capturing "
+			+ "and to stop contacting the server entirely. Trades that happen while it is off are discarded, not "
+			+ "queued; anything already waiting is sent when you turn it back on.",
 		position = 2,
 		section = connectionSection
 	)
@@ -64,17 +60,10 @@ public interface FlippingRsConfig extends Config
 		return 30;
 	}
 
-	@ConfigItem(
-		keyName = "baseUrl",
-		name = "Base URL",
-		description = "The FlippingRS instance to send to. Only change this if you are running your own.",
-		position = 11,
-		section = advancedSection
-	)
-	default String baseUrl()
-	{
-		return "https://flippingrs.com";
-	}
+	// The server address is deliberately not here either. It was once, as an
+	// "advanced" setting for self-hosters, but a text box that redirects an API
+	// key and every recorded trade is a liability out of all proportion to who
+	// used it. It now lives in FlippingRsApi as a constant.
 
 	// The game account is deliberately not here. It is stored per RuneScape
 	// profile and picked in the side panel, so logging into an alt files its
