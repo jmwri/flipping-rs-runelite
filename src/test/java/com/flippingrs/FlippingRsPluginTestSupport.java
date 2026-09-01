@@ -56,7 +56,6 @@ final class FlippingRsPluginTestSupport
 		when(itemManager.getItemComposition(anyInt()).getName()).thenReturn("Abyssal whip");
 
 		when(config.apiKey()).thenReturn("frs_key");
-		when(config.baseUrl()).thenReturn("https://example.invalid");
 		when(config.enabled()).thenReturn(true);
 		when(config.syncSeconds()).thenReturn(30);
 
@@ -111,7 +110,17 @@ final class FlippingRsPluginTestSupport
 
 	void drain() throws Exception
 	{
-		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("drain");
+		invoke("drain");
+	}
+
+	void connect() throws Exception
+	{
+		invoke("connect");
+	}
+
+	private void invoke(String name) throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod(name);
 		m.setAccessible(true);
 		m.invoke(plugin);
 	}

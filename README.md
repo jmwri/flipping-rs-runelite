@@ -42,9 +42,37 @@ Plugin keys are available on every plan; the full public API stays Elite.
 | Setting | Default | Notes |
 | --- | --- | --- |
 | API key | — | Plugin-scoped key from flippingrs.com |
-| Record trades | on | Turning it off discards trades rather than queueing them |
+| Record trades | on | Off means nothing is captured **and** nothing is sent |
 | Send every | 30s | How long fills are batched before sending |
-| Base URL | `https://flippingrs.com` | Only change it to point at your own instance |
+
+## What is sent, and to whom
+
+This plugin sends data to flippingrs.com, a third-party server that is not
+controlled or verified by the RuneLite developers. Specifically, for every
+Grand Exchange fill:
+
+- the item, quantity, price, gp value, and whether it was a buy or a sell
+- the exchange slot, the world, and the time it happened
+- an id and an offer reference, both generated locally, so the server can
+  recognise repeats and group fills into one offer
+- the FlippingRS journal you picked for that RuneScape account
+- your API key, as an authentication header
+
+As with any HTTP request, your IP address is visible to the server.
+
+Your RuneScape display name is **not** sent, and neither is anything about other
+players, your inventory, your bank, your location, or your chat. The plugin
+reads nothing but Grand Exchange offer events and item names.
+
+Nothing at all is sent until you enter an API key, and nothing is sent while
+**Record trades** is off — that setting stops the plugin contacting the server
+entirely, not merely capturing. Fills captured before you turned it off stay
+queued on disk and go out when you turn it back on; fills that happen while it
+is off are discarded.
+
+The destination is fixed at `https://flippingrs.com` and is not configurable.
+There is no setting that can redirect your API key or your trades anywhere
+else.
 
 ## The three things it will not do
 

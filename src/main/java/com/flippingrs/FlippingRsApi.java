@@ -14,7 +14,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import okhttp3.ResponseBody;
 
 /**
  * The FlippingRS HTTP API, as much of it as the plugin needs.
@@ -45,13 +44,34 @@ public class FlippingRsApi
 		}
 	}
 
+	/**
+	 * The one instance this plugin talks to, over TLS, and not configurable.
+	 *
+	 * <p>It was a setting once. A text box that decides where an API key and
+	 * every recorded trade get posted is worth more to whoever talks a user into
+	 * changing it than it ever was to the handful of people self-hosting, and it
+	 * makes the plugin's network destination something you cannot read off the
+	 * source. Fixing it here also retires a whole category of failure: a
+	 * mistyped URL that wedged the queue behind a batch that could never send,
+	 * and a plaintext one that put the key on the wire in the clear.
+	 */
+	private static final HttpUrl BASE_URL = HttpUrl.get("https://flippingrs.com");
+
 	private final OkHttpClient http;
 	private final Gson gson;
+	private final HttpUrl base;
 
 	public FlippingRsApi(OkHttpClient http, Gson gson)
 	{
+		this(http, gson, BASE_URL);
+	}
+
+	/** Test seam: lets a test point the client at a local server. */
+	FlippingRsApi(OkHttpClient http, Gson gson, HttpUrl base)
+	{
 		this.http = http;
 		this.gson = gson;
+		this.base = base;
 	}
 
 	/** One row of the game-account picker. */
@@ -119,10 +139,10 @@ public class FlippingRsApi
 	 * on the API, so a successful one means the key is good, the instance is
 	 * reachable, and the owner has somewhere to file trades.
 	 */
-	public List<GameAccount> accounts(String baseUrl, String apiKey) throws IOException
+	public List<GameAccount> accounts(String apiKey) throws IOException
 	{
 		final Request request = new Request.Builder()
-			.url(url(baseUrl, "api", "journal", "accounts"))
+			.url(url("api", "journal", "accounts"))
 			.header("X-Api-Key", apiKey)
 			.get()
 			.build();
@@ -152,7 +172,7 @@ public class FlippingRsApi
 	}
 
 	/** Sends a batch of fills. Safe to repeat: the server drops ids it has seen. */
-	public IngestResult submit(String baseUrl, String apiKey, String accountId, List<GeTransaction> batch)
+	public IngestResult submit(String apiKey, String accountId, List<GeTransaction> batch)
 		throws IOException
 	{
 		final JsonObject payload = new JsonObject();
@@ -160,7 +180,7 @@ public class FlippingRsApi
 		payload.add("transactions", gson.toJsonTree(batch));
 
 		final Request request = new Request.Builder()
-			.url(url(baseUrl, "api", "journal", "transactions"))
+			.url(url("api", "journal", "transactions"))
 			.header("X-Api-Key", apiKey)
 			.post(RequestBody.create(JSON, gson.toJson(payload)))
 			.build();
@@ -178,14 +198,10 @@ public class FlippingRsApi
 		}
 	}
 
-	private static HttpUrl url(String baseUrl, String... segments) throws IOException
+	/** Appends path segments to the fixed base. */
+	private HttpUrl url(String... segments)
 	{
-		final HttpUrl parsed = HttpUrl.parse(baseUrl.trim());
-		if (parsed == null)
-		{
-			throw new PermanentException("The base URL in the plugin settings is not a URL: " + baseUrl);
-		}
-		final HttpUrl.Builder builder = parsed.newBuilder();
+		final HttpUrl.Builder builder = base.newBuilder();
 		for (String segment : segments)
 		{
 			builder.addPathSegment(segment);
@@ -196,12 +212,13 @@ public class FlippingRsApi
 	/**
 	 * Reads the response, refusing to read an unbounded amount of it.
 	 *
-	 * <p>body.string() buffers the entire response into memory with no ceiling.
-	 * The base URL is a user setting, so it can be pointed at something that is
-	 * not this API at all, and the client runs with -Xmx768m -- a large enough
-	 * reply would take the game down rather than fail a sync. Every real
-	 * response here is a few hundred bytes; a truncated one fails to parse,
-	 * which is reported as a retryable error and is the right outcome.
+	 * <p>body.string() buffers the entire response into memory with no ceiling,
+	 * and the client runs with -Xmx768m. A server having a bad day, or anything
+	 * sitting between here and it, can answer with far more than this API ever
+	 * would -- and a large enough reply would take the game down rather than
+	 * merely fail a sync. Every real response here is a few hundred bytes; a
+	 * truncated one fails to parse, which is reported as a retryable error and
+	 * is the right outcome.
 	 */
 	private static String bodyOf(Response response) throws IOException
 	{
