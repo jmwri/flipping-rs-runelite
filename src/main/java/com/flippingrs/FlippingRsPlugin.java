@@ -1628,6 +1628,11 @@ public class FlippingRsPlugin extends Plugin
 		try
 		{
 			final FlippingRsApi.Reconciliation result = api.submitOffers(key, accountId, open);
+			if (!result.getProblems().isEmpty())
+			{
+				log.warn("flippingrs.com could not read {} of the open offers: {}",
+					result.getProblems().size(), result.getProblems());
+			}
 			if (result.getRecovered() > 0)
 			{
 				final int recovered = result.getRecovered();
@@ -1638,7 +1643,13 @@ public class FlippingRsPlugin extends Plugin
 		}
 		catch (IOException e)
 		{
+			// A plan cap arrives here too, in the server's words, and a
+			// snapshot that cannot be reconciled is worth a line on Activity
+			// rather than a log entry nobody reads.
 			log.warn("could not send the open offers: {}", e.getMessage());
+			final String why = describe(e);
+			onPanel(p -> p.setActivityNotice("Could not reconcile your open offers: " + why,
+				ColorScheme.BRAND_ORANGE));
 		}
 	}
 
@@ -1681,6 +1692,11 @@ public class FlippingRsPlugin extends Plugin
 		try
 		{
 			final FlippingRsApi.Reconciliation result = api.submitHistory(key, accountId, rows);
+			if (!result.getProblems().isEmpty())
+			{
+				log.warn("flippingrs.com could not read {} history row(s): {}",
+					result.getProblems().size(), result.getProblems());
+			}
 			if (result.getAdded() > 0)
 			{
 				final int added = result.getAdded();

@@ -509,6 +509,8 @@ public class FlippingRsApi
 		int matched;
 		int added;
 		int ignored;
+		/** Only present when a row was malformed; raw JSON for the same reason as IngestResult's. */
+		List<JsonElement> problems;
 
 		public int getRecovered()
 		{
@@ -518,6 +520,25 @@ public class FlippingRsApi
 		public int getAdded()
 		{
 			return added;
+		}
+
+		/** Why rows were refused, one line each. Never null. */
+		public List<String> getProblems()
+		{
+			if (problems == null)
+			{
+				return Collections.emptyList();
+			}
+			final List<String> out = new ArrayList<>(problems.size());
+			for (JsonElement problem : problems)
+			{
+				if (problem == null || problem.isJsonNull())
+				{
+					continue;
+				}
+				out.add(problem.isJsonPrimitive() ? problem.getAsString() : problem.toString());
+			}
+			return out;
 		}
 	}
 

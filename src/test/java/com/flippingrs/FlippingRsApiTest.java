@@ -525,7 +525,8 @@ public class FlippingRsApiTest
 	@Test
 	public void theHistoryScreenIsSentAsRead() throws Exception
 	{
-		server.enqueue(new MockResponse().setBody("{\"matched\":1,\"added\":1,\"ignored\":0}"));
+		server.enqueue(new MockResponse().setBody(
+			"{\"matched\":1,\"added\":1,\"ignored\":1,\"problems\":[{\"row\":2,\"reason\":\"no side\"}]}"));
 		final FlippingRsApi.HistoryRow row = new FlippingRsApi.HistoryRow();
 		row.position = 0;
 		row.itemId = 4151;
@@ -543,6 +544,8 @@ public class FlippingRsApiTest
 		assertEquals("sell", sent.get("side").getAsString());
 		assertEquals(4_560_000L, sent.get("grossValue").getAsLong());
 		assertEquals(1, result.getAdded());
+		assertEquals("structured problems are read, not fatal", 1, result.getProblems().size());
+		assertTrue(result.getProblems().get(0).contains("no side"));
 	}
 
 	/** The whole surface, pinned: nothing outside /api/plugin is ever called. */

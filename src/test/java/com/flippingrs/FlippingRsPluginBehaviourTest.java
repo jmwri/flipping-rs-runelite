@@ -987,6 +987,26 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
 	}
 
+	/** A plan cap on reconciliation is shown in the server's words, on Activity. */
+	@Test
+	public void aRefusedOfferSnapshotIsShownOnActivity() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
+		when(support.api.submitOffers(anyString(), anyString(), anyList()))
+			.thenThrow(new java.io.IOException("This feature requires the Pro plan."));
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		assertTrue(support.panel.activityNoticeForTest().contains("This feature requires the Pro plan."));
+	}
+
 	/** "Record trades" off is a promise not to contact the server, snapshots included. */
 	@Test
 	public void recordingOffSendsNoSnapshots() throws Exception
