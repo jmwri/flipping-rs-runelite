@@ -742,16 +742,12 @@ public class FlippingRsPanel extends PluginPanel
 		title.setForeground(Color.WHITE);
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		card.add(title);
-		card.add(small(p.getRemainingQty() + " left · bought at " + gp(p.getBuyPrice())
-			+ " · held " + hours(p.getHoursHeld())));
-		final JLabel now = small("Now " + gp(p.getCurrentSell()) + " · P&L " + signed(p.getUnrealisedPnl())
-			+ " (" + pct(p.getUnrealisedRoi()) + ")");
+		card.add(small(p.getRemainingQty() + " left · held " + hours(p.getHoursHeld())));
+		card.add(small(positionPrices(p)));
+		final JLabel now = small("P&L " + signedExact(p.getUnrealisedPnl()) + " (" + pct(p.getUnrealisedRoi()) + ")"
+			+ (p.getBreakEvenSell() > 0 ? " · break even " + exact(p.getBreakEvenSell()) : ""));
 		now.setForeground(p.getUnrealisedPnl() < 0 ? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.PROGRESS_COMPLETE_COLOR);
 		card.add(now);
-		if (p.getBreakEvenSell() > 0)
-		{
-			card.add(small("Break even at " + gp(p.getBreakEvenSell())));
-		}
 		if (p.isStale())
 		{
 			final JLabel stale = small("Stale: you've held this much longer than this item usually takes to flip.");
@@ -985,16 +981,42 @@ public class FlippingRsPanel extends PluginPanel
 		return card;
 	}
 
-	/** "Buy 1.48M · Sell 1.52M" */
+	/**
+	 * "Buy 1,480,000 · Sell 1,520,000". To the coin, because this is the
+	 * number that gets typed into the offer.
+	 */
 	static String pricesLine(FlippingRsApi.Quote q)
 	{
-		return "Buy " + gp(q.getBuyAt()) + " · Sell " + gp(q.getSellAt());
+		return "Buy " + exact(q.getBuyAt()) + " · Sell " + exact(q.getSellAt());
 	}
 
-	/** "Margin +30.0K · ROI 2.0%" */
+	/** "Margin +9,600 · ROI 0.7%" */
 	static String marginLine(FlippingRsApi.Quote q)
 	{
-		return "Margin " + signed(q.getNetMargin()) + " · ROI " + pct(q.getRoi());
+		return "Margin " + signedExact(q.getNetMargin()) + " · ROI " + pct(q.getRoi());
+	}
+
+	/**
+	 * "Bought 1,480,000 · Sell 1,520,000 (now 1,500,000)": what was paid, the
+	 * price a sale lists at, and what an instant sale would get. The site's
+	 * profit figure is worked on the instant figure, the cautious one.
+	 */
+	static String positionPrices(FlippingRsApi.Position p)
+	{
+		final StringBuilder out = new StringBuilder("Bought " + exact(p.getBuyPrice()));
+		if (p.getCurrentBuy() > 0)
+		{
+			out.append(" · Sell ").append(exact(p.getCurrentBuy()));
+			if (p.getCurrentSell() > 0 && p.getCurrentSell() != p.getCurrentBuy())
+			{
+				out.append(" (now ").append(exact(p.getCurrentSell())).append(")");
+			}
+		}
+		else if (p.getCurrentSell() > 0)
+		{
+			out.append(" · Sell ").append(exact(p.getCurrentSell()));
+		}
+		return out.toString();
 	}
 
 	/** "Limit 70 · +2.10M per limit · 1.2K traded/24h", leaving out what is unknown. */
@@ -1286,6 +1308,18 @@ public class FlippingRsPanel extends PluginPanel
 	static String signed(long amount)
 	{
 		return amount > 0 ? "+" + gp(amount) : gp(amount);
+	}
+
+	/** gp to the coin, with thousands separators: "1,480,000". For numbers that get typed. */
+	static String exact(long amount)
+	{
+		return String.format(Locale.ROOT, "%,d", amount);
+	}
+
+	/** Exact gp with its sign always shown: "+9,600", "-500", "0". */
+	static String signedExact(long amount)
+	{
+		return amount > 0 ? "+" + exact(amount) : exact(amount);
 	}
 
 	/** A count, not money: "1.2K", "340". */

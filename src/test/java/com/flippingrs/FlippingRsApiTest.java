@@ -80,7 +80,7 @@ public class FlippingRsApiTest
 			+ "\"quantity\":1,\"grossValue\":1500000,\"occurredAt\":\"2026-08-31T12:05:00.123456789Z\",\"flipId\":\"f1\"}],"
 			+ "\"week\":{\"completedFlips\":12,\"openFlips\":2,\"realisedProfit\":1200000,\"winRate\":0.75,\"gpPerHour\":45000},"
 			+ "\"positions\":{\"positions\":[{\"itemId\":4151,\"itemName\":\"Abyssal whip\",\"remainingQty\":10,"
-			+ "\"buyPrice\":1480000,\"currentSell\":1520000,\"unrealisedPnl\":96000,\"unrealisedRoi\":0.0065,"
+			+ "\"buyPrice\":1480000,\"currentSell\":1500000,\"currentBuy\":1520000,\"unrealisedPnl\":96000,\"unrealisedRoi\":0.0065,"
 			+ "\"breakEvenSell\":1510204,\"hoursHeld\":5.5,\"stale\":false}],"
 			+ "\"summary\":{\"openPositions\":1,\"costBasis\":14800000,\"marketValue\":15200000,\"unrealisedPnl\":96000,"
 			+ "\"marketDataAvailable\":true}},"
@@ -112,6 +112,7 @@ public class FlippingRsApiTest
 		assertEquals("/api/plugin/journal?tzOffset=60&accountId=a1", server.takeRequest().getPath());
 		assertEquals(12, journal.getWeek().getCompletedFlips());
 		assertEquals(10L, journal.getPositions().getPositions().get(0).getRemainingQty());
+		assertEquals(1_520_000L, journal.getPositions().getPositions().get(0).getCurrentBuy());
 		assertEquals(96_000L, journal.getPositions().getSummary().unrealisedPnl);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));

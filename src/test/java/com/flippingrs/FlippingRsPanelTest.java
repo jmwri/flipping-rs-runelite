@@ -309,15 +309,15 @@ public class FlippingRsPanelTest
 	public void theQuoteLinesShowTheSitesNumbersTheRightWayRound()
 	{
 		final FlippingRsApi.Quote q = quote(4151);
-		assertEquals("Buy 1.48M · Sell 1.52M", FlippingRsPanel.pricesLine(q));
-		assertEquals("Margin +9.6K · ROI 0.7%", FlippingRsPanel.marginLine(q));
+		assertEquals("Buy 1,480,000 · Sell 1,520,000", FlippingRsPanel.pricesLine(q));
+		assertEquals("Margin +9,600 · ROI 0.7%", FlippingRsPanel.marginLine(q));
 		assertEquals("Limit 70 · +672.0K per limit · 1.2K traded/24h",
 			FlippingRsPanel.limitLine(new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, null, q)));
 
 		final FlippingRsApi.Quote losing = quote(1);
 		losing.netMargin = -500;
 		losing.roi = -0.01;
-		assertEquals("Margin -500gp · ROI -1.0%", FlippingRsPanel.marginLine(losing));
+		assertEquals("Margin -500 · ROI -1.0%", FlippingRsPanel.marginLine(losing));
 	}
 
 	@Test
@@ -331,7 +331,7 @@ public class FlippingRsPanelTest
 				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 0, null, quote(4151)),
 				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 12_000_000, 8, 0, null, null)));
 
-			assertEquals("Buy 1.48M · Sell 1.52M", panel.watchlistPricesForTest(4151));
+			assertEquals("Buy 1,480,000 · Sell 1,520,000", panel.watchlistPricesForTest(4151));
 			assertNull("no quote, so the client's own price line is used instead", panel.watchlistPricesForTest(11802));
 		});
 	}
@@ -354,6 +354,25 @@ public class FlippingRsPanelTest
 		week.realisedProfit = -3_000;
 		week.gpPerHour = 0;
 		assertEquals("-3.0K from 1 flip · 75.0% wins", FlippingRsPanel.summarise(week));
+	}
+
+	/** A position shows what was paid and both sides of the sale, to the coin. */
+	@Test
+	public void aPositionShowsBothSidesOfTheSaleExactly()
+	{
+		final FlippingRsApi.Position p = new FlippingRsApi.Position();
+		p.buyPrice = 1_480_000;
+		p.currentBuy = 1_520_000;
+		p.currentSell = 1_500_000;
+		assertEquals("Bought 1,480,000 · Sell 1,520,000 (now 1,500,000)", FlippingRsPanel.positionPrices(p));
+
+		p.currentSell = 1_520_000;
+		assertEquals("no bracket when both sides agree", "Bought 1,480,000 · Sell 1,520,000",
+			FlippingRsPanel.positionPrices(p));
+
+		p.currentBuy = 0;
+		p.currentSell = 1_500_000;
+		assertEquals("Bought 1,480,000 · Sell 1,500,000", FlippingRsPanel.positionPrices(p));
 	}
 
 	@Test

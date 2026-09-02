@@ -53,6 +53,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 import okhttp3.HttpUrl;
@@ -149,6 +150,9 @@ public class FlippingRsPlugin extends Plugin
 	private boolean developerMode;
 
 	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -197,6 +201,7 @@ public class FlippingRsPlugin extends Plugin
 	private volatile FlippingRsApi api;
 	private FlippingRsPanel panel;
 	private GeMenu geMenu;
+	private GeQuoteOverlay quoteOverlay;
 
 	/**
 	 * The owner's watchlists, as last read from the server. A cache for the
@@ -293,6 +298,8 @@ public class FlippingRsPlugin extends Plugin
 
 		geMenu = new GeMenu(client, itemManager, this::openItem,
 			itemId -> submit(sendExecutor, () -> addToWatchlist(itemId)));
+		quoteOverlay = new GeQuoteOverlay(client, this::watchedQuote);
+		overlayManager.add(quoteOverlay);
 
 		panel = new FlippingRsPanel();
 		panel.onSyncNow(() -> submit(sendExecutor, this::drain));
@@ -398,6 +405,11 @@ public class FlippingRsPlugin extends Plugin
 		{
 			clientToolbar.removeNavigation(navButton);
 			navButton = null;
+		}
+		if (quoteOverlay != null)
+		{
+			overlayManager.remove(quoteOverlay);
+			quoteOverlay = null;
 		}
 		panel = null;
 		geMenu = null;
@@ -592,6 +604,20 @@ public class FlippingRsPlugin extends Plugin
 				+ " at " + FlippingRsPanel.gp(offer.getPrice());
 		}
 		return null;
+	}
+
+	/**
+	 * The site's quote for an item, if it is on the shown watchlist and the
+	 * setting allows the overlay; else null. Client thread, from the overlay.
+	 */
+	@Nullable
+	private FlippingRsApi.Quote watchedQuote(int itemId)
+	{
+		if (!config.setupOverlay() || !isWatched(itemId))
+		{
+			return null;
+		}
+		return quotes.get(itemId);
 	}
 
 	/** Whether an item is on the watchlist the panel is showing. */

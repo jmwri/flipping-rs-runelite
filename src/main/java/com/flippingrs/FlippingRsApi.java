@@ -219,7 +219,10 @@ public class FlippingRsApi
 		long sellQty;
 		long remainingQty;
 		long costBasis;
+		/** What you would get selling instantly now: the low. */
 		long currentSell;
+		/** What buyers are paying now: the high, and the price a patient sale lists at. */
+		long currentBuy;
 		long marketValue;
 		long unrealisedPnl;
 		/** A fraction: 0.02 is 2%. */
@@ -256,6 +259,11 @@ public class FlippingRsApi
 		public long getCurrentSell()
 		{
 			return currentSell;
+		}
+
+		public long getCurrentBuy()
+		{
+			return currentBuy;
 		}
 
 		public long getUnrealisedPnl()

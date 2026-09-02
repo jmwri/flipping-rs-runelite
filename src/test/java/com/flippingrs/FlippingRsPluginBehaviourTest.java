@@ -770,7 +770,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.connect();
 
-		assertEquals("Buy 1.48M · Sell 1.52M", support.panel.watchlistPricesForTest(4151));
+		assertEquals("Buy 1,480,000 · Sell 1,520,000", support.panel.watchlistPricesForTest(4151));
 	}
 
 	@Test

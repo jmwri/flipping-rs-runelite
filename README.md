@@ -44,6 +44,7 @@ be. Plugin keys are available on every plan.
 | Record trades | on | Switch off to stop recording and stop talking to flippingrs.com |
 | Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
 | Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
+| Prices on the offer screen | on | Shows the site's exact buy and sell prices when you set up an offer for a watched item |
 | Server URL | — | Only for developers running their own copy of the site; ignored otherwise |
 
 ## The sidebar
@@ -56,12 +57,12 @@ Five tabs:
   a trade the site could not accept, is reported here.
 - **Trades** is your most recent trades, as your journal has them.
 - **Journal** is your last seven days, with profit, number of flips, win rate
-  and gp per hour, and everything you are currently holding: what it cost,
-  what it is worth now, your profit or loss so far, the price you need to sell
-  at to break even, and a warning when something has sat for much longer than
-  it usually takes to flip.
+  and gp per hour, and everything you are currently holding: what you paid,
+  the price a sale lists at and what an instant sale would get, your profit or
+  loss so far, the price you need to sell at to break even, and a warning when
+  something has sat for much longer than it usually takes to flip.
 - **Watchlists** shows one of your flippingrs.com watchlists. Each item shows
-  the price you can buy and sell at right now, the profit per item after tax,
+  the exact price you can buy and sell at right now, the profit per item after tax,
   the return on what you'd pay, the buy limit and the profit across one limit,
   and the day's volume, refreshed every minute. If you have an offer on the
   item, that is shown too and updates as it fills. **Open** goes to the item's
@@ -77,6 +78,11 @@ slots, an item beside them, the offer setup screen, or a row in your history.
 puts it on the watchlist in the sidebar. Neither one touches the game; they
 only open your browser or update your list on the site. Both can be turned off
 in the settings.
+
+When you set up a buy or sell offer for an item that is on your watchlist, the
+site's exact buy and sell prices and the margin appear in the corner of the
+offer screen, so the number to type is right there. That can be turned off
+too.
 
 ## Catching up on trades it missed
 

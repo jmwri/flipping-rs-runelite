@@ -84,6 +84,19 @@ public interface FlippingRsConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "setupOverlay",
+		name = "Prices on the offer screen",
+		description = "When you set up a buy or sell offer for an item on your watchlist, shows flippingrs.com's "
+			+ "exact buy and sell prices and the margin on the offer screen, so the number you type is in front of you.",
+		position = 12,
+		section = exchangeSection
+	)
+	default boolean setupOverlay()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Developer",
 		description = "Only read when RuneLite was started with --developer-mode",
