@@ -233,6 +233,45 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** A fill on a watched item touches only that card's offer line. */
+	@Test
+	public void aWatchedItemsOfferLineIsUpdatedInPlace() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, "Buying 4/10 at 1.50M", null),
+				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 0, 0, 0, null, null)));
+
+			panel.updateWatchedOffer(4151, "Buying 6/10 at 1.50M");
+			assertEquals("Buying 6/10 at 1.50M", panel.watchlistOfferForTest(4151));
+
+			panel.updateWatchedOffer(11802, "Selling 1/1 at 12.00M");
+			assertEquals("Selling 1/1 at 12.00M", panel.watchlistOfferForTest(11802));
+
+			panel.updateWatchedOffer(4151, null);
+			assertNull(panel.watchlistOfferForTest(4151));
+			assertEquals("the list itself is untouched", Arrays.asList(4151, 11802), panel.watchlistForTest());
+		});
+	}
+
+	/** Recording off shows why the tabs are empty, until data arrives again. */
+	@Test
+	public void pausingShowsTheReasonUntilDataArrives() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setPaused("Recording is off.");
+			assertEquals("Recording is off.", panel.pausedForTest());
+
+			panel.setActivity(Collections.emptyList());
+			assertNull(panel.pausedForTest());
+		});
+	}
+
 	/** The facts line says what is known and nothing about what is not. */
 	@Test
 	public void theFactsLineLeavesOutWhatIsUnknown()

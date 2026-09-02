@@ -2,6 +2,8 @@ package com.flippingrs;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.IntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,15 +16,16 @@ import net.runelite.api.widgets.Widget;
  *
  * <p>The history is the one place the game shows offers that completed while
  * the plugin was not watching, so it is worth reading, but it is a screen and
- * not an API: each row is an item icon followed by three text widgets --
- * "Sold:", "Irit seedx 6", "438 coins(444 - 6)= 73 each" -- with no ids and
- * no times, and the icon does not even share the texts' vertical position.
- * So rows are taken in sequence, an icon starting each one, and read
- * defensively: the side is whichever of "Bought" or "Sold" appears, the
- * quantity is the "x N" at the end of the name, and the gp is the figure
- * before tax where the breakdown is shown, else the figure next to "coins".
- * A row that does not yield all four is skipped and logged rather than sent
- * half-read, because a half-read trade is worse than a missing one.
+ * not an API. Each row is three text widgets on one line -- "Sold:",
+ * "Irit seedx 6", "438 coins(444 - 6)= 73 each" -- and an item icon that sits
+ * at a slightly different height and, in the widget list, sometimes before
+ * its texts and sometimes after. So nothing here depends on order: the texts
+ * are grouped by their exact line, and each icon is attached to the nearest
+ * line by height. The side is whichever of "Bought" or "Sold" appears, the
+ * quantity is the "x N" on the name, or one when there is none, and the gp is
+ * the figure before tax where the breakdown is shown, else the figure next to
+ * "coins". A row that does not yield all four is skipped and logged rather
+ * than sent half-read, because a half-read trade is worse than a missing one.
  *
  * <p>What the server does with the rows is its business: it knows which
  * completed offers it already has, and the plugin does not.
@@ -39,6 +42,13 @@ class GeHistoryReader
 	/** "Irit seedx 6", "Bought x 25" */
 	private static final Pattern QUANTITY = Pattern.compile("x\\s*([\\d,]+)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern NUMBER = Pattern.compile("[\\d,]{2,}");
+
+	/**
+	 * How far, in pixels, an icon may sit from the line it belongs to. Rows
+	 * are a good deal taller than this, so the nearest line is the right one
+	 * and an icon with no line that close belongs to nothing.
+	 */
+	private static final int ICON_REACH = 30;
 
 	/**
 	 * Reads every parseable row of the list widget, top to bottom.
@@ -59,35 +69,42 @@ class GeHistoryReader
 			return out;
 		}
 
-		// Group in sequence: the icon comes first and the row's texts follow
-		// it. Grouping by vertical position does not work here, because the
-		// icon sits at a different y from the texts beside it.
-		final List<List<Widget>> lines = new ArrayList<>();
-		List<Widget> current = null;
+		// Texts by their exact line, top to bottom; icons kept aside.
+		final TreeMap<Integer, List<Widget>> lines = new TreeMap<>();
+		final List<Widget> icons = new ArrayList<>();
 		for (Widget child : children)
 		{
 			if (child == null || child.isSelfHidden())
 			{
 				continue;
 			}
-			final boolean icon = child.getItemId() > 0;
-			final boolean text = child.getText() != null && !child.getText().isEmpty();
-			if (!icon && !text)
+			if (child.getItemId() > 0)
 			{
-				continue;
+				icons.add(child);
 			}
-			if (icon || current == null)
+			else if (child.getText() != null && !child.getText().isEmpty())
 			{
-				current = new ArrayList<>();
-				lines.add(current);
+				lines.computeIfAbsent(child.getRelativeY(), y -> new ArrayList<>()).add(child);
 			}
-			current.add(child);
+		}
+
+		// Each icon joins the line nearest to it by height. The icon is not on
+		// the texts' line, but it is far closer to its own row than to the
+		// next.
+		final Map<Integer, Widget> iconByLine = new TreeMap<>();
+		for (Widget icon : icons)
+		{
+			final Integer line = nearestLine(lines, icon.getRelativeY());
+			if (line != null && !iconByLine.containsKey(line))
+			{
+				iconByLine.put(line, icon);
+			}
 		}
 
 		int position = 0;
-		for (List<Widget> line : lines)
+		for (Map.Entry<Integer, List<Widget>> line : lines.entrySet())
 		{
-			final FlippingRsApi.HistoryRow row = parse(line, names);
+			final FlippingRsApi.HistoryRow row = parse(iconByLine.get(line.getKey()), line.getValue(), names);
 			if (row == null)
 			{
 				continue;
@@ -99,10 +116,28 @@ class GeHistoryReader
 	}
 
 	@Nullable
-	private static FlippingRsApi.HistoryRow parse(List<Widget> line, IntFunction<String> names)
+	private static Integer nearestLine(TreeMap<Integer, List<Widget>> lines, int y)
 	{
-		int itemId = 0;
-		long iconQuantity = 0;
+		final Integer below = lines.ceilingKey(y);
+		final Integer above = lines.floorKey(y);
+		Integer best = null;
+		int distance = Integer.MAX_VALUE;
+		for (Integer candidate : new Integer[]{above, below})
+		{
+			if (candidate != null && Math.abs(candidate - y) < distance)
+			{
+				best = candidate;
+				distance = Math.abs(candidate - y);
+			}
+		}
+		return distance <= ICON_REACH ? best : null;
+	}
+
+	@Nullable
+	private static FlippingRsApi.HistoryRow parse(@Nullable Widget icon, List<Widget> line, IntFunction<String> names)
+	{
+		final int itemId = icon == null ? 0 : icon.getItemId();
+		final long iconQuantity = icon == null ? 0 : icon.getItemQuantity();
 		long textQuantity = 0;
 		String side = null;
 		long gross = 0;
@@ -111,17 +146,11 @@ class GeHistoryReader
 
 		for (Widget w : line)
 		{
-			if (w.getItemId() > 0 && itemId == 0)
-			{
-				itemId = w.getItemId();
-				iconQuantity = w.getItemQuantity();
-			}
-			final String text = w.getText();
-			if (text == null || text.isEmpty())
+			final String plain = stripTags(w.getText());
+			if (plain.isEmpty())
 			{
 				continue;
 			}
-			final String plain = stripTags(text);
 			texts.add(plain);
 			final String lower = plain.toLowerCase();
 			if (side == null && lower.contains("bought"))
@@ -172,16 +201,21 @@ class GeHistoryReader
 			}
 		}
 
-		// The "x N" on the name is the offer's quantity; the icon's stack is a
-		// fallback, and failing both, the total over the per-item price.
+		// The "x N" on the name is the offer's quantity. A name without one is
+		// a single item -- "Ruby bolts (e)" alone -- which the icon's stack or
+		// the total over the per-item price confirms when either is there.
 		long quantity = textQuantity;
-		if (quantity <= 0)
+		if (quantity <= 0 && iconQuantity > 1)
 		{
 			quantity = iconQuantity;
 		}
 		if (quantity <= 0 && each > 0 && gross > 0)
 		{
-			quantity = Math.round((double) gross / each);
+			quantity = Math.max(1, Math.round((double) gross / each));
+		}
+		if (quantity <= 0 && gross > 0)
+		{
+			quantity = 1;
 		}
 
 		if (itemId <= 0 || side == null || quantity <= 0 || gross <= 0)
@@ -219,8 +253,8 @@ class GeHistoryReader
 		}
 	}
 
-	private static String stripTags(String text)
+	private static String stripTags(@Nullable String text)
 	{
-		return text.replaceAll("<[^>]*>", "").trim();
+		return text == null ? "" : text.replaceAll("<[^>]*>", "").trim();
 	}
 }

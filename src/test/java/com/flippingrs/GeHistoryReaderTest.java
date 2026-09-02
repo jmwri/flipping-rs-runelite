@@ -82,6 +82,46 @@ public class GeHistoryReaderTest
 		assertEquals(8_760L, rows.get(1).grossValue);
 	}
 
+	/**
+	 * The second thing a live client showed: an icon listed after its texts,
+	 * and a single item with no count on its name at all. Neither order nor
+	 * the count may be assumed.
+	 */
+	@Test
+	public void iconsMayFollowTheirTextsAndASingleItemHasNoCount()
+	{
+		text(0, "Sold:");
+		text(0, "Ruby bolts (e)");
+		item(8, 9242, 1);
+		text(0, "1,500 coins(1,530 - 30)= 1,530 each");
+		item(48, 5296, 1);
+		text(40, "Sold:");
+		text(40, "Toadflax seedx 8");
+		text(40, "8,760 coins(8,936 - 176)= 1,095 each");
+
+		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+		assertEquals(2, rows.size());
+		assertEquals(9242, rows.get(0).itemId);
+		assertEquals(1L, rows.get(0).quantity);
+		assertEquals(1_530L, rows.get(0).grossValue);
+		assertEquals(5296, rows.get(1).itemId);
+		assertEquals(8L, rows.get(1).quantity);
+		assertEquals(8_936L, rows.get(1).grossValue);
+	}
+
+	/** An icon with no line near it belongs to nothing, and a line with no icon has no item. */
+	@Test
+	public void anIconFarFromEveryLineIsNotForcedOntoOne()
+	{
+		item(200, 4151, 10);
+		text(0, "Bought:");
+		text(0, "Abyssal whipx 10");
+		text(0, "15,000,000 coins= 1,500,000 each");
+
+		assertTrue(GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
+	}
+
 	/** With no "x N" and no stack, the quantity is the total over the per-item price. */
 	@Test
 	public void theQuantityFallsBackToTheTotalOverThePerItemPrice()

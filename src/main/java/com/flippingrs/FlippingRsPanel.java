@@ -10,8 +10,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.List;
+import java.util.Map;
 import java.util.function.IntConsumer;
 import javax.annotation.Nullable;
 import javax.swing.BorderFactory;
@@ -167,8 +169,18 @@ public class FlippingRsPanel extends PluginPanel
 	private final JPanel watchlistItems = new JPanel();
 	private final JButton findFlips = new JButton("Find flips");
 	private List<WatchedItem> watched = new ArrayList<>();
+	/** The live-offer line of each card, so one fill can update one line. */
+	private final Map<Integer, JLabel> offerLines = new HashMap<>();
 	@Nullable
 	private String watchlistProblem;
+
+	/**
+	 * Set while the plugin is not reading from the server at all: recording
+	 * off, or no key. The tabs that show the server's data show this instead
+	 * of stale rows. Cleared by the next data that arrives.
+	 */
+	@Nullable
+	private String paused;
 
 	// Account
 	private final JLabel status = new JLabel();
@@ -432,6 +444,28 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	/**
+	 * Nothing is being read from the server, for the reason given. Trades,
+	 * Journal and Watchlists show the reason instead of whatever they last
+	 * held, and the plan line is cleared.
+	 */
+	void setPaused(String why)
+	{
+		paused = why;
+		recent.clear();
+		recentProblem = null;
+		positions = new ArrayList<>();
+		journalLoaded = false;
+		journalProblem = null;
+		watched = new ArrayList<>();
+		watchlistProblem = null;
+		setWatchlists(new ArrayList<>(), null);
+		setSubscription(null);
+		redrawRecent();
+		redrawJournal();
+		redrawWatchlist();
+	}
+
+	/**
 	 * Replaces the account list, restoring the current selection if it survives.
 	 *
 	 * <p>With nothing remembered ({@code selectedId} null) the server's default
@@ -568,6 +602,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setActivity(List<GeTransaction> newestFirst)
 	{
+		paused = null;
 		recentProblem = null;
 		recent.clear();
 		for (GeTransaction tx : newestFirst)
@@ -591,7 +626,11 @@ public class FlippingRsPanel extends PluginPanel
 	private void redrawRecent()
 	{
 		recentList.removeAll();
-		if (recentProblem != null)
+		if (paused != null)
+		{
+			recentList.add(small(paused));
+		}
+		else if (recentProblem != null)
 		{
 			final JLabel problem = small("Could not load recent trades: " + recentProblem);
 			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
@@ -626,6 +665,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** The journal's week and its open positions, as the server has them. */
 	void setJournal(FlippingRsApi.Analytics week, FlippingRsApi.Positions open)
 	{
+		paused = null;
 		journalProblem = null;
 		journalLoaded = true;
 		journalSummary.setText(wrap(summarise(week)));
@@ -666,7 +706,13 @@ public class FlippingRsPanel extends PluginPanel
 	private void redrawJournal()
 	{
 		positionList.removeAll();
-		if (journalProblem != null)
+		if (paused != null)
+		{
+			journalSummary.setText(wrap(paused));
+			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+			journalOpen.setText("");
+		}
+		else if (journalProblem != null)
 		{
 			journalSummary.setText(wrap("Could not load the journal: " + journalProblem));
 			journalSummary.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
@@ -768,9 +814,43 @@ public class FlippingRsPanel extends PluginPanel
 	/** Replaces the watchlist's rows, in the server's order. */
 	void setWatchlistItems(List<WatchedItem> items)
 	{
+		paused = null;
 		watchlistProblem = null;
 		watched = new ArrayList<>(items);
 		redrawWatchlist();
+	}
+
+	/**
+	 * Updates one card's live-offer line, for a fill on a watched item.
+	 *
+	 * <p>Only the line is touched when the card already has one; the card is
+	 * rebuilt only when the line appears or disappears, since that changes
+	 * its height. Everything else on the card is unchanged by a fill.
+	 */
+	void updateWatchedOffer(int itemId, @Nullable String offer)
+	{
+		for (int i = 0; i < watched.size(); i++)
+		{
+			final WatchedItem item = watched.get(i);
+			if (item.itemId != itemId)
+			{
+				continue;
+			}
+			if (java.util.Objects.equals(item.offer, offer))
+			{
+				return;
+			}
+			watched.set(i, new WatchedItem(item.itemId, item.name, item.image, item.price, item.limit, item.alch,
+				offer, item.quote));
+			final JLabel line = offerLines.get(itemId);
+			if (line != null && offer != null && item.offer != null)
+			{
+				line.setText(wrap(offer));
+				return;
+			}
+			redrawWatchlist();
+			return;
+		}
 	}
 
 	/** The watchlists could not be read. Shown in the tab itself. */
@@ -792,7 +872,12 @@ public class FlippingRsPanel extends PluginPanel
 	private void redrawWatchlist()
 	{
 		watchlistItems.removeAll();
-		if (watchlistProblem != null)
+		offerLines.clear();
+		if (paused != null)
+		{
+			watchlistItems.add(small(paused));
+		}
+		else if (watchlistProblem != null)
 		{
 			final JLabel problem = small("Could not load watchlists: " + watchlistProblem);
 			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
@@ -872,6 +957,7 @@ public class FlippingRsPanel extends PluginPanel
 			final JLabel offer = small(item.offer);
 			offer.setForeground(ColorScheme.BRAND_ORANGE);
 			card.add(offer);
+			offerLines.put(item.itemId, offer);
 		}
 		card.add(Box.createVerticalStrut(5));
 
@@ -1003,6 +1089,26 @@ public class FlippingRsPanel extends PluginPanel
 			ids.add(item.itemId);
 		}
 		return ids;
+	}
+
+	/** The live-offer line of a watched item's card, or null if it has none. */
+	@Nullable
+	String watchlistOfferForTest(int itemId)
+	{
+		for (WatchedItem item : watched)
+		{
+			if (item.itemId == itemId)
+			{
+				return item.offer;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	String pausedForTest()
+	{
+		return paused;
 	}
 
 	/** The site's price line for a watched item, or null if it has no quote. */

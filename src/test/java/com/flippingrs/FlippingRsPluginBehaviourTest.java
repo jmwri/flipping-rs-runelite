@@ -12,12 +12,14 @@ import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.WorldType;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import org.junit.After;
@@ -36,6 +38,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -1024,6 +1027,73 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).submitOffers(anyString(), anyString(), anyList());
 	}
 
+	/**
+	 * The client replays each offer's state in the first ticks after login.
+	 * A delta there happened while nobody was watching, so it goes out with
+	 * no time rather than stamped with the login time, which could put a
+	 * sale ahead of its purchase.
+	 */
+	@Test
+	public void fillsReplayedJustAfterLoginAreSentUntimed() throws Exception
+	{
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+
+		final GameStateChanged loggedIn = new GameStateChanged();
+		loggedIn.setGameState(GameState.LOGGED_IN);
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(loggedIn);
+		when(support.client.getTickCount()).thenReturn(101);
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		when(support.client.getTickCount()).thenReturn(110);
+		fire(offer(GrandExchangeOfferState.BOUGHT, 10, 10_000_000));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals(2, queued.size());
+		assertEquals("adopted", queued.get(0).source);
+		assertNull(queued.get(0).occurredAt);
+		assertEquals("live", queued.get(1).source);
+		assertNotNull(queued.get(1).occurredAt);
+	}
+
+	/**
+	 * The buffer goes out before a snapshot. An adopted fill still queued is
+	 * the shortfall the server would recover from the snapshot, and it would
+	 * then count the queued fill too.
+	 */
+	@Test
+	public void theBufferIsSentBeforeAnOfferSnapshot() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
+		assertEquals("the adopted fill is waiting", 1, support.queue().size());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+
+		final InOrder order = inOrder(support.api);
+		order.verify(support.api).submit(anyString(), anyString(), anyList());
+		order.verify(support.api).submitOffers(anyString(), anyString(), anyList());
+		assertTrue(support.queue().isEmpty());
+	}
+
+	/** "Record trades" off empties the server-fed tabs and says why. */
+	@Test
+	public void recordingOffPausesTheServerTabs() throws Exception
+	{
+		when(support.config.enabled()).thenReturn(false);
+
+		support.connect();
+
+		assertTrue(support.panel.pausedForTest().contains("Recording is off"));
+	}
+
 	// ----------------------------------------------------------- client exit
 
 	/**
@@ -1045,6 +1115,8 @@ public class FlippingRsPluginBehaviourTest
 		exit.waitForAllConsumers(Duration.ofSeconds(10));
 
 		assertTrue("the last trades must have gone out before the JVM dies", support.queue().isEmpty());
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
 		assertFalse(new TransactionQueue(support.gson, new File(queueDir, "queue-1234.json")).size() > 0);
 	}
 }

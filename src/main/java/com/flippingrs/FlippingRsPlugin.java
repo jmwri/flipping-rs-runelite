@@ -75,7 +75,8 @@ import okhttp3.OkHttpClient;
  *   <li>A trade is never recorded twice. Ids are minted before a fill is first
  *       sent and the server drops repeats, so retrying is free.
  *   <li>A trade is never invented. Progress made while the plugin was not
- *       watching is adopted silently rather than backdated to now.
+ *       watching goes out once as a recovered fill with no time on it, for
+ *       the server to judge, and is never backdated to now.
  *   <li>A trade is not lost to a flaky network. Fills queue to disk and survive
  *       a restart.
  * </ul>
@@ -215,11 +216,27 @@ public class FlippingRsPlugin extends Plugin
 
 	/** How often the watchlist's quotes are refreshed. The site's own pages refresh at this rate for a visitor. */
 	private static final long QUOTE_REFRESH_SECONDS = 60;
-	/** The tabs that have a read of their own on the server. */
+	/** The tabs that are re-read on their own; Account is only read by connect. */
 	private enum Tab
 	{
-		ACCOUNT, TRADES, JOURNAL, WATCHLISTS
+		TRADES, JOURNAL, WATCHLISTS
 	}
+
+	/**
+	 * Ticks after login during which offer deltas are the client replaying
+	 * what the exchange did while nobody was watching. Two, the window
+	 * RuneLite's own Grand Exchange plugin uses for the same burst.
+	 */
+	private static final int LOGIN_BURST_TICKS = 2;
+	private int loggedInTick = -1;
+
+	/**
+	 * Set while the client or the plugin is stopping, so the final drain
+	 * sends and nothing more: the exit budget is ten seconds for every
+	 * plugin together, and re-reading tabs nobody will see is not worth any
+	 * of it.
+	 */
+	private volatile boolean shuttingDown;
 
 	/**
 	 * How often the account tabs are re-read after sends, at most.
@@ -269,6 +286,7 @@ public class FlippingRsPlugin extends Plugin
 		recordedThisSession.set(0);
 		lastSyncAt = null;
 		knownAccounts = null;
+		shuttingDown = false;
 
 		api = newApi();
 		watchlists = null;
@@ -361,6 +379,7 @@ public class FlippingRsPlugin extends Plugin
 		// blocking it on a network round trip would freeze the client on plugin
 		// disable and on exit -- the exact failure this whole arrangement is
 		// meant to avoid. shutdown() lets already-queued disk work finish.
+		shuttingDown = true;
 		submit(sendExecutor, this::drain);
 		// Null-guarded because startUp can throw part way through -- a toolbar
 		// that will not take the nav button, say -- and RuneLite still calls
@@ -768,16 +787,20 @@ public class FlippingRsPlugin extends Plugin
 			saveOffer(slot, seen.saved);
 		}
 
-		// A watched item's row shows the player's offer on it; keep that
-		// current. Cheap, and only for items actually on the list.
+		// A watched item's card shows the player's offer on it; keep that
+		// line current. Only that line: rebuilding every card, sprites and
+		// all, on each fill of a watched item was real work for a flipper
+		// with a long list and fast items.
 		if (isWatched(offer.getItemId()))
 		{
-			showWatchlists();
+			final int itemId = offer.getItemId();
+			final String live = liveOffer(itemId);
+			onPanel(p -> p.updateWatchedOffer(itemId, live));
 		}
 
 		if (seen.adopted)
 		{
-			log.debug("adopted an in-progress offer in slot {} without reporting it", slot);
+			log.debug("adopted an in-progress offer in slot {}; its progress goes out as a recovered fill", slot);
 			onPanel(p -> p.setActivityNotice(
 				"Picked up an offer that was already in progress. What had already filled was sent as "
 					+ "recovered, with no time on it; the site decides whether it is new.",
@@ -788,6 +811,19 @@ public class FlippingRsPlugin extends Plugin
 		if (tx == null)
 		{
 			return;
+		}
+
+		// A delta seen within a couple of ticks of logging in is the client
+		// replaying what the exchange did while nobody was watching. It is
+		// real, but its time is not now: an offer that filled overnight and
+		// was stamped with the login time could put a sale ahead of the
+		// purchase it belongs to. It goes out untimed, like an adoption, and
+		// the server treats it the same way.
+		if (GeTransaction.SOURCE_LIVE.equals(tx.source) && loggedInTick >= 0
+			&& client.getTickCount() - loggedInTick <= LOGIN_BURST_TICKS)
+		{
+			tx.source = GeTransaction.SOURCE_ADOPTED;
+			tx.occurredAt = null;
 		}
 
 		if (!config.enabled())
@@ -905,6 +941,7 @@ public class FlippingRsPlugin extends Plugin
 	@Subscribe
 	public void onClientShutdown(ClientShutdown event)
 	{
+		shuttingDown = true;
 		final CompletableFuture<Void> done = new CompletableFuture<>();
 		final boolean queued = submit(diskExecutor, () ->
 		{
@@ -1093,7 +1130,10 @@ public class FlippingRsPlugin extends Plugin
 					result.getRejected(), batch.size(), result.getProblems());
 			}
 
-			refreshAccountTabsAfterSend();
+			if (!shuttingDown)
+			{
+				refreshAccountTabsAfterSend();
+			}
 
 			onPanel(p -> {
 				p.setCounts(recordedThisSession.get(), waiting);
@@ -1177,14 +1217,12 @@ public class FlippingRsPlugin extends Plugin
 		return message == null || message.isEmpty() ? e.getClass().getSimpleName() : message;
 	}
 
-	/** Checks the key and loads the journals it can file trades under. */
 	/** The machine's UTC offset, so the server's daily buckets fall on the player's calendar. */
 	private static int tzOffsetMinutes()
 	{
 		return TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000;
 	}
 
-	/** The plan the key's owner is on, for the Account tab. Not fatal if it fails. */
 	/**
 	 * Shows what is still buffered for the logged-in account. Disk thread,
 	 * because opening the queue reads its file.
@@ -1312,7 +1350,6 @@ public class FlippingRsPlugin extends Plugin
 		}
 	}
 
-	/** The watchlists alone, for an edit that arrives before the panel has been read. */
 	/** The watchlist the picker is set to, or null if none has been picked. */
 	@Nullable
 	private String rememberedWatchlistId()
@@ -1338,6 +1375,9 @@ public class FlippingRsPlugin extends Plugin
 				p.setStatus("Recording is off. Nothing is being captured and nothing is being sent to "
 					+ "flippingrs.com. Turn \"Record trades\" back on in the plugin settings to resume.",
 					ColorScheme.LIGHT_GRAY_COLOR);
+				// Old rows next to a status that says nothing is being read
+				// would be a picture of a journal the plugin is not looking at.
+				p.setPaused("Recording is off, so nothing is read from flippingrs.com.");
 			});
 			return;
 		}
@@ -1349,6 +1389,7 @@ public class FlippingRsPlugin extends Plugin
 				p.setAccounts(Collections.emptyList(), null);
 				p.setStatus("Add your API key in the plugin settings. Create one at flippingrs.com "
 					+ "under Account, API keys, with the RuneLite plugin scope.", ColorScheme.LIGHT_GRAY_COLOR);
+				p.setPaused("Nothing is read from flippingrs.com until an API key is set.");
 			});
 			return;
 		}
@@ -1381,7 +1422,7 @@ public class FlippingRsPlugin extends Plugin
 		if (accountTabsRefreshedAt == 0 || wait <= 0)
 		{
 			accountTabsRefreshedAt = now;
-			clientThread.invoke(() -> snapshotOffers(false));
+			clientThread.invoke(() -> snapshotOffers(OFFER_SNAPSHOT_AFTER_SEND_SECONDS));
 			refresh(Tab.TRADES);
 			refresh(Tab.JOURNAL);
 			return;
@@ -1397,7 +1438,7 @@ public class FlippingRsPlugin extends Plugin
 			{
 				accountTabsRefreshPending.set(false);
 				accountTabsRefreshedAt = System.nanoTime();
-				clientThread.invoke(() -> snapshotOffers(false));
+				clientThread.invoke(() -> snapshotOffers(OFFER_SNAPSHOT_AFTER_SEND_SECONDS));
 				refresh(Tab.TRADES);
 				refresh(Tab.JOURNAL);
 			}, wait, TimeUnit.NANOSECONDS);
@@ -1434,9 +1475,6 @@ public class FlippingRsPlugin extends Plugin
 			final FlippingRsApi.Panel part;
 			switch (tab)
 			{
-				case ACCOUNT:
-					part = api.account(key);
-					break;
 				case TRADES:
 					if (accountId == null)
 					{
@@ -1477,7 +1515,6 @@ public class FlippingRsPlugin extends Plugin
 						p.setWatchlistProblem(why);
 						break;
 					default:
-						p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR);
 						break;
 				}
 			});
@@ -1518,6 +1555,12 @@ public class FlippingRsPlugin extends Plugin
 	private static final int LOGIN_SETTLE_TICKS = 3;
 	/** Snapshots closer together than this are skipped; the state has not changed. */
 	private static final long OFFER_SNAPSHOT_SECONDS = 10;
+	/**
+	 * After a send, rarer still: the send just told the server the state, and
+	 * the reconciliation is a safety net rather than the record. This keeps
+	 * the worst-case minute well inside the plugin scope's rate limit.
+	 */
+	private static final long OFFER_SNAPSHOT_AFTER_SEND_SECONDS = 60;
 	/** The history screen fills a tick or two after it opens; give up after this many looks. */
 	private static final int HISTORY_READ_ATTEMPTS = 5;
 
@@ -1531,7 +1574,8 @@ public class FlippingRsPlugin extends Plugin
 	{
 		if (event.getGameState() == GameState.LOGGED_IN)
 		{
-			offerSnapshotDueTick = client.getTickCount() + LOGIN_SETTLE_TICKS;
+			loggedInTick = client.getTickCount();
+			offerSnapshotDueTick = loggedInTick + LOGIN_SETTLE_TICKS;
 		}
 	}
 
@@ -1556,7 +1600,7 @@ public class FlippingRsPlugin extends Plugin
 		if (offerSnapshotDueTick >= 0 && tick >= offerSnapshotDueTick)
 		{
 			offerSnapshotDueTick = -1;
-			snapshotOffers(false);
+			snapshotOffers(OFFER_SNAPSHOT_SECONDS);
 		}
 		if (historyReadDueTick >= 0 && tick >= historyReadDueTick)
 		{
@@ -1568,15 +1612,14 @@ public class FlippingRsPlugin extends Plugin
 	 * Reads the open slots and hands them to the net thread. Client thread,
 	 * because the offers and the baselines are read here.
 	 */
-	private void snapshotOffers(boolean force)
+	private void snapshotOffers(long minGapSeconds)
 	{
 		if (!config.enabled())
 		{
 			return;
 		}
 		final long now = System.nanoTime();
-		if (!force && lastOfferSnapshotAt != 0
-			&& now - lastOfferSnapshotAt < TimeUnit.SECONDS.toNanos(OFFER_SNAPSHOT_SECONDS))
+		if (lastOfferSnapshotAt != 0 && now - lastOfferSnapshotAt < TimeUnit.SECONDS.toNanos(minGapSeconds))
 		{
 			return;
 		}
@@ -1612,13 +1655,22 @@ public class FlippingRsPlugin extends Plugin
 		submit(sendExecutor, () -> sendOffers(open));
 	}
 
-	/** Net thread. A failure here costs nothing but the reconciliation; the next snapshot retries. */
+	/**
+	 * Net thread. A failure here costs nothing but the reconciliation; the
+	 * next snapshot retries.
+	 *
+	 * <p>The buffer is sent first. An adopted fill still waiting in the queue
+	 * is exactly the shortfall the server would otherwise recover from this
+	 * snapshot, and the server's dedupe deliberately trusts a fill under an
+	 * offer's own reference, so sending both would count it twice.
+	 */
 	private void sendOffers(List<FlippingRsApi.OfferState> open)
 	{
 		if (!config.enabled())
 		{
 			return;
 		}
+		drain();
 		final String key = config.apiKey().trim();
 		final String accountId = chosenAccount();
 		if (key.isEmpty() || accountId == null)
@@ -1676,13 +1728,18 @@ public class FlippingRsPlugin extends Plugin
 		submit(sendExecutor, () -> sendHistory(rows));
 	}
 
-	/** Net thread. */
+	/**
+	 * Net thread. The buffer is sent first, for the same reason as
+	 * {@link #sendOffers}: a completed offer whose fills are still queued
+	 * would be unmatched on the screen and added a second time.
+	 */
 	private void sendHistory(List<FlippingRsApi.HistoryRow> rows)
 	{
 		if (!config.enabled())
 		{
 			return;
 		}
+		drain();
 		final String key = config.apiKey().trim();
 		final String accountId = chosenAccount();
 		if (key.isEmpty() || accountId == null)

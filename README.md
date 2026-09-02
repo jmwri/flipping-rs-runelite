@@ -153,7 +153,8 @@ marked *recovered* with no time on it: it is real, but nobody watched it
 happen, and it may already be in the journal from another machine, so the
 server decides whether it is new. It is never dated "now", because a sale
 stamped after the purchase it belongs to turns a real flip into an unmatched
-sale. The same rule covers the two other ways the plugin catches the server
+sale. The same goes for what the client replays in the first two ticks after
+login: an offer that filled while you were logged out goes out untimed too. The same rule covers the two other ways the plugin catches the server
 up on what happened while it was not running: it sends the state of your open
 offers on login, when you open the exchange and after each batch, and it sends
 the exchange's history screen when you open it. In both cases it reports what
