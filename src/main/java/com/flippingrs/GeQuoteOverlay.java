@@ -28,9 +28,10 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
  * watched, because the plugin has no quote for it and a blank box would only
  * be noise.
  *
- * <p>Sits in the bottom-left corner of the setup panel, which the game
- * leaves empty; the price and quantity controls are in the middle and the
- * confirm button is centred along the bottom.
+ * <p>Sits in the bottom-right corner of the setup panel. The bottom-left
+ * holds the back button, the price and quantity controls are in the middle
+ * and the confirm button is centred along the bottom, which leaves the
+ * bottom-right free.
  */
 class GeQuoteOverlay extends OverlayPanel
 {
@@ -100,7 +101,7 @@ class GeQuoteOverlay extends OverlayPanel
 
 		final int height = lastHeight > 0 ? lastHeight : 60;
 		panelComponent.setPreferredLocation(new Point(
-			bounds.x + MARGIN,
+			Math.max(bounds.x + MARGIN, bounds.x + bounds.width - WIDTH - MARGIN),
 			Math.max(bounds.y + MARGIN, bounds.y + bounds.height - height - MARGIN)));
 
 		final Dimension drawn = super.render(graphics);
