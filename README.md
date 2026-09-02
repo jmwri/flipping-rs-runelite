@@ -1,178 +1,151 @@
-# flipping-rs-runelite
+# FlippingRS for RuneLite
 
-A RuneLite plugin that records your Grand Exchange trades to your
-[flippingrs.com](https://flippingrs.com) journal as they happen, so the journal
-is a record of what you actually traded rather than something you have to
-remember to type in.
+Records your Grand Exchange trades to your [flippingrs.com](https://flippingrs.com)
+journal as they happen, so your journal shows what you actually traded
+instead of what you remembered to type in.
 
 ## What it does
 
-Every time a Grand Exchange slot fills, the plugin works out what changed since
-it last looked and sends that one fill to FlippingRS. The server matches fills
-into flips, computes the profit after the 2% sale tax, and advances the 4-hour
-buy-limit window. Buying and selling is the whole interface; there is nothing to
-click.
+Every time one of your Grand Exchange offers buys or sells something, the
+plugin sends that trade to flippingrs.com. The site pairs your sales with
+your purchases, works out the profit after tax, and keeps track of your buy
+limits. There is nothing to click: buying and selling is the whole job.
 
-**The plugin decides nothing.** It never pairs a sale with a purchase, works out
-what a flip earned, or applies the tax. That all happens server-side, from the
-fills sent here, so the maths can be fixed and replayed over your history rather
-than being frozen inside whichever plugin version you installed months ago.
+The plugin never does the maths itself. Profit, tax and which sale belongs to
+which purchase are all worked out on the site, from the trades the plugin
+sends. That means the numbers can be corrected and recalculated over your
+whole history if the rules change, instead of being stuck in whatever version
+of the plugin you installed months ago.
 
-## Setup
+## Getting started
 
 1. Install **FlippingRS** from the RuneLite Plugin Hub.
-2. On flippingrs.com, go to **Account → API keys**, create a key with the
-   **RuneLite plugin** scope, and copy it. It is shown once.
+2. On flippingrs.com, go to **Account**, then **API keys**, and create a key
+   for the RuneLite plugin. Copy it; it is only shown once.
 3. Paste it into the plugin's **API key** setting.
-4. Open the FlippingRS side panel and pick which journal this RuneScape account
-   files under.
+4. Open the FlippingRS sidebar, go to the **Account** tab, and pick which
+   journal this character's trades go into.
 
-The journal choice is remembered **per RuneScape account**, not globally, so an
-alt keeps its own journal without you switching a setting before you log in.
-That matters beyond tidiness: buy limits are tracked per game account, so mixing
-two accounts produces wrong limit timers as well as wrong totals.
+Each character remembers its own journal, so an alt can have its own without
+you changing a setting every time you log in. That matters for more than
+tidiness: buy limits are tracked per journal, so mixing two characters into
+one gives you wrong limit timers as well as wrong totals.
 
-A plugin-scoped key reaches trade ingestion and the account list, and nothing
-else. It cannot read or edit your journal, and it cannot touch the market API,
-so a key pasted into the wrong place is a much smaller problem than a full one.
-Plugin keys are available on every plan; the full public API stays Elite.
+A plugin key can only do what the plugin needs. It cannot read or export your
+journal, change your account, or use the site's market data. If it ever ends
+up somewhere it shouldn't, it is a much smaller problem than a full key would
+be. Plugin keys are available on every plan.
 
 ## Settings
 
-| Setting | Default | Notes |
+| Setting | Default | What it does |
 | --- | --- | --- |
-| API key | — | Plugin-scoped key from flippingrs.com |
-| Record trades | on | Off means nothing is captured **and** nothing is sent |
-| Send every | 30s | How long fills are batched before sending |
-| Right-click entries | on | "View item" and "Add to watchlist" on Grand Exchange items, including the setup page and history |
-| Server URL | — | Developer mode only; ignored in a normal install |
+| API key | — | The key from flippingrs.com |
+| Record trades | on | Switch off to stop recording and stop talking to flippingrs.com |
+| Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
+| Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
+| Server URL | — | Only for developers running their own copy of the site; ignored otherwise |
+
+## The sidebar
+
+Five tabs:
+
+- **Activity** is what the plugin itself is doing: how many trades it has
+  recorded this session, how many are waiting to be sent, when it last sent,
+  and the trades still waiting to go out. Anything about recording, such as
+  a trade the site could not accept, is reported here.
+- **Trades** is your most recent trades, as your journal has them.
+- **Journal** is your last seven days, with profit, number of flips, win rate
+  and gp per hour, and everything you are currently holding: what it cost,
+  what it is worth now, your profit or loss so far, the price you need to sell
+  at to break even, and a warning when something has sat for much longer than
+  it usually takes to flip.
+- **Watchlists** shows one of your flippingrs.com watchlists. Each item shows
+  the price you can buy and sell at right now, the profit per item after tax,
+  the return on what you'd pay, the buy limit and the profit across one limit,
+  and the day's volume, refreshed every minute. If you have an offer on the
+  item, that is shown too and updates as it fills. **Open** goes to the item's
+  page on the site and **Find flips** opens the site's flip finder.
+- **Account** is whether the plugin is connected, which plan you are on, and
+  which journal this character uses.
 
 ## In the Grand Exchange
 
-Right-clicking an item anywhere the exchange shows one adds two entries: the
-offer slots, the inventory beside them, the offer setup page, and the rows of
-the history view. **View item** opens the item's page on the site in your
-browser. **Add to watchlist** puts it on the watchlist shown in the side panel.
+Right-click an item anywhere in the Grand Exchange, whether one of your offer
+slots, an item beside them, the offer setup screen, or a row in your history.
+**View item** opens it on flippingrs.com in your browser. **Add to watchlist**
+puts it on the watchlist in the sidebar. Neither one touches the game; they
+only open your browser or update your list on the site. Both can be turned off
+in the settings.
 
-The side panel has five tabs. **Activity** is the plugin's own doing: what it
-has captured this session, the fills still buffered and waiting to send, and
-when it last sent. **Trades** is the journal's recent rows. **Journal** is the
-journal's verdict: the last seven days' realised profit, win rate and gp per
-hour, and every open position marked to market, with its cost, current price,
-unrealised profit, break-even price and whether it has gone stale.
-**Watchlists** is one of your watchlists on the site. **Account** is the
-connection: whether the key works, the plan it is on, and which journal this
-RuneScape account files under. Each tab carries its own messages, so a
-refused batch is reported on Activity and a plan limit on Watchlists, and
-neither overwrites the other.
+## Catching up on trades it missed
 
-The watchlist is one of your watchlists on flippingrs.com, and the panel picks
-which. The plugin keeps no copy: an add or a remove goes to the server first
-and the panel is redrawn from what comes back, and an account with no
-watchlist gets one called "Plan" on its first add. Each card shows the item's
-sprite and the site's own quote: the price to buy at and sell at, the margin
-per item after tax, the return on the buy price, the buy limit, the profit
-across one limit, and the day's volume. Those numbers come with the panel
-read, refreshed once a minute, and are exactly what the item's page shows;
-the plugin formats them and computes nothing, for the same reason it does not
-compute profit. An item the site has no quote for falls back to the client's
-own price, buy limit and alch value. Any offer you have on the item right now
-is shown too, and updates as it fills. **Open** goes to the item's page and
-**Find flips** to the site's finder.
+The plugin can only watch while RuneLite is open with it switched on. Three
+things fill the gap:
 
-The same goes for the panel's recent trades. They are read back from the
-journal after every send, rather than remembered from what was sent, so what
-the panel shows is what was actually recorded. The two only differ when
-something has gone wrong, which is exactly when it matters.
+- An offer that was already part-way done when the plugin first sees it is
+  sent as a recovered trade.
+- Your open offers are sent when you log in, when you open the exchange, and
+  after your trades go out, so the site can spot anything it missed.
+- Your Grand Exchange history is sent when you open it, so trades that
+  completed while the plugin was off can be added.
 
-Both entries are client-side only. Jagex's third-party client guidelines forbid
-menu entries that send an action to the game server; these open a browser or
-edit a list on the site and never touch the game. They can be turned off with
-**Right-click entries**.
+In all three cases the site checks what it already has, so nothing is added
+twice, and recovered trades are saved without a time rather than pretending
+they happened just now.
 
 ## What is sent, and to whom
 
-This plugin sends data to flippingrs.com, a third-party server that is not
-controlled or verified by the RuneLite developers. Specifically, for every
-Grand Exchange fill:
+flippingrs.com is a third-party service, not run or checked by the RuneLite
+team. The plugin sends it:
 
-- the item, quantity, price, gp value, and whether it was a buy or a sell
-- the exchange slot, the world, and the time it happened
-- an id and an offer reference, both generated locally, so the server can
-  recognise repeats and group fills into one offer
-- the FlippingRS journal you picked for that RuneScape account
-- your API key, as an authentication header
+- each trade: the item, how many, the price and the gp that changed hands,
+  whether it was a buy or a sell, the slot and world, and when
+- your open offers and what your Grand Exchange history shows, so missed
+  trades can be caught up
+- items you add to or remove from a watchlist
+- which journal you picked for this character
+- your API key, so the site knows the trades are yours
 
-And, outside of fills: the state of your open Grand Exchange offers and the
-rows of the exchange's history screen, so the server can catch up on what
-happened while the plugin was not running; the item id you add to or remove
-from a watchlist; and reads of the side panel's tabs, which return your journals, your plan, the
-journal's recent rows, open positions and weekly summary, your watchlists
-and the site's quotes for the watched items. Quotes are re-read once a
-minute while you have a watchlist. Nothing about the plan is kept on this machine beyond
-which watchlist is picked.
+It also reads back what the sidebar shows: your journals, your plan, your
+recent trades, your open positions and weekly summary, your watchlists, and
+prices for the items on them.
 
-As with any HTTP request, your IP address is visible to the server.
+Like any website, flippingrs.com can see your IP address. Your character name
+is never sent, and neither is anything about other players, your inventory,
+your bank, where you are, or your chat. Opening an item page is an ordinary
+visit in your browser.
 
-Your RuneScape display name is **not** sent, and neither is anything about other
-players, your inventory, your bank, your location, or your chat. The plugin
-reads nothing but Grand Exchange offer events and item names. Opening an item
-page from the right-click menu or the watchlist is an ordinary browser visit
-to flippingrs.com, and sends nothing from the plugin.
+Nothing is sent until you enter an API key, and nothing is sent while
+**Record trades** is off. Trades made while it is off are not recorded;
+anything already waiting is sent when you switch it back on.
 
-Nothing at all is sent until you enter an API key, and nothing is sent while
-**Record trades** is off — that setting stops the plugin contacting the server
-entirely, not merely capturing. Fills captured before you turned it off stay
-queued on disk and go out when you turn it back on; fills that happen while it
-is off are discarded.
+Trades on Deadman, Leagues, beta, tournament, speedrunning, PvP Arena and
+Fresh Start worlds are not recorded, since their prices and items have nothing
+to do with the main game.
 
-Fills on worlds with their own economy — Deadman, Leagues and other seasonal
-worlds, beta, tournament, speedrunning, PvP Arena and Fresh Start worlds — are
-not recorded at all. Their prices, limits and, at the end of a season, their
-items have nothing to do with the journal.
+The plugin always talks to `https://flippingrs.com`. The **Server URL**
+setting only works when RuneLite is started in developer mode, so nothing can
+redirect your key or your trades anywhere else.
 
-The destination is fixed at `https://flippingrs.com` in a normal install.
-There is a **Server URL** setting, for running the plugin against a local
-server, but it is only read when the client was started with
-`--developer-mode` and is ignored outright otherwise, so it cannot redirect an
-ordinary install's key or trades anywhere.
+## Three promises
 
-## The three things it will not do
+- **It never records a trade twice.** Every trade carries its own id, and the
+  site ignores one it has already seen, so the plugin can safely try again
+  whenever a send fails.
+- **It never makes a trade up.** Trades it did not watch happen are sent
+  marked as recovered, with no time, and the site decides whether they are
+  new. Nothing is ever dated "now" when it did not happen now.
+- **It does not lose trades to a bad connection.** Every trade is saved to
+  disk before it is sent and stays there until the site confirms it. Closing
+  RuneLite, dropping your connection, a wrong key, a lapsed plan or a deleted
+  journal all just hold your trades until things are fixed. The one thing the
+  site will not accept, a trade it says is malformed, is kept in a file in
+  your RuneLite folder rather than deleted, and the sidebar tells you where.
 
-These are the properties everything else is arranged around, because breaking
-any one of them means wrong money in your journal.
+---
 
-**It never records a trade twice.** Every fill gets an id before it is first
-sent, and the server drops an id it has already seen. That makes retrying free,
-which in turn makes it safe to queue and resend rather than hope.
-
-**It never invents a trade.** If you install the plugin mid-flip, or log in on a
-new machine, a slot may already be part filled with no baseline to subtract
-from. That progress becomes the new baseline, and goes out once as a fill
-marked *recovered* with no time on it: it is real, but nobody watched it
-happen, and it may already be in the journal from another machine, so the
-server decides whether it is new. It is never dated "now", because a sale
-stamped after the purchase it belongs to turns a real flip into an unmatched
-sale. The same goes for what the client replays in the first two ticks after
-login: an offer that filled while you were logged out goes out untimed too. The same rule covers the two other ways the plugin catches the server
-up on what happened while it was not running: it sends the state of your open
-offers on login, when you open the exchange and after each batch, and it sends
-the exchange's history screen when you open it. In both cases it reports what
-the game shows and the server matches that against what it already has.
-
-**It does not lose trades to a flaky network.** Fills are written to disk before
-they are sent and stay there until the server confirms them, so closing the
-client or dropping the connection costs nothing. Closing the client also gets
-one last send, so the evening's final trades do not wait for the next login.
-
-The same rule covers a bad key. A revoked, mistyped or wrong-scoped key, a
-lapsed plan, or a journal that no longer exists all hold the queue rather than
-emptying it, because none of those is a fault in the trades themselves. Fix the
-key or pick a journal and everything that piled up goes out. The only thing
-that is dropped from the queue is a batch the server says is malformed, and
-even that is not deleted: it is appended to `dropped-<account>.json` beside the
-queue in `~/.runelite/flippingrs/`, the panel says so, and you can enter it by
-hand.
+Everything below this line is for people working on the plugin.
 
 ## How it reads the exchange
 
