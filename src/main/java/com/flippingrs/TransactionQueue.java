@@ -52,10 +52,29 @@ public class TransactionQueue
 	private final Gson gson;
 	private final File file;
 
+	/**
+	 * Where refused fills go. Beside the queue, named {@code dropped-} in place
+	 * of {@code queue-}, so a user who is told a trade could not be recorded
+	 * can still find it rather than take it on faith that it ever existed.
+	 */
+	private final File dropped;
+
+	/**
+	 * The rewrite's staging file. A fixed name rather than a fresh temp file per
+	 * rewrite: a client killed between creating one and moving it into place
+	 * used to leave a {@code queueNNNN.tmp} behind forever, and a fixed name
+	 * means the next rewrite simply overwrites the orphan.
+	 */
+	private final File staging;
+
 	public TransactionQueue(Gson gson, File file)
 	{
 		this.gson = gson;
 		this.file = file;
+		final String name = file.getName();
+		this.dropped = new File(file.getParentFile(),
+			name.startsWith("queue-") ? "dropped-" + name.substring("queue-".length()) : "dropped-" + name);
+		this.staging = new File(file.getParentFile(), name + ".tmp");
 		load();
 	}
 
@@ -117,6 +136,64 @@ public class TransactionQueue
 		}
 		pending.removeIf(tx -> ids.contains(tx.id));
 		rewrite();
+	}
+
+	/**
+	 * Sets aside fills the server has refused for good.
+	 *
+	 * <p>They leave the queue, because retrying cannot help and holding them
+	 * would wedge every later trade behind them. But they are appended to a
+	 * sibling file rather than deleted: the plugin's promise is that a trade is
+	 * never silently lost, and a row on disk that a user can read, fix and
+	 * enter by hand keeps that promise where a log line does not.
+	 */
+	public synchronized void reject(Collection<GeTransaction> refused)
+	{
+		if (refused.isEmpty())
+		{
+			return;
+		}
+		final Path parent = parent();
+		if (parent != null)
+		{
+			try
+			{
+				Files.createDirectories(parent);
+				final StringBuilder out = new StringBuilder();
+				for (GeTransaction tx : refused)
+				{
+					out.append(gson.toJson(tx)).append('\n');
+				}
+				Files.write(dropped.toPath(), out.toString().getBytes(StandardCharsets.UTF_8),
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			}
+			catch (IOException e)
+			{
+				log.warn("could not record the refused fills in {}: {}", dropped, e.toString());
+			}
+		}
+		confirm(refused);
+	}
+
+	/** Where refused fills are kept. Exposed for the log line that points at it. */
+	public File droppedFile()
+	{
+		return dropped;
+	}
+
+	/**
+	 * The most recently added fills, newest first, for showing what is still
+	 * buffered. A copy; the queue is not touched.
+	 */
+	public synchronized List<GeTransaction> newest(int max)
+	{
+		final List<GeTransaction> out = new ArrayList<>(Math.min(max, pending.size()));
+		final java.util.Iterator<GeTransaction> it = pending.descendingIterator();
+		while (it.hasNext() && out.size() < max)
+		{
+			out.add(it.next());
+		}
+		return out;
 	}
 
 	public synchronized int size()
@@ -284,7 +361,7 @@ public class TransactionQueue
 			}
 			// Write beside the target and move it into place, so a client killed
 			// mid-rewrite leaves the previous good queue rather than half a file.
-			final Path temp = Files.createTempFile(parent, "queue", ".tmp");
+			final Path temp = staging.toPath();
 			Files.write(temp, out.toString().getBytes(StandardCharsets.UTF_8));
 			try
 			{

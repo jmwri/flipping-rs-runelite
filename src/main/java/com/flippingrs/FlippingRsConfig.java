@@ -60,10 +60,54 @@ public interface FlippingRsConfig extends Config
 		return 30;
 	}
 
-	// The server address is deliberately not here either. It was once, as an
-	// "advanced" setting for self-hosters, but a text box that redirects an API
-	// key and every recorded trade is a liability out of all proportion to who
-	// used it. It now lives in FlippingRsApi as a constant.
+	@ConfigSection(
+		name = "Grand Exchange",
+		description = "What the plugin adds to the Grand Exchange interface",
+		position = 10
+	)
+	String exchangeSection = "exchange";
+
+	@ConfigItem(
+		keyName = "geMenuEntries",
+		name = "Right-click entries",
+		description = "Adds \"View item\" and \"Add to watchlist\" to items in the Grand Exchange: the offer "
+			+ "slots, the inventory beside them, the offer setup page and the history. \"View item\" opens the "
+			+ "item's page on flippingrs.com in your browser; \"Add to watchlist\" puts it on the watchlist "
+			+ "shown in the side panel, which lives on flippingrs.com. Neither sends anything to the game.",
+		position = 11,
+		section = exchangeSection
+	)
+	default boolean geMenuEntries()
+	{
+		return true;
+	}
+
+	@ConfigSection(
+		name = "Developer",
+		description = "Only read when RuneLite was started with --developer-mode",
+		position = 20,
+		closedByDefault = true
+	)
+	String developerSection = "developer";
+
+	// The server address is a setting again, but only for a client started in
+	// developer mode, which is how the plugin is run against a local server.
+	// In a normal install it is ignored outright: a text box that redirects an
+	// API key and every recorded trade is a liability out of all proportion to
+	// who would use it, and ignoring it rather than hiding it means a value
+	// left over from an older version cannot quietly do anything either.
+	@ConfigItem(
+		keyName = "baseUrl",
+		name = "Server URL",
+		description = "Where to send everything instead of https://flippingrs.com, for running against a local "
+			+ "server. Only honoured when the client was started with --developer-mode; ignored otherwise.",
+		position = 21,
+		section = developerSection
+	)
+	default String baseUrl()
+	{
+		return "";
+	}
 
 	// The game account is deliberately not here. It is stored per RuneScape
 	// profile and picked in the side panel, so logging into an alt files its

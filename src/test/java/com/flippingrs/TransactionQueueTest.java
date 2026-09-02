@@ -89,6 +89,45 @@ public class TransactionQueueTest
 	}
 
 	@Test
+	public void refusedFillsAreSetAsideNotDeleted() throws IOException
+	{
+		final File file = file();
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+		queue.add(fill("a"));
+		queue.add(fill("b"));
+
+		queue.reject(queue.peek(1));
+
+		assertEquals("the refused fill must not wedge the queue", 1, queue.size());
+		assertEquals("b", queue.peek(10).get(0).id);
+
+		final File dropped = new File(file.getParentFile(), "dropped-1.json");
+		final String kept = new String(Files.readAllBytes(dropped.toPath()), StandardCharsets.UTF_8);
+		assertTrue("the refused fill must still be readable on disk", kept.contains("\"id\":\"a\""));
+		assertEquals("and it must not come back on restart", 1, new TransactionQueue(gson, file).size());
+	}
+
+	/**
+	 * A client killed between staging a rewrite and moving it into place. The
+	 * staging file has a fixed name so the next rewrite overwrites it rather
+	 * than leaving it behind forever.
+	 */
+	@Test
+	public void aStaleStagingFileFromAKilledRewriteIsOverwritten() throws IOException
+	{
+		final File file = file();
+		final File staging = new File(file.getParentFile(), file.getName() + ".tmp");
+		Files.write(staging.toPath(), "half a rewrite".getBytes(StandardCharsets.UTF_8));
+
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+		queue.add(fill("a"));
+		queue.confirm(queue.peek(1));
+
+		assertFalse("the staging file must have been moved into place", staging.exists());
+		assertTrue(new TransactionQueue(gson, file).isEmpty());
+	}
+
+	@Test
 	public void pendingFillsSurviveARestart() throws IOException
 	{
 		final File file = file();

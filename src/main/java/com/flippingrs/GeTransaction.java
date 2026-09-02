@@ -53,8 +53,25 @@ public class GeTransaction
 	int slot;
 	int world;
 
-	/** ISO-8601 UTC, e.g. 2026-08-31T16:10:12.482Z. */
+	/**
+	 * ISO-8601 UTC, e.g. 2026-08-31T16:10:12.482Z. Null when the fill was not
+	 * watched happening -- see {@link #source} -- because a time nobody
+	 * observed is not something to make up.
+	 */
 	String occurredAt;
+
+	/** A fill the plugin watched happen, and timed. */
+	static final String SOURCE_LIVE = "live";
+	/**
+	 * A fill that had already happened when the plugin first saw the offer:
+	 * the progress it found on an offer it has no baseline for. Real, but
+	 * untimed, and possibly already in the journal from elsewhere, which is
+	 * the server's to decide.
+	 */
+	static final String SOURCE_ADOPTED = "adopted";
+
+	/** One of the SOURCE_ constants. The server treats absent as live. */
+	String source = SOURCE_LIVE;
 
 	@Override
 	public String toString()

@@ -111,6 +111,24 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * The remembered journal is gone from the list. Selecting the first entry
+	 * instead would have the panel naming a journal the plugin is not filing
+	 * under, which is the one lie this panel exists to not tell.
+	 */
+	@Test
+	public void aRememberedJournalThatIsGoneSelectsNothing() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setAccounts(Arrays.asList(
+				account("a1", "Main", true),
+				account("a2", "Alt", false)), "deleted");
+			assertNull(panel.selectedAccountId());
+		});
+	}
+
 	@Test
 	public void anEmptyListSelectsNothingRatherThanGuessing() throws Exception
 	{
@@ -185,6 +203,233 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	// ------------------------------------------------------------- watchlist
+
+	private static FlippingRsApi.Watchlist watchlist(String id, String name)
+	{
+		final FlippingRsApi.Watchlist w = new FlippingRsApi.Watchlist();
+		w.id = id;
+		w.name = name;
+		return w;
+	}
+
+	@Test
+	public void theWatchlistRendersTheServersOrder() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_2");
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 12_000_000, 8, 0, "Buying 1/1 at 12.00M", null),
+				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 72_000, null, quote(4151))));
+
+			assertEquals("wl_2", panel.selectedWatchlistId());
+			assertEquals(Arrays.asList(11802, 4151), panel.watchlistForTest());
+
+			panel.setWatchlistItems(Collections.emptyList());
+			assertTrue(panel.watchlistForTest().isEmpty());
+		});
+	}
+
+	/** The facts line says what is known and nothing about what is not. */
+	@Test
+	public void theFactsLineLeavesOutWhatIsUnknown()
+	{
+		assertEquals("1.50M · limit 70 · alch 72.0K",
+			FlippingRsPanel.facts(new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 72_000, null, null)));
+		assertEquals("limit 8",
+			FlippingRsPanel.facts(new FlippingRsPanel.WatchedItem(1, "x", null, 0, 8, 0, null, null)));
+		assertEquals("No price known",
+			FlippingRsPanel.facts(new FlippingRsPanel.WatchedItem(1, "x", null, 0, 0, 0, null, null)));
+	}
+
+	/** A quote from the site, as the watchlist card renders it. */
+	private static FlippingRsApi.Quote quote(int id)
+	{
+		final FlippingRsApi.Quote q = new FlippingRsApi.Quote();
+		q.id = id;
+		q.instantSell = 1_480_000;
+		q.instantBuy = 1_520_000;
+		q.netMargin = 9_600;
+		q.roi = 0.0065;
+		q.buyLimit = 70;
+		q.profitPerLimit = 672_000;
+		q.volume24h = 1234;
+		return q;
+	}
+
+	/**
+	 * The site's numbers, formatted and nothing more. A flip buys at the
+	 * instant-sell price and sells at the instant-buy price, which is the
+	 * way round the site labels them, so the card must say "Buy" for the
+	 * lower figure.
+	 */
+	@Test
+	public void theQuoteLinesShowTheSitesNumbersTheRightWayRound()
+	{
+		final FlippingRsApi.Quote q = quote(4151);
+		assertEquals("Buy 1.48M · Sell 1.52M", FlippingRsPanel.pricesLine(q));
+		assertEquals("Margin +9.6K · ROI 0.7%", FlippingRsPanel.marginLine(q));
+		assertEquals("Limit 70 · +672.0K per limit · 1.2K traded/24h",
+			FlippingRsPanel.limitLine(new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, null, q)));
+
+		final FlippingRsApi.Quote losing = quote(1);
+		losing.netMargin = -500;
+		losing.roi = -0.01;
+		assertEquals("Margin -500gp · ROI -1.0%", FlippingRsPanel.marginLine(losing));
+	}
+
+	@Test
+	public void theWatchlistCardShowsTheSitesPricesWhenItHasThem() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 0, null, quote(4151)),
+				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 12_000_000, 8, 0, null, null)));
+
+			assertEquals("Buy 1.48M · Sell 1.52M", panel.watchlistPricesForTest(4151));
+			assertNull("no quote, so the client's own price line is used instead", panel.watchlistPricesForTest(11802));
+		});
+	}
+
+	// --------------------------------------------------------------- journal
+
+	@Test
+	public void theJournalSummaryReadsAsASentence()
+	{
+		final FlippingRsApi.Analytics week = new FlippingRsApi.Analytics();
+		assertEquals("No flips closed this week.", FlippingRsPanel.summarise(week));
+
+		week.completedFlips = 12;
+		week.realisedProfit = 1_200_000;
+		week.winRate = 0.75;
+		week.gpPerHour = 45_000;
+		assertEquals("+1.20M from 12 flips · 75.0% wins · 45.0K gp/h", FlippingRsPanel.summarise(week));
+
+		week.completedFlips = 1;
+		week.realisedProfit = -3_000;
+		week.gpPerHour = 0;
+		assertEquals("-3.0K from 1 flip · 75.0% wins", FlippingRsPanel.summarise(week));
+	}
+
+	@Test
+	public void theJournalTabRendersOpenPositionsAndTheirTotals() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+			final FlippingRsApi.Position whip = new FlippingRsApi.Position();
+			whip.itemId = 4151;
+			whip.itemName = "Abyssal whip";
+			whip.remainingQty = 10;
+			whip.buyPrice = 1_480_000;
+			whip.currentSell = 1_520_000;
+			whip.unrealisedPnl = 96_000;
+			whip.unrealisedRoi = 0.0065;
+			whip.hoursHeld = 5;
+			open.positions = Arrays.asList(whip);
+			open.summary = new FlippingRsApi.Positions.Summary();
+			open.summary.openPositions = 1;
+
+			panel.setJournal(new FlippingRsApi.Analytics(), open);
+
+			assertEquals(Arrays.asList(4151), panel.positionsForTest());
+			assertNull(panel.journalProblemForTest());
+
+			panel.setJournalProblem("This API key is scoped to the RuneLite plugin.");
+			assertTrue(panel.positionsForTest().isEmpty());
+			assertTrue(panel.journalSummaryForTest().contains("scoped"));
+		});
+	}
+
+	@Test
+	public void theSmallFormattersAreExact()
+	{
+		assertEquals("+30.0K", FlippingRsPanel.signed(30_000));
+		assertEquals("-1.2K", FlippingRsPanel.signed(-1_200));
+		assertEquals("0gp", FlippingRsPanel.signed(0));
+		assertEquals("2.1%", FlippingRsPanel.pct(0.0213));
+		assertEquals("1.2K", FlippingRsPanel.count(1_234));
+		assertEquals("340", FlippingRsPanel.count(340));
+		assertEquals("40m", FlippingRsPanel.hours(0.66));
+		assertEquals("5h", FlippingRsPanel.hours(5.2));
+		assertEquals("2d 3h", FlippingRsPanel.hours(51));
+	}
+
+	// ------------------------------------------------------------------ tabs
+
+	@Test
+	public void thePanelOpensOnActivityAndHasTheFiveTabs() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			assertEquals("Activity", panel.selectedTabForTest());
+
+			for (String tab : new String[]{"Trades", "Journal", "Watchlists", "Account", "Activity"})
+			{
+				panel.selectTabForTest(tab);
+				assertEquals(tab, panel.selectedTabForTest());
+			}
+		});
+	}
+
+	/**
+	 * Four text tabs are wider than the sidebar in one row. The layout that
+	 * wrapped them silently hid the last two, so the strip's width is pinned
+	 * to what the panel actually has.
+	 */
+	@Test
+	public void allFourTabsFitTheSidebar() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final int available = net.runelite.client.ui.PluginPanel.PANEL_WIDTH - 20;
+			assertTrue("tab strip is " + panel.tabStripWidthForTest() + "px, sidebar content is " + available,
+				panel.tabStripWidthForTest() <= available);
+		});
+	}
+
+	/** Each tab keeps its own message; one tab's news must not overwrite another's. */
+	@Test
+	public void noticesStayOnTheirOwnTab() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setStatus("Connected and recording.", java.awt.Color.WHITE);
+			panel.setActivityNotice("3 trade(s) were refused", java.awt.Color.WHITE);
+			panel.setWatchlistNotice("Added to Plan.", java.awt.Color.WHITE);
+
+			assertTrue(panel.statusTextForTest().contains("Connected"));
+			assertTrue(panel.activityNoticeForTest().contains("refused"));
+			assertTrue(panel.watchlistNoticeForTest().contains("Added"));
+		});
+	}
+
+	/** Repopulating the picker must not look like the user choosing a list. */
+	@Test
+	public void reloadingTheWatchlistsDoesNotLookLikeTheUserChoosing() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final AtomicInteger chosen = new AtomicInteger();
+			panel.onWatchlistChosen(chosen::incrementAndGet);
+
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_1");
+
+			assertEquals(0, chosen.get());
+		});
+	}
+
 	// ------------------------------------------------------------- rendering
 
 	/**
@@ -208,13 +453,18 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * The recent trades are whatever the server sent, in its order, capped
+	 * to what fits. The panel keeps no list of its own between reads.
+	 */
 	@Test
-	public void recentTradesAreCappedAndNewestFirst() throws Exception
+	public void recentTradesAreTheServersCappedToWhatFits() throws Exception
 	{
 		onEdt(() ->
 		{
 			final FlippingRsPanel panel = new FlippingRsPanel();
-			for (int i = 0; i < 20; i++)
+			final List<GeTransaction> rows = new ArrayList<>();
+			for (int i = 19; i >= 0; i--)
 			{
 				final GeTransaction tx = new GeTransaction();
 				tx.side = "buy";
@@ -222,12 +472,17 @@ public class FlippingRsPanelTest
 				tx.itemName = "Item " + i;
 				tx.grossValue = 1000;
 				tx.occurredAt = "2026-08-31T12:00:00Z";
-				panel.addRecent(tx);
+				rows.add(tx);
 			}
+			panel.setActivity(rows);
 
 			final List<String> lines = panel.recentForTest();
-			assertEquals("an unbounded list would grow for the whole session", 8, lines.size());
-			assertTrue("newest first: " + lines.get(0), lines.get(0).contains("Item 19"));
+			assertEquals(FlippingRsPanel.RECENT_SHOWN, lines.size());
+			assertTrue("the server's first row is the top line: " + lines.get(0), lines.get(0).contains("Item 19"));
+
+			// A later read replaces, rather than accumulates.
+			panel.setActivity(Collections.emptyList());
+			assertTrue(panel.recentForTest().isEmpty());
 		});
 	}
 
@@ -247,9 +502,10 @@ public class FlippingRsPanelTest
 			tx.quantity = 1;
 			tx.itemName = "Bond";
 			tx.grossValue = 1000;
-			// Fixed instant, well away from now.
-			tx.occurredAt = "2026-08-31T04:05:06Z";
-			panel.addRecent(tx);
+			// Fixed instant, well away from now, with the nanoseconds a Go
+			// server writes.
+			tx.occurredAt = "2026-08-31T04:05:06.123456789Z";
+			panel.setActivity(Collections.singletonList(tx));
 
 			// Compare against the same instant rendered in this machine's zone,
 			// rather than a hardcoded hour -- otherwise the test passes or

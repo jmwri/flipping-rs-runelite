@@ -160,23 +160,47 @@ public class OfferTrackerTest
 	}
 
 	/**
-	 * Installing the plugin mid-flip. The progress happened unobserved, so it is
-	 * adopted as the baseline rather than backdated to now.
+	 * Installing the plugin mid-flip. The progress happened unobserved, so it
+	 * is adopted as the baseline and reported once as a recovered fill with
+	 * no time on it, for the server to decide whether it is new. It is never
+	 * backdated to now.
 	 */
 	@Test
-	public void anOfferAlreadyInProgressIsAdoptedNotInvented()
+	public void anOfferAlreadyInProgressIsRecoveredNotInvented()
 	{
 		final OfferTracker.Observation seen = observe(null, new Offer(BUYING, WHIP, 1000, 10, 6, 5900));
 
-		assertNull("we do not know when those 6 were bought", seen.transaction);
+		assertNotNull("what had filled is reported, flagged, for the server to judge", seen.transaction);
+		assertEquals(GeTransaction.SOURCE_ADOPTED, seen.transaction.source);
+		assertEquals(6, seen.transaction.quantity);
+		assertEquals("the exact gp it found, not price times quantity", 5900, seen.transaction.grossValue);
+		assertNull("but no time is claimed for it", seen.transaction.occurredAt);
+		assertEquals("ref-1", seen.transaction.offerRef);
+		assertFalse(seen.transaction.completed);
 		assertTrue(seen.adopted);
 		assertNotNull(seen.saved);
 		assertEquals(6, seen.saved.quantitySold);
 
-		// From the baseline on, further fills are reported normally.
+		// From the baseline on, further fills are reported normally, and live.
 		final OfferTracker.Observation next = observe(seen.saved, new Offer(BOUGHT, WHIP, 1000, 10, 10, 9900));
 		assertNotNull(next.transaction);
 		assertEquals(4, next.transaction.quantity);
+		assertEquals(GeTransaction.SOURCE_LIVE, next.transaction.source);
+		assertEquals("one purchase, both parts", "ref-1", next.transaction.offerRef);
+	}
+
+	/** An offer found already finished is recovered whole, and marked complete. */
+	@Test
+	public void anOfferFoundAlreadyCompleteIsRecoveredAsComplete()
+	{
+		final OfferTracker.Observation seen = observe(null, new Offer(SOLD, WHIP, 1000, 10, 10, 10_500));
+
+		assertNotNull(seen.transaction);
+		assertEquals("sell", seen.transaction.side);
+		assertEquals(10, seen.transaction.quantity);
+		assertEquals(10_500, seen.transaction.grossValue);
+		assertTrue(seen.transaction.completed);
+		assertNull(seen.transaction.occurredAt);
 	}
 
 	@Test
@@ -204,6 +228,23 @@ public class OfferTrackerTest
 		assertNull("nothing has traded on the new offer yet", seen.transaction);
 		assertNotNull(seen.saved);
 		assertEquals(0, seen.saved.quantitySold);
+	}
+
+	/**
+	 * A buy placed and cancelled untouched, then a sell of the same item at the
+	 * same price and size, with the collect between them never observed. Both
+	 * sit at zero progress, and only the side says they are different offers.
+	 */
+	@Test
+	public void aBuyAndASellOfTheSameSizeAreDifferentOffers()
+	{
+		final SavedOffer previous = SavedOffer.of(new Offer(CANCELLED_BUY, WHIP, 1000, 10, 0, 0), "old", false);
+
+		final OfferTracker.Observation seen = observe(previous, new Offer(SELLING, WHIP, 1000, 10, 0, 0));
+
+		assertNull(seen.transaction);
+		assertNotNull(seen.saved);
+		assertEquals("a new offer gets its own reference", "ref-1", seen.saved.offerRef);
 	}
 
 	@Test
@@ -267,6 +308,47 @@ public class OfferTrackerTest
 		assertTrue("the figure is approximate and says so", seen.transaction.estimated);
 	}
 
+	/**
+	 * A total that wrapped once between two observations. The difference
+	 * modulo 2^32 is exact, and it used to be discarded as negative.
+	 */
+	@Test
+	public void aTotalThatWrappedOnceIsRecoveredExactly()
+	{
+		final SavedOffer previous = SavedOffer.of(
+			new Offer(BUYING, WHIP, 2_000_000, 1100, 1000, 2_000_000_000), "ref-1", false);
+		final int wrapped = (int) 2_200_000_000L;
+
+		final OfferTracker.Observation seen =
+			observe(previous, new Offer(BOUGHT, WHIP, 2_000_000, 1100, 1100, wrapped));
+
+		assertNotNull(seen.transaction);
+		assertEquals(100, seen.transaction.quantity);
+		assertEquals(200_000_000L, seen.transaction.grossValue);
+		assertFalse("exact, so not flagged", seen.transaction.estimated);
+	}
+
+	/**
+	 * A wrap that lands positive. 2000 at 3M is 6.0B; the int reads 1.7B,
+	 * which is under the 6.0B asked and used to pass as a plausible buy. The
+	 * fill alone is bigger than the total could ever have tracked, so the
+	 * total is not consulted.
+	 */
+	@Test
+	public void aFillTooLargeForTheRunningTotalIsEstimatedEvenWhenTheWrapLandsPositive()
+	{
+		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 3_000_000, 2000, 0, 0), "ref-1", false);
+		final int wrapped = (int) 6_000_000_000L;
+		assertTrue("the premise: the wrap lands positive", wrapped > 0);
+
+		final OfferTracker.Observation seen =
+			observe(previous, new Offer(BOUGHT, WHIP, 3_000_000, 2000, 2000, wrapped));
+
+		assertNotNull(seen.transaction);
+		assertEquals(6_000_000_000L, seen.transaction.grossValue);
+		assertTrue(seen.transaction.estimated);
+	}
+
 	@Test
 	public void aBuyCostingMoreThanOfferedIsRejectedAsImpossible()
 	{
@@ -324,8 +406,9 @@ public class OfferTrackerTest
 
 		final OfferTracker.Observation seen = observe(stale, new Offer(BUYING, WHIP, 1000, 10, 6, 6000));
 
-		assertNull("without a reference the fill cannot be attributed, so none is reported",
-			seen.transaction);
+		assertNotNull("the progress is reported as recovered under the new reference", seen.transaction);
+		assertEquals(GeTransaction.SOURCE_ADOPTED, seen.transaction.source);
+		assertEquals(6, seen.transaction.quantity);
 		assertNotNull(seen.saved);
 		assertEquals("ref-1", seen.saved.offerRef);
 	}

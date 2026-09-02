@@ -21,11 +21,13 @@ import net.runelite.api.GrandExchangeOfferState;
  *       comes out as zero.
  *   <li><b>Offers we never saw start.</b> Install the plugin mid-flip, or log in
  *       on a fresh machine, and a slot is already part filled with no baseline
- *       to subtract. That progress is <em>adopted</em> as the new baseline and
- *       reported as nothing: we do not know when it happened and it may already
- *       be in the journal. Inventing a fill dated now would be worse than
- *       missing one, because the user cannot tell a wrong entry from a right
- *       one, and a wrong one quietly poisons every average built on it.
+ *       to subtract. That progress is <em>adopted</em> as the new baseline, and
+ *       reported once as a fill marked {@code adopted} with no time: it is
+ *       real, but nobody watched it happen, and it may already be in the
+ *       journal from another machine. The server decides whether it is new.
+ *       Dating it "now" would be worse than either, because a sale stamped
+ *       after the purchase it belongs to turns a real flip into an unmatched
+ *       sale.
  *   <li><b>Slot reuse.</b> A finished offer is collected and the slot re-used,
  *       possibly for an identical offer. {@link SavedOffer#isSameOfferAs} draws
  *       the line.
@@ -114,11 +116,20 @@ public class OfferTracker
 			|| !previous.isSameOfferAs(offer))
 		{
 			// First sight of this offer. Anything already filled happened while
-			// we were not watching, so it becomes the baseline and is not
-			// reported. A brand new offer has nothing filled yet, and this is
-			// simply where it gets its reference.
+			// we were not watching: it becomes the baseline, and goes out once
+			// as a recovered fill with no time on it. A brand new offer has
+			// nothing filled yet, and this is simply where it gets its
+			// reference.
+			final String ref = refs.get();
 			final boolean adopted = offer.getQuantitySold() > 0;
-			return new Observation(null, SavedOffer.of(offer, refs.get(), adopted), adopted);
+			final SavedOffer saved = SavedOffer.of(offer, ref, adopted);
+			if (!adopted)
+			{
+				return new Observation(null, saved, false);
+			}
+			final GeTransaction recovered = fill(slot, offer, ref, itemName, world,
+				offer.getQuantitySold(), 0, null, GeTransaction.SOURCE_ADOPTED);
+			return new Observation(recovered, saved, true);
 		}
 
 		final long filled = (long) offer.getQuantitySold() - previous.quantitySold;
@@ -133,13 +144,28 @@ public class OfferTracker
 			return new Observation(null, updated, false);
 		}
 
-		final boolean buy = state == GrandExchangeOfferState.BUYING
-			|| state == GrandExchangeOfferState.BOUGHT
-			|| state == GrandExchangeOfferState.CANCELLED_BUY;
+		final GeTransaction tx = fill(slot, offer, previous.offerRef, itemName, world,
+			filled, previous.spent, now.toString(), GeTransaction.SOURCE_LIVE);
+		return new Observation(tx, updated, false);
+	}
+
+	/**
+	 * One fill on an offer, whether watched or recovered.
+	 *
+	 * @param filled        how many items this fill covers
+	 * @param previousSpent the running total before it, for the exact gp
+	 * @param occurredAt    when, or null for a fill nobody watched
+	 */
+	private static GeTransaction fill(int slot, GrandExchangeOffer offer, String offerRef,
+		Supplier<String> itemName, int world, long filled, int previousSpent,
+		@Nullable String occurredAt, String source)
+	{
+		final GrandExchangeOfferState state = offer.getState();
+		final boolean buy = SavedOffer.isBuy(state);
 
 		final GeTransaction tx = new GeTransaction();
 		tx.id = UUID.randomUUID().toString();
-		tx.offerRef = previous.offerRef;
+		tx.offerRef = offerRef;
 		tx.itemId = offer.getItemId();
 		tx.itemName = itemName.get();
 		tx.side = buy ? "buy" : "sell";
@@ -148,51 +174,63 @@ public class OfferTracker
 		tx.offerTotal = offer.getTotalQuantity();
 		tx.slot = slot;
 		tx.world = world;
-		tx.occurredAt = now.toString();
+		tx.occurredAt = occurredAt;
+		tx.source = source;
 		tx.completed = isTerminal(state);
 		tx.cancelled = state == GrandExchangeOfferState.CANCELLED_BUY
 			|| state == GrandExchangeOfferState.CANCELLED_SELL;
 
-		final long[] value = grossValue(offer, previous, filled, buy);
+		final long[] value = grossValue(offer, previousSpent, filled, buy);
 		tx.grossValue = value[0];
 		tx.estimated = value[1] != 0;
-
-		return new Observation(tx, updated, false);
+		return tx;
 	}
 
 	/**
 	 * The gp that moved in this fill, and whether it had to be estimated.
 	 *
-	 * <p>The client's running total is an {@code int}, and a large offer can
-	 * move more gold than an int holds -- a thousand items at three million each
-	 * is well past it. When that wraps, the difference between two observations
-	 * is nonsense, and nonsense here becomes a wrong profit figure in somebody's
-	 * journal.
+	 * <p>The client's running total is an {@code int}. The exchange caps what a
+	 * single offer can move at max cash, which is also the largest int, so in
+	 * practice the total cannot wrap -- but a figure that becomes somebody's
+	 * profit is not something to leave to "in practice". Three defences:
 	 *
-	 * <p>So the difference is sanity checked against a rule the exchange
-	 * guarantees: a buy never fills above the price you offered, and a sale
-	 * never fills below the price you asked. A difference that breaks that rule
-	 * is discarded in favour of price times quantity and flagged, because a
-	 * figure that is approximately right and known to be approximate is worth
-	 * far more than one that is exactly wrong.
+	 * <ul>
+	 *   <li>If price times quantity for this fill alone is more than an int can
+	 *       hold, the total could not have tracked it and is not consulted.
+	 *   <li>The difference is taken modulo 2^32, which is exact across a single
+	 *       wrap rather than nonsense. (A signed subtraction was exact only when
+	 *       the wrap happened to land negative; one that landed positive passed
+	 *       the checks below as a plausible, wrong number.)
+	 *   <li>The result is checked against rules the exchange guarantees: a buy
+	 *       never fills above the offer, a sale never below the ask, and no
+	 *       offer moves more than max cash.
+	 * </ul>
+	 *
+	 * <p>Anything that fails falls back to price times quantity and is flagged,
+	 * because a figure that is approximately right and known to be approximate
+	 * is worth far more than one that is exactly wrong.
 	 *
 	 * @return {@code [grossValue, estimatedFlag]}
 	 */
-	private static long[] grossValue(GrandExchangeOffer offer, SavedOffer previous, long filled, boolean buy)
+	private static long[] grossValue(GrandExchangeOffer offer, int previousSpent, long filled, boolean buy)
 	{
-		final long spent = (long) offer.getSpent() - previous.spent;
 		final long price = offer.getPrice();
-		final long fallback = filled * price;
-
-		if (spent <= 0)
-		{
-			return new long[]{fallback, 1};
-		}
 		// Compare totals rather than a per-item average, so an offer that filled
 		// at a mix of prices is not rejected by integer division.
 		final long asked = filled * price;
+		final long[] fallback = {asked, 1};
+
+		if (asked > Integer.MAX_VALUE)
+		{
+			return fallback;
+		}
+		final long spent = Integer.toUnsignedLong(offer.getSpent() - previousSpent);
+		if (spent == 0 || spent > Integer.MAX_VALUE)
+		{
+			return fallback;
+		}
 		final boolean plausible = buy ? spent <= asked : spent >= asked;
-		return plausible ? new long[]{spent, 0} : new long[]{fallback, 1};
+		return plausible ? new long[]{spent, 0} : fallback;
 	}
 
 	private static boolean isTerminal(GrandExchangeOfferState state)

@@ -7,9 +7,13 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -22,16 +26,27 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.WorldType;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.RuneLite;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -39,6 +54,8 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.LinkBrowser;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 
 /**
@@ -75,12 +92,34 @@ public class FlippingRsPlugin extends Plugin
 	private static final String OFFER_KEY = "offer";
 	/** Config key for the chosen FlippingRS game account, per RuneScape profile. */
 	private static final String ACCOUNT_KEY = "gameAccountId";
+	/**
+	 * Config key for which watchlist the right-click entry adds to. A plain
+	 * plugin setting rather than per profile: a watchlist is a person's, not a
+	 * character's. Only the choice is kept; the list itself lives on the site.
+	 */
+	private static final String WATCHLIST_KEY = "watchlistId";
+	/** What a watchlist is called when the plugin has to create the first one. */
+	private static final String NEW_WATCHLIST_NAME = "Plan";
+	/** The server's cap on one watchlist. */
+	private static final int MAX_WATCHLIST_ITEMS = 50;
 
 	/** Matches the server's cap on one ingest call. */
 	private static final int MAX_BATCH = 500;
 
 	/** What {@link Client#getAccountHash()} returns when nobody is logged in. */
 	private static final long NO_ACCOUNT = -1L;
+
+	/**
+	 * Worlds whose exchange is not the real economy. A Deadman, Leagues or beta
+	 * world has its own prices, its own buy limits and, at the end of the
+	 * season, no items at all. Recording those into the same journal as the
+	 * main game poisons the averages and the limit timers in exactly the way
+	 * an invented trade would.
+	 */
+	private static final EnumSet<WorldType> SEPARATE_ECONOMY = EnumSet.of(
+		WorldType.DEADMAN, WorldType.SEASONAL, WorldType.BETA_WORLD, WorldType.NOSAVE_MODE,
+		WorldType.TOURNAMENT_WORLD, WorldType.QUEST_SPEEDRUNNING, WorldType.PVP_ARENA,
+		WorldType.FRESH_START_WORLD);
 
 	@Inject
 	private Client client;
@@ -96,6 +135,17 @@ public class FlippingRsPlugin extends Plugin
 
 	@Inject
 	private ItemManager itemManager;
+
+	@Inject
+	private ClientThread clientThread;
+
+	/**
+	 * Whether the client was started with --developer-mode. The only thing it
+	 * unlocks is the server URL setting, for running against a local server.
+	 */
+	@Inject
+	@Named("developerMode")
+	private boolean developerMode;
 
 	@Inject
 	private OkHttpClient okHttpClient;
@@ -143,8 +193,55 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private final AtomicBoolean sending = new AtomicBoolean();
 
-	private FlippingRsApi api;
+	private volatile FlippingRsApi api;
 	private FlippingRsPanel panel;
+	private GeMenu geMenu;
+
+	/**
+	 * The owner's watchlists, as last read from the server. A cache for the
+	 * panel and for computing the next edit, never a record: every change goes
+	 * to the server first and this is replaced with what it sent back.
+	 */
+	@Nullable
+	private volatile List<FlippingRsApi.Watchlist> watchlists;
+
+	/**
+	 * The site's quotes for the watched items, as last read from the panel
+	 * endpoint. Refreshed once a minute while there is something to quote,
+	 * and only ever a cache for the cards.
+	 */
+	private volatile Map<Integer, FlippingRsApi.Quote> quotes = Collections.emptyMap();
+	private ScheduledFuture<?> quoteTask;
+
+	/** How often the watchlist's quotes are refreshed. The site's own pages refresh at this rate for a visitor. */
+	private static final long QUOTE_REFRESH_SECONDS = 60;
+	/** The tabs that have a read of their own on the server. */
+	private enum Tab
+	{
+		ACCOUNT, TRADES, JOURNAL, WATCHLISTS
+	}
+
+	/**
+	 * How often the account tabs are re-read after sends, at most.
+	 *
+	 * <p>The plugin scope is rate limited at thirty requests a minute, and a
+	 * "Send every" of five seconds with slots filling continuously would be
+	 * twelve ingests plus twenty-four re-reads. Coalescing the re-reads keeps
+	 * that near twenty. A re-read that comes too soon is deferred, not
+	 * dropped, so the last send of a burst still gets its refresh.
+	 */
+	private static final long ACCOUNT_TABS_REFRESH_SECONDS = 15;
+	private volatile long accountTabsRefreshedAt;
+	private final AtomicBoolean accountTabsRefreshPending = new AtomicBoolean();
+
+	/**
+	 * The journals the key can file under, as last loaded. Kept so that a
+	 * login on a different RuneScape account can re-point the picker at that
+	 * account's remembered journal without another round trip. Null until the
+	 * first successful load.
+	 */
+	@Nullable
+	private volatile List<FlippingRsApi.GameAccount> knownAccounts;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> syncTask;
 
@@ -167,16 +264,26 @@ public class FlippingRsPlugin extends Plugin
 		diskExecutor = Executors.newSingleThreadScheduledExecutor(thread("flippingrs-io"));
 		sendExecutor = Executors.newSingleThreadScheduledExecutor(thread("flippingrs-net"));
 
-		// RuneLite's injected client sets no call timeout, so a server that
-		// accepts a connection and then goes quiet holds the thread until the
-		// OS gives up. A bound turns that into a retry instead of a wedge.
-		api = new FlippingRsApi(
-			okHttpClient.newBuilder().callTimeout(Duration.ofSeconds(30)).build(), gson);
+		// RuneLite reuses the plugin instance across disable and enable, so
+		// "this session" has to be reset by hand or it carries over.
+		recordedThisSession.set(0);
+		lastSyncAt = null;
+		knownAccounts = null;
+
+		api = newApi();
+		watchlists = null;
+
+		geMenu = new GeMenu(client, itemManager, this::openItem,
+			itemId -> submit(sendExecutor, () -> addToWatchlist(itemId)));
 
 		panel = new FlippingRsPanel();
 		panel.onSyncNow(() -> submit(sendExecutor, this::drain));
 		panel.onReconnect(() -> submit(sendExecutor, this::connect));
 		panel.onAccountChosen(this::rememberChosenAccount);
+		panel.onWatchlistChosen(this::rememberChosenWatchlist);
+		panel.onOpenItem(this::openItem);
+		panel.onRemoveItem(itemId -> submit(sendExecutor, () -> removeFromWatchlist(itemId)));
+		panel.onFindFlips(() -> LinkBrowser.browse(api.finderUrl()));
 
 		navButton = NavigationButton.builder()
 			.tooltip("FlippingRS")
@@ -187,6 +294,8 @@ public class FlippingRsPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 
 		scheduleSync();
+		quoteTask = sendExecutor.scheduleWithFixedDelay(this::quotesTick,
+			QUOTE_REFRESH_SECONDS, QUOTE_REFRESH_SECONDS, TimeUnit.SECONDS);
 		submit(sendExecutor, this::connect);
 	}
 
@@ -199,20 +308,22 @@ public class FlippingRsPlugin extends Plugin
 	 * which logs it as an uncaught subscriber error -- an alarming entry for
 	 * the entirely ordinary act of disabling a plugin.
 	 */
-	private static void submit(ScheduledExecutorService on, Runnable work)
+	private static boolean submit(ScheduledExecutorService on, Runnable work)
 	{
 		if (on == null || on.isShutdown())
 		{
-			return;
+			return false;
 		}
 		try
 		{
 			on.execute(work);
+			return true;
 		}
 		catch (RejectedExecutionException e)
 		{
 			// Lost the race with shutdown. Nothing to do and nothing wrong.
 			log.debug("dropped work submitted during shutdown", e);
+			return false;
 		}
 	}
 
@@ -235,6 +346,11 @@ public class FlippingRsPlugin extends Plugin
 		{
 			syncTask.cancel(false);
 			syncTask = null;
+		}
+		if (quoteTask != null)
+		{
+			quoteTask.cancel(false);
+			quoteTask = null;
 		}
 		// One last attempt, so someone who disables the plugin mid-session does
 		// not leave the evening's last few trades unsent. If it fails they are
@@ -265,7 +381,340 @@ public class FlippingRsPlugin extends Plugin
 			navButton = null;
 		}
 		panel = null;
+		geMenu = null;
+		watchlists = null;
+		quotes = Collections.emptyMap();
 	}
+
+	/**
+	 * The HTTP client for the server the plugin talks to.
+	 *
+	 * <p>RuneLite's injected client sets no call timeout, so a server that
+	 * accepts a connection and then goes quiet holds the thread until the OS
+	 * gives up. A bound turns that into a retry instead of a wedge.
+	 */
+	private FlippingRsApi newApi()
+	{
+		return new FlippingRsApi(
+			okHttpClient.newBuilder().callTimeout(Duration.ofSeconds(30)).build(), gson, baseUrl());
+	}
+
+	/**
+	 * flippingrs.com, unless this is a developer-mode client with the server
+	 * URL setting filled in. The setting is not consulted at all otherwise,
+	 * so a value left in an ordinary install's config can do nothing.
+	 */
+	private HttpUrl baseUrl()
+	{
+		if (!developerMode)
+		{
+			return FlippingRsApi.BASE_URL;
+		}
+		final String configured = config.baseUrl();
+		if (configured == null || configured.trim().isEmpty())
+		{
+			return FlippingRsApi.BASE_URL;
+		}
+		final HttpUrl parsed = HttpUrl.parse(configured.trim());
+		if (parsed == null)
+		{
+			log.warn("ignoring the server URL setting: {} is not a URL", configured);
+			return FlippingRsApi.BASE_URL;
+		}
+		if (!parsed.equals(FlippingRsApi.BASE_URL))
+		{
+			log.info("developer mode: talking to {} instead of flippingrs.com", parsed);
+		}
+		return parsed;
+	}
+
+	// ------------------------------------------------------ exchange menu
+
+	@Subscribe
+	public void onMenuOpened(MenuOpened event)
+	{
+		final GeMenu menu = geMenu;
+		if (menu == null || !config.geMenuEntries())
+		{
+			return;
+		}
+		menu.onMenuOpened(event);
+	}
+
+	private void openItem(int itemId)
+	{
+		LinkBrowser.browse(api.itemUrl(itemId));
+	}
+
+	// ------------------------------------------------------------ watchlist
+
+	/** The watchlist the right-click entry adds to: the remembered one, else the first. */
+	@Nullable
+	private FlippingRsApi.Watchlist currentWatchlist(List<FlippingRsApi.Watchlist> lists)
+	{
+		if (lists.isEmpty())
+		{
+			return null;
+		}
+		final String remembered = configManager.getConfiguration(FlippingRsConfig.GROUP, WATCHLIST_KEY);
+		for (FlippingRsApi.Watchlist watchlist : lists)
+		{
+			if (watchlist.id != null && watchlist.id.equals(remembered))
+			{
+				return watchlist;
+			}
+		}
+		return lists.get(0);
+	}
+
+	/** Puts the cached watchlists on the panel, with the chosen one's items named. */
+	private void showWatchlists()
+	{
+		final List<FlippingRsApi.Watchlist> lists = watchlists;
+		if (lists == null)
+		{
+			return;
+		}
+		final FlippingRsApi.Watchlist current = currentWatchlist(lists);
+		final String selected = current == null ? null : current.id;
+		final List<Integer> ids = current == null ? Collections.emptyList() : current.getItemIds();
+		// Names, prices and sprites come from the item manager, which wants
+		// the client thread.
+		clientThread.invoke(() ->
+		{
+			final List<FlippingRsPanel.WatchedItem> items = new ArrayList<>(ids.size());
+			for (Integer id : ids)
+			{
+				if (id != null)
+				{
+					items.add(describeItem(id));
+				}
+			}
+			onPanel(p ->
+			{
+				p.setWatchlists(lists, selected);
+				p.setWatchlistItems(items);
+			});
+		});
+	}
+
+	/**
+	 * What the watchlist shows for an item, from what the client already has:
+	 * its name and sprite, RuneLite's exchange price, the buy limit, the alch
+	 * value, and whether the player has an offer on it right now. None of it
+	 * comes from the FlippingRS market API, which a plugin key cannot reach;
+	 * the numbers that need that live on the item's page, one click away.
+	 *
+	 * <p>Client thread.
+	 */
+	private FlippingRsPanel.WatchedItem describeItem(int itemId)
+	{
+		int price = 0;
+		int limit = 0;
+		int alch = 0;
+		net.runelite.client.util.AsyncBufferedImage image = null;
+		try
+		{
+			price = itemManager.getItemPrice(itemId);
+			final net.runelite.client.game.ItemStats stats = itemManager.getItemStats(itemId);
+			limit = stats == null ? 0 : stats.getGeLimit();
+			alch = itemManager.getItemComposition(itemId).getHaPrice();
+			image = itemManager.getImage(itemId);
+		}
+		catch (RuntimeException e)
+		{
+			// A row with a name and no numbers beats no row.
+			log.debug("could not describe item {}", itemId, e);
+		}
+		return new FlippingRsPanel.WatchedItem(itemId, itemName(itemId), image, price, limit, alch,
+			liveOffer(itemId), quotes.get(itemId));
+	}
+
+	/** The player's current offer on an item, in a few words, or null. */
+	@Nullable
+	private String liveOffer(int itemId)
+	{
+		final GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers == null)
+		{
+			return null;
+		}
+		for (GrandExchangeOffer offer : offers)
+		{
+			if (offer == null || offer.getItemId() != itemId || offer.getState() == GrandExchangeOfferState.EMPTY)
+			{
+				continue;
+			}
+			final String verb;
+			switch (offer.getState())
+			{
+				case BUYING:
+					verb = "Buying";
+					break;
+				case SELLING:
+					verb = "Selling";
+					break;
+				case BOUGHT:
+					verb = "Bought";
+					break;
+				case SOLD:
+					verb = "Sold";
+					break;
+				case CANCELLED_BUY:
+					verb = "Buy cancelled";
+					break;
+				case CANCELLED_SELL:
+					verb = "Sell cancelled";
+					break;
+				default:
+					continue;
+			}
+			return verb + " " + offer.getQuantitySold() + "/" + offer.getTotalQuantity()
+				+ " at " + FlippingRsPanel.gp(offer.getPrice());
+		}
+		return null;
+	}
+
+	/** Whether an item is on the watchlist the panel is showing. */
+	private boolean isWatched(int itemId)
+	{
+		final List<FlippingRsApi.Watchlist> lists = watchlists;
+		if (lists == null)
+		{
+			return false;
+		}
+		final FlippingRsApi.Watchlist current = currentWatchlist(lists);
+		return current != null && current.getItemIds().contains(itemId);
+	}
+
+	/** Swing thread, from the picker. */
+	private void rememberChosenWatchlist()
+	{
+		final FlippingRsPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		final String id = target.selectedWatchlistId();
+		if (id == null)
+		{
+			return;
+		}
+		configManager.setConfiguration(FlippingRsConfig.GROUP, WATCHLIST_KEY, id);
+		showWatchlists();
+		submit(sendExecutor, () -> refresh(Tab.WATCHLISTS));
+	}
+
+	private void addToWatchlist(int itemId)
+	{
+		changeWatchlist(itemId, true);
+	}
+
+	private void removeFromWatchlist(int itemId)
+	{
+		changeWatchlist(itemId, false);
+	}
+
+	/**
+	 * Adds an item to, or removes it from, the chosen watchlist on the server.
+	 *
+	 * <p>Net thread. The server holds the list, so the edit is sent first and
+	 * the panel redrawn from what comes back; nothing is changed locally on
+	 * the assumption that it will go through. When the owner has no watchlist
+	 * at all, the first add creates one.
+	 */
+	private void changeWatchlist(int itemId, boolean add)
+	{
+		if (!config.enabled())
+		{
+			// "Record trades" off is a promise not to contact the server at
+			// all, and a watchlist edit is contact.
+			onPanel(p -> p.setWatchlistNotice("Recording is off, so the watchlist cannot be changed. Turn "
+				+ "\"Record trades\" back on in the plugin settings first.", ColorScheme.BRAND_ORANGE));
+			return;
+		}
+		final String key = config.apiKey().trim();
+		if (key.isEmpty())
+		{
+			onPanel(p -> p.setWatchlistNotice("Add your API key in the plugin settings to use watchlists.",
+				ColorScheme.BRAND_ORANGE));
+			return;
+		}
+		try
+		{
+			List<FlippingRsApi.Watchlist> lists = watchlists;
+			if (lists == null)
+			{
+				final List<FlippingRsApi.Watchlist> fromServer = api.watchlists(key, null).getWatchlists();
+				lists = fromServer == null ? Collections.emptyList() : fromServer;
+			}
+			final FlippingRsApi.Watchlist current = currentWatchlist(lists);
+			final FlippingRsApi.Watchlist updated;
+			if (current == null)
+			{
+				if (!add)
+				{
+					return;
+				}
+				updated = api.createWatchlist(key, NEW_WATCHLIST_NAME, Collections.singletonList(itemId));
+				configManager.setConfiguration(FlippingRsConfig.GROUP, WATCHLIST_KEY, updated.id);
+				lists = new ArrayList<>(lists);
+				lists.add(updated);
+			}
+			else
+			{
+				final List<Integer> ids = new ArrayList<>(current.getItemIds());
+				final String name = current.toString();
+				if (add)
+				{
+					if (ids.contains(itemId))
+					{
+						onPanel(p -> p.setWatchlistNotice("Already on " + name + ".", ColorScheme.LIGHT_GRAY_COLOR));
+						return;
+					}
+					if (ids.size() >= MAX_WATCHLIST_ITEMS)
+					{
+						onPanel(p -> p.setWatchlistNotice(name + " is full: a watchlist holds " + MAX_WATCHLIST_ITEMS
+							+ " items. Remove something or pick another watchlist.", ColorScheme.BRAND_ORANGE));
+						return;
+					}
+					ids.add(itemId);
+				}
+				else if (!ids.remove(Integer.valueOf(itemId)))
+				{
+					return;
+				}
+				updated = api.updateWatchlist(key, current.id, ids);
+				lists = replacing(lists, updated);
+			}
+			watchlists = lists;
+			showWatchlists();
+			refresh(Tab.WATCHLISTS);
+			final String name = updated.toString();
+			onPanel(p -> p.setWatchlistNotice((add ? "Added to " : "Removed from ") + name + ".",
+				ColorScheme.PROGRESS_COMPLETE_COLOR));
+		}
+		catch (IOException e)
+		{
+			// A plan limit arrives here too, with the server's own words.
+			log.debug("could not change the watchlist", e);
+			final String why = describe(e);
+			onPanel(p -> p.setWatchlistNotice("Could not change the watchlist: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
+		}
+	}
+
+	private static List<FlippingRsApi.Watchlist> replacing(
+		List<FlippingRsApi.Watchlist> lists, FlippingRsApi.Watchlist updated)
+	{
+		final List<FlippingRsApi.Watchlist> out = new ArrayList<>(lists.size());
+		for (FlippingRsApi.Watchlist watchlist : lists)
+		{
+			out.add(updated.id.equals(watchlist.id) ? updated : watchlist);
+		}
+		return out;
+	}
+
+	// ------------------------------------------------------------- activity
 
 	// --------------------------------------------------------------- capture
 
@@ -279,7 +728,14 @@ public class FlippingRsPlugin extends Plugin
 		// slot. That is not the user emptying their offers, and acting on it
 		// would throw away the baselines that stop the next login re-reporting
 		// everything still on the exchange.
-		if (client.getGameState() != GameState.LOGGED_IN)
+		//
+		// Only the clears are filtered, which is the line RuneLite's own
+		// Grand Exchange plugin draws. Filtering every event outside LOGGED_IN
+		// also dropped fills that arrived while the client was LOADING a
+		// region, without advancing the baseline. Usually the next event's
+		// delta covered it -- but an offer that completed in that window and
+		// was then collected had its final fill cleared away with the slot.
+		if (offer.getState() == GrandExchangeOfferState.EMPTY && client.getGameState() != GameState.LOGGED_IN)
 		{
 			return;
 		}
@@ -312,12 +768,19 @@ public class FlippingRsPlugin extends Plugin
 			saveOffer(slot, seen.saved);
 		}
 
+		// A watched item's row shows the player's offer on it; keep that
+		// current. Cheap, and only for items actually on the list.
+		if (isWatched(offer.getItemId()))
+		{
+			showWatchlists();
+		}
+
 		if (seen.adopted)
 		{
 			log.debug("adopted an in-progress offer in slot {} without reporting it", slot);
-			onPanel(p -> p.setStatus(
-				"Picked up an offer that was already in progress. Its earlier fills were not "
-					+ "recorded, so a sale out of it may not match a purchase.",
+			onPanel(p -> p.setActivityNotice(
+				"Picked up an offer that was already in progress. What had already filled was sent as "
+					+ "recovered, with no time on it; the site decides whether it is new.",
 				ColorScheme.BRAND_ORANGE));
 		}
 
@@ -333,6 +796,15 @@ public class FlippingRsPlugin extends Plugin
 			// on". Someone who stops recording mid-session means those trades to
 			// stay out of their journal.
 			log.debug("recording is off; discarding {}", tx);
+			return;
+		}
+
+		if (onSeparateEconomy())
+		{
+			// The baseline still advanced above, so nothing is re-reported if
+			// the same offer is looked at again. The fill itself belongs to a
+			// world whose gp is not the journal's gp.
+			log.debug("on a world with its own economy; not recording {}", tx);
 			return;
 		}
 
@@ -353,12 +825,112 @@ public class FlippingRsPlugin extends Plugin
 		{
 			final TransactionQueue queue = queueFor(accountHash);
 			queue.add(tx);
+			// Read here rather than inside the Swing lambda: size() takes the
+			// queue's monitor, and the Swing thread should not wait on a disk
+			// rewrite the net thread happens to be in the middle of.
+			final int waiting = queue.size();
+			final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
 			onPanel(p ->
 			{
-				p.addRecent(tx);
-				p.setCounts(recorded, queue.size());
+				p.setCounts(recorded, waiting);
+				p.setPending(buffered);
 			});
 		});
+	}
+
+	/** Whether the world the client is on trades in gp that is not the journal's gp. */
+	private boolean onSeparateEconomy()
+	{
+		final EnumSet<WorldType> types = client.getWorldType();
+		if (types == null)
+		{
+			return false;
+		}
+		for (WorldType type : types)
+		{
+			if (SEPARATE_ECONOMY.contains(type))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A different RuneScape account is now active, or none is.
+	 *
+	 * <p>The journal is remembered per account, but the picker was only ever
+	 * redrawn by {@link #connect}. Logging out of a main and into an alt left
+	 * it showing the main's journal while trades went to the alt's -- or were
+	 * held with "no journal picked" while the panel plainly showed one. The
+	 * picker is re-pointed here from the list already loaded, and an account
+	 * seen for the first time adopts the default the way a fresh install does.
+	 */
+	@Subscribe
+	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
+	{
+		final List<FlippingRsApi.GameAccount> accounts = knownAccounts;
+		if (accounts == null)
+		{
+			// Nothing loaded yet; connect will do this when it succeeds.
+			return;
+		}
+		final String chosen = chosenAccount();
+		onPanel(p ->
+		{
+			p.setAccounts(accounts, chosen);
+			if (chosen == null)
+			{
+				rememberChosenAccountFrom(p, false);
+			}
+		});
+		// The recent trades, the journal and the buffer are the account's, so
+		// they change with it.
+		submit(sendExecutor, () ->
+		{
+			refresh(Tab.TRADES);
+			refresh(Tab.JOURNAL);
+		});
+		refreshPending();
+	}
+
+	/**
+	 * The client is closing. RuneLite does not call shutDown for that; this is
+	 * the only notice, and it waits a bounded time for whatever is handed to
+	 * it. Two things are worth that wait: the fill the game thread just handed
+	 * to the io thread, which is otherwise on a daemon thread that dies with
+	 * the JVM, and a last send, so the evening's final trades are not held
+	 * until the next login.
+	 */
+	@Subscribe
+	public void onClientShutdown(ClientShutdown event)
+	{
+		final CompletableFuture<Void> done = new CompletableFuture<>();
+		final boolean queued = submit(diskExecutor, () ->
+		{
+			// Everything the game thread handed over before this ran is now on
+			// disk. From here the send is the only thing left.
+			final boolean sending = submit(sendExecutor, () ->
+			{
+				try
+				{
+					drain();
+				}
+				finally
+				{
+					done.complete(null);
+				}
+			});
+			if (!sending)
+			{
+				done.complete(null);
+			}
+		});
+		if (!queued)
+		{
+			return;
+		}
+		event.waitFor(done);
 	}
 
 	@Subscribe
@@ -378,6 +950,14 @@ public class FlippingRsPlugin extends Plugin
 				break;
 			case "syncSeconds":
 				scheduleSync();
+				break;
+			case "baseUrl":
+				if (developerMode)
+				{
+					api = newApi();
+					watchlists = null;
+					submit(sendExecutor, this::connect);
+				}
 				break;
 			default:
 				break;
@@ -496,6 +1076,8 @@ public class FlippingRsPlugin extends Plugin
 
 			queue.confirm(batch);
 			lastSyncAt = Instant.now();
+			final int waiting = queue.size();
+			final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
 
 			log.debug("sent {} fills: {} flips opened, {} closed, {} unmatched",
 				batch.size(), result.getFlipsOpened(), result.getFlipsClosed(), result.getUnmatchedSellQty());
@@ -511,31 +1093,36 @@ public class FlippingRsPlugin extends Plugin
 					result.getRejected(), batch.size(), result.getProblems());
 			}
 
+			refreshAccountTabsAfterSend();
+
 			onPanel(p -> {
-				p.setCounts(recordedThisSession.get(), queue.size());
+				p.setCounts(recordedThisSession.get(), waiting);
+				p.setPending(buffered);
 				p.setLastSync(lastSyncAt, null);
+				p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR);
 				if (result.getRejected() > 0)
 				{
-					p.setStatus(result.getRejected() + " trade(s) could not be recorded and have been "
+					p.setActivityNotice(result.getRejected() + " trade(s) could not be recorded and have been "
 						+ "dropped. See the client log for why.", ColorScheme.PROGRESS_ERROR_COLOR);
 				}
 				else if (result.getUnmatchedSellQty() > 0)
 				{
-					p.setStatus("Connected. " + result.getUnmatchedSellQty()
+					p.setActivityNotice(result.getUnmatchedSellQty()
 							+ " item(s) sold with no recorded purchase behind them, so they are not in a flip.",
 						ColorScheme.BRAND_ORANGE);
 				}
 				else
 				{
-					p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR);
+					p.setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
 				}
 			});
 		}
 		catch (IOException e)
 		{
 			// Worth retrying: the batch stays queued for the next tick.
-			log.debug("could not reach flippingrs.com; will retry", e);
-			onPanel(p -> p.setLastSync(null, e.getMessage()));
+			log.debug("could not send to flippingrs.com; will retry", e);
+			final String why = describe(e);
+			onPanel(p -> p.setLastSync(null, why));
 		}
 		catch (RuntimeException e)
 		{
@@ -549,7 +1136,7 @@ public class FlippingRsPlugin extends Plugin
 	}
 
 	/**
-	 * Discards exactly the fills the server refused.
+	 * Sets aside exactly the fills the server refused.
 	 *
 	 * <p>The batch and its queue are passed in rather than looked up again, and
 	 * that is the whole point of this method existing. Re-reading the queue here
@@ -563,15 +1150,185 @@ public class FlippingRsPlugin extends Plugin
 	private void dropRefused(TransactionQueue queue, List<GeTransaction> batch,
 		FlippingRsApi.PermanentException cause)
 	{
-		queue.confirm(batch);
-		log.warn("dropped {} fills that flippingrs.com will not accept", batch.size(), cause);
+		queue.reject(batch);
+		log.warn("set aside {} fills that flippingrs.com will not accept; they are in {}",
+			batch.size(), queue.droppedFile(), cause);
+		final int waiting = queue.size();
+		final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
+		final String why = describe(cause);
 		onPanel(p -> {
-			p.setCounts(recordedThisSession.get(), queue.size());
-			p.setLastSync(null, cause.getMessage());
+			p.setCounts(recordedThisSession.get(), waiting);
+			p.setPending(buffered);
+			p.setLastSync(null, why);
+			p.setActivityNotice(batch.size() + " trade(s) were refused by flippingrs.com and set aside in "
+				+ queue.droppedFile().getName() + " under your RuneLite folder. See the client log for why.",
+				ColorScheme.PROGRESS_ERROR_COLOR);
 		});
 	}
 
+	/**
+	 * Something to show for an exception. Not every IOException carries a
+	 * message, and passing null on to the panel made a failed send read as
+	 * "Last sent: never", which is the opposite of what happened.
+	 */
+	private static String describe(Throwable e)
+	{
+		final String message = e.getMessage();
+		return message == null || message.isEmpty() ? e.getClass().getSimpleName() : message;
+	}
+
 	/** Checks the key and loads the journals it can file trades under. */
+	/** The machine's UTC offset, so the server's daily buckets fall on the player's calendar. */
+	private static int tzOffsetMinutes()
+	{
+		return TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000;
+	}
+
+	/** The plan the key's owner is on, for the Account tab. Not fatal if it fails. */
+	/**
+	 * Shows what is still buffered for the logged-in account. Disk thread,
+	 * because opening the queue reads its file.
+	 */
+	private void refreshPending()
+	{
+		final long accountHash = client.getAccountHash();
+		if (accountHash == NO_ACCOUNT)
+		{
+			onPanel(p ->
+			{
+				p.setPending(Collections.emptyList());
+				p.setCounts(recordedThisSession.get(), 0);
+			});
+			return;
+		}
+		submit(diskExecutor, () ->
+		{
+			final TransactionQueue queue = queueFor(accountHash);
+			final int waiting = queue.size();
+			final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
+			onPanel(p ->
+			{
+				p.setCounts(recordedThisSession.get(), waiting);
+				p.setPending(buffered);
+			});
+		});
+	}
+
+	/**
+	 * Puts a panel reply on the screen. Only the parts present are touched,
+	 * so a partial read leaves the rest of the sidebar as it was.
+	 *
+	 * @param connecting true for the read that doubles as the connection
+	 *                   test, which also sets the connection status
+	 */
+	private void applyPanel(FlippingRsApi.Panel panel, boolean connecting)
+	{
+		final FlippingRsApi.Me me = panel.getMe();
+		if (me != null)
+		{
+			final String plan = "Plan: " + me.describePlan();
+			onPanel(p -> p.setSubscription(plan));
+		}
+
+		final List<FlippingRsApi.GameAccount> accounts = panel.getAccounts();
+		if (accounts != null)
+		{
+			knownAccounts = accounts;
+			final String chosen = chosenAccount();
+
+			// The remembered journal is gone -- deleted on the site, or the key
+			// now belongs to a different FlippingRS account. Sending to it
+			// would be refused every tick, and the picker would meanwhile show
+			// whichever entry sorted first. Forget the choice and say so, and
+			// hold the trades until a real one is made.
+			final boolean orphaned = chosen != null && !accounts.isEmpty() && !contains(accounts, chosen);
+			if (orphaned)
+			{
+				log.warn("the journal remembered for this account ({}) no longer exists; forgetting it", chosen);
+				forgetChosenAccount();
+			}
+
+			onPanel(p -> {
+				// The orphaned id is passed through on purpose: the panel shows
+				// no selection for a remembered journal it cannot find, where a
+				// null would have it select the default as if nothing had ever
+				// been chosen.
+				p.setAccounts(accounts, chosen);
+				if (orphaned)
+				{
+					p.setStatus("The journal this account was filing under no longer exists on flippingrs.com. "
+						+ "Pick one above; trades are being kept until you do.", ColorScheme.BRAND_ORANGE);
+					return;
+				}
+				if (connecting)
+				{
+					p.setStatus(accounts.isEmpty()
+							? "Connected, but this FlippingRS account has no game accounts to file trades under."
+							: "Connected and recording.",
+						accounts.isEmpty() ? ColorScheme.BRAND_ORANGE : ColorScheme.PROGRESS_COMPLETE_COLOR);
+				}
+				// A RuneScape account seen for the first time has nothing chosen
+				// yet. Adopting whatever the panel selected saves a setup step,
+				// and it can still be changed. If nobody is logged in yet, the
+				// profile-changed event does this on login instead. (An orphaned
+				// choice returned above, so this never adopts over one.)
+				if (chosen == null)
+				{
+					rememberChosenAccountFrom(p, false);
+				}
+			});
+		}
+		else if (connecting)
+		{
+			onPanel(p -> p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR));
+		}
+
+		final List<FlippingRsApi.Watchlist> lists = panel.getWatchlists();
+		final Map<Integer, FlippingRsApi.Quote> prices = panel.getQuotes();
+		if (lists != null)
+		{
+			watchlists = lists;
+		}
+		if (prices != null)
+		{
+			quotes = prices;
+		}
+		if (lists != null || prices != null)
+		{
+			showWatchlists();
+		}
+
+		final List<GeTransaction> rows = panel.getRecentTransactions();
+		if (rows != null)
+		{
+			onPanel(p -> p.setActivity(rows));
+		}
+
+		final FlippingRsApi.Analytics week = panel.getWeek();
+		final FlippingRsApi.Positions open = panel.getPositions();
+		if (week != null && open != null)
+		{
+			onPanel(p -> p.setJournal(week, open));
+		}
+	}
+
+	/** The watchlists alone, for an edit that arrives before the panel has been read. */
+	/** The watchlist the picker is set to, or null if none has been picked. */
+	@Nullable
+	private String rememberedWatchlistId()
+	{
+		final String id = configManager.getConfiguration(FlippingRsConfig.GROUP, WATCHLIST_KEY);
+		return id == null || id.isEmpty() ? null : id;
+	}
+
+	/**
+	 * Checks the key and loads every tab.
+	 *
+	 * <p>The Account read is the connection test: if it fails, nothing else
+	 * is tried and the Account tab says why. The other tabs are then read one
+	 * by one, and each reports its own failure on its own tab, since a key
+	 * that just worked is not a broken connection.
+	 */
 	private void connect()
 	{
 		if (!config.enabled())
@@ -598,30 +1355,359 @@ public class FlippingRsPlugin extends Plugin
 
 		try
 		{
-			final List<FlippingRsApi.GameAccount> accounts = api.accounts(key);
-			final String chosen = chosenAccount();
-			onPanel(p -> {
-				p.setAccounts(accounts, chosen);
-				p.setStatus(accounts.isEmpty()
-						? "Connected, but this FlippingRS account has no game accounts to file trades under."
-						: "Connected and recording.",
-					accounts.isEmpty() ? ColorScheme.BRAND_ORANGE : ColorScheme.PROGRESS_COMPLETE_COLOR);
-				// A RuneScape account seen for the first time has nothing chosen
-				// yet. Adopting whatever the panel selected saves a setup step,
-				// and it can still be changed.
-				if (chosen == null)
-				{
-					rememberChosenAccountFrom(p);
-				}
-			});
-			// The key may have been missing or wrong while trades piled up.
-			submit(sendExecutor, this::drain);
+			applyPanel(api.account(key), true);
 		}
 		catch (IOException e)
 		{
 			log.debug("could not reach flippingrs.com", e);
-			onPanel(p -> p.setStatus("Could not connect: " + e.getMessage(), ColorScheme.PROGRESS_ERROR_COLOR));
+			final String why = describe(e);
+			onPanel(p -> p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
+			return;
 		}
+		refresh(Tab.TRADES);
+		refresh(Tab.JOURNAL);
+		accountTabsRefreshedAt = System.nanoTime();
+		refresh(Tab.WATCHLISTS);
+		refreshPending();
+		// The key may have been missing or wrong while trades piled up.
+		submit(sendExecutor, this::drain);
+	}
+
+	/** Re-reads Trades and Journal after a send, no more often than the limit allows. Net thread. */
+	private void refreshAccountTabsAfterSend()
+	{
+		final long now = System.nanoTime();
+		final long wait = accountTabsRefreshedAt + TimeUnit.SECONDS.toNanos(ACCOUNT_TABS_REFRESH_SECONDS) - now;
+		if (accountTabsRefreshedAt == 0 || wait <= 0)
+		{
+			accountTabsRefreshedAt = now;
+			clientThread.invoke(() -> snapshotOffers(false));
+			refresh(Tab.TRADES);
+			refresh(Tab.JOURNAL);
+			return;
+		}
+		if (!accountTabsRefreshPending.compareAndSet(false, true))
+		{
+			// One is already on its way, and it will see this send's rows too.
+			return;
+		}
+		try
+		{
+			sendExecutor.schedule(() ->
+			{
+				accountTabsRefreshPending.set(false);
+				accountTabsRefreshedAt = System.nanoTime();
+				clientThread.invoke(() -> snapshotOffers(false));
+				refresh(Tab.TRADES);
+				refresh(Tab.JOURNAL);
+			}, wait, TimeUnit.NANOSECONDS);
+		}
+		catch (RejectedExecutionException e)
+		{
+			// Shutting down; the next connect re-reads everything anyway.
+			accountTabsRefreshPending.set(false);
+		}
+	}
+
+	/**
+	 * Re-reads one tab from its endpoint and redraws it. Net thread. Never
+	 * throws, because the watchlist refresh also runs on a fixed-delay
+	 * schedule, where an escaping exception would cancel it for good.
+	 *
+	 * <p>A failure is reported on that tab, not as a failed connection: the
+	 * key was good a moment ago and the fills are still going out.
+	 */
+	private void refresh(Tab tab)
+	{
+		try
+		{
+			if (!config.enabled())
+			{
+				return;
+			}
+			final String key = config.apiKey().trim();
+			if (key.isEmpty())
+			{
+				return;
+			}
+			final String accountId = chosenAccount();
+			final FlippingRsApi.Panel part;
+			switch (tab)
+			{
+				case ACCOUNT:
+					part = api.account(key);
+					break;
+				case TRADES:
+					if (accountId == null)
+					{
+						return;
+					}
+					part = api.trades(key, accountId);
+					break;
+				case JOURNAL:
+					if (accountId == null)
+					{
+						return;
+					}
+					part = api.journal(key, accountId, tzOffsetMinutes());
+					break;
+				case WATCHLISTS:
+					part = api.watchlists(key, rememberedWatchlistId());
+					break;
+				default:
+					return;
+			}
+			applyPanel(part, false);
+		}
+		catch (IOException e)
+		{
+			log.warn("could not refresh the {} tab: {}", tab, e.getMessage());
+			final String why = describe(e);
+			onPanel(p ->
+			{
+				switch (tab)
+				{
+					case TRADES:
+						p.setActivityProblem(why);
+						break;
+					case JOURNAL:
+						p.setJournalProblem(why);
+						break;
+					case WATCHLISTS:
+						p.setWatchlistProblem(why);
+						break;
+					default:
+						p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR);
+						break;
+				}
+			});
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure refreshing the {} tab", tab, e);
+		}
+	}
+
+	/** The minute tick that keeps quotes current, while there is something to quote. */
+	private void quotesTick()
+	{
+		final List<FlippingRsApi.Watchlist> lists = watchlists;
+		if (lists == null)
+		{
+			return;
+		}
+		final FlippingRsApi.Watchlist current = currentWatchlist(lists);
+		if (current == null || current.getItemIds().isEmpty())
+		{
+			return;
+		}
+		refresh(Tab.WATCHLISTS);
+	}
+
+	// ------------------------------------------------- catching the server up
+	//
+	// Three things the server cannot see for itself: an offer that was placed
+	// and filled while the plugin was not running (reported once as a
+	// recovered fill when the tracker adopts it), the state of the open slots
+	// (sent as a snapshot for the server to reconcile against its fills), and
+	// the history screen (sent as read, for the server to match against the
+	// completed offers it has). In every case the plugin reports what the
+	// client shows and the server decides what is new.
+
+	/** Ticks to wait after login for the client's offer burst to settle before a snapshot. */
+	private static final int LOGIN_SETTLE_TICKS = 3;
+	/** Snapshots closer together than this are skipped; the state has not changed. */
+	private static final long OFFER_SNAPSHOT_SECONDS = 10;
+	/** The history screen fills a tick or two after it opens; give up after this many looks. */
+	private static final int HISTORY_READ_ATTEMPTS = 5;
+
+	private int offerSnapshotDueTick = -1;
+	private int historyReadDueTick = -1;
+	private int historyReadAttempts;
+	private volatile long lastOfferSnapshotAt;
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			offerSnapshotDueTick = client.getTickCount() + LOGIN_SETTLE_TICKS;
+		}
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (event.getGroupId() == InterfaceID.GE_OFFERS)
+		{
+			offerSnapshotDueTick = client.getTickCount() + 1;
+		}
+		else if (event.getGroupId() == InterfaceID.GE_HISTORY)
+		{
+			historyReadDueTick = client.getTickCount() + 2;
+			historyReadAttempts = 0;
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		final int tick = client.getTickCount();
+		if (offerSnapshotDueTick >= 0 && tick >= offerSnapshotDueTick)
+		{
+			offerSnapshotDueTick = -1;
+			snapshotOffers(false);
+		}
+		if (historyReadDueTick >= 0 && tick >= historyReadDueTick)
+		{
+			readHistory(tick);
+		}
+	}
+
+	/**
+	 * Reads the open slots and hands them to the net thread. Client thread,
+	 * because the offers and the baselines are read here.
+	 */
+	private void snapshotOffers(boolean force)
+	{
+		if (!config.enabled())
+		{
+			return;
+		}
+		final long now = System.nanoTime();
+		if (!force && lastOfferSnapshotAt != 0
+			&& now - lastOfferSnapshotAt < TimeUnit.SECONDS.toNanos(OFFER_SNAPSHOT_SECONDS))
+		{
+			return;
+		}
+		final GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers == null)
+		{
+			return;
+		}
+		final List<FlippingRsApi.OfferState> open = new ArrayList<>();
+		for (int slot = 0; slot < offers.length; slot++)
+		{
+			final GrandExchangeOffer offer = offers[slot];
+			if (offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
+			{
+				continue;
+			}
+			final SavedOffer saved = loadOffer(slot);
+			final FlippingRsApi.OfferState state = new FlippingRsApi.OfferState();
+			state.slot = slot;
+			state.offerRef = saved == null ? null : saved.offerRef;
+			state.itemId = offer.getItemId();
+			state.itemName = itemName(offer.getItemId());
+			state.side = SavedOffer.isBuy(offer.getState()) ? "buy" : "sell";
+			state.price = offer.getPrice();
+			state.totalQuantity = offer.getTotalQuantity();
+			state.quantitySold = offer.getQuantitySold();
+			state.spent = offer.getSpent();
+			state.spentEstimated = offer.getSpent() < 0;
+			state.state = offer.getState().name();
+			open.add(state);
+		}
+		lastOfferSnapshotAt = now;
+		submit(sendExecutor, () -> sendOffers(open));
+	}
+
+	/** Net thread. A failure here costs nothing but the reconciliation; the next snapshot retries. */
+	private void sendOffers(List<FlippingRsApi.OfferState> open)
+	{
+		if (!config.enabled())
+		{
+			return;
+		}
+		final String key = config.apiKey().trim();
+		final String accountId = chosenAccount();
+		if (key.isEmpty() || accountId == null)
+		{
+			return;
+		}
+		try
+		{
+			final FlippingRsApi.Reconciliation result = api.submitOffers(key, accountId, open);
+			if (result.getRecovered() > 0)
+			{
+				final int recovered = result.getRecovered();
+				onPanel(p -> p.setActivityNotice("Recovered " + recovered + " fill(s) the plugin had missed on your "
+					+ "open offers. They have no time on them.", ColorScheme.BRAND_ORANGE));
+				refreshAccountTabsAfterSend();
+			}
+		}
+		catch (IOException e)
+		{
+			log.warn("could not send the open offers: {}", e.getMessage());
+		}
+	}
+
+	/** Client thread. The history list fills a tick or two after the screen opens. */
+	private void readHistory(int tick)
+	{
+		if (!config.enabled())
+		{
+			historyReadDueTick = -1;
+			return;
+		}
+		final List<FlippingRsApi.HistoryRow> rows =
+			GeHistoryReader.read(client.getWidget(InterfaceID.GeHistory.LIST), this::itemName);
+		if (rows.isEmpty() && ++historyReadAttempts < HISTORY_READ_ATTEMPTS)
+		{
+			historyReadDueTick = tick + 1;
+			return;
+		}
+		historyReadDueTick = -1;
+		if (rows.isEmpty())
+		{
+			return;
+		}
+		submit(sendExecutor, () -> sendHistory(rows));
+	}
+
+	/** Net thread. */
+	private void sendHistory(List<FlippingRsApi.HistoryRow> rows)
+	{
+		if (!config.enabled())
+		{
+			return;
+		}
+		final String key = config.apiKey().trim();
+		final String accountId = chosenAccount();
+		if (key.isEmpty() || accountId == null)
+		{
+			return;
+		}
+		try
+		{
+			final FlippingRsApi.Reconciliation result = api.submitHistory(key, accountId, rows);
+			if (result.getAdded() > 0)
+			{
+				final int added = result.getAdded();
+				onPanel(p -> p.setActivityNotice("Recovered " + added + " trade(s) from the Grand Exchange history. "
+					+ "They have no time on them.", ColorScheme.BRAND_ORANGE));
+				refreshAccountTabsAfterSend();
+			}
+		}
+		catch (IOException e)
+		{
+			log.warn("could not send the exchange history: {}", e.getMessage());
+			final String why = describe(e);
+			onPanel(p -> p.setActivityNotice("Could not send the exchange history: " + why,
+				ColorScheme.PROGRESS_ERROR_COLOR));
+		}
+	}
+
+	private static boolean contains(List<FlippingRsApi.GameAccount> accounts, String id)
+	{
+		for (FlippingRsApi.GameAccount account : accounts)
+		{
+			if (account != null && id.equals(account.id))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// ------------------------------------------------------------ persistence
@@ -647,11 +1733,20 @@ public class FlippingRsPlugin extends Plugin
 		final FlippingRsPanel target = panel;
 		if (target != null)
 		{
-			rememberChosenAccountFrom(target);
+			rememberChosenAccountFrom(target, true);
 		}
 	}
 
-	private void rememberChosenAccountFrom(FlippingRsPanel from)
+	/**
+	 * Stores the panel's selection as this RuneScape account's journal.
+	 *
+	 * @param interactive true when the user just picked it, in which case a
+	 *                    choice that cannot be stored is worth telling them
+	 *                    about. The automatic adoptions pass false: on a client
+	 *                    started before login there is nothing to attach the
+	 *                    choice to yet, and that is not something to nag over.
+	 */
+	private void rememberChosenAccountFrom(FlippingRsPanel from, boolean interactive)
 	{
 		final String id = from.selectedAccountId();
 		if (id == null)
@@ -662,11 +1757,19 @@ public class FlippingRsPlugin extends Plugin
 		{
 			// There is no RuneScape profile to attach the choice to yet. Saying
 			// so beats writing it somewhere it will never be read back from.
-			from.setStatus("Log in to RuneScape first, so this choice can be remembered for that account.",
-				ColorScheme.BRAND_ORANGE);
+			if (interactive)
+			{
+				from.setStatus("Log in to RuneScape first, so this choice can be remembered for that account.",
+					ColorScheme.BRAND_ORANGE);
+			}
 			return;
 		}
 		configManager.setRSProfileConfiguration(FlippingRsConfig.GROUP, ACCOUNT_KEY, id);
+	}
+
+	private void forgetChosenAccount()
+	{
+		configManager.unsetRSProfileConfiguration(FlippingRsConfig.GROUP, ACCOUNT_KEY);
 	}
 
 	@Nullable
