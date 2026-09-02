@@ -84,7 +84,7 @@ import okhttp3.OkHttpClient;
 @Slf4j
 @PluginDescriptor(
 	name = "FlippingRS",
-	description = "Automatically records your Grand Exchange trades to your flippingrs.com journal",
+	description = "Keeps your flippingrs.com journal up to date on its own: every Grand Exchange trade is recorded as it happens",
 	tags = {"grand", "exchange", "ge", "flip", "flipping", "merch", "profit", "journal", "tracker", "tax"}
 )
 public class FlippingRsPlugin extends Plugin
@@ -648,8 +648,8 @@ public class FlippingRsPlugin extends Plugin
 		{
 			// "Record trades" off is a promise not to contact the server at
 			// all, and a watchlist edit is contact.
-			onPanel(p -> p.setWatchlistNotice("Recording is off, so the watchlist cannot be changed. Turn "
-				+ "\"Record trades\" back on in the plugin settings first.", ColorScheme.BRAND_ORANGE));
+			onPanel(p -> p.setWatchlistNotice("Switch \"Record trades\" back on in the plugin settings to change "
+				+ "your watchlist.", ColorScheme.BRAND_ORANGE));
 			return;
 		}
 		final String key = config.apiKey().trim();
@@ -718,7 +718,7 @@ public class FlippingRsPlugin extends Plugin
 			// A plan limit arrives here too, with the server's own words.
 			log.debug("could not change the watchlist", e);
 			final String why = describe(e);
-			onPanel(p -> p.setWatchlistNotice("Could not change the watchlist: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
+			onPanel(p -> p.setWatchlistNotice("Couldn't update your watchlist: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
 		}
 	}
 
@@ -802,8 +802,8 @@ public class FlippingRsPlugin extends Plugin
 		{
 			log.debug("adopted an in-progress offer in slot {}; its progress goes out as a recovered fill", slot);
 			onPanel(p -> p.setActivityNotice(
-				"Picked up an offer that was already in progress. What had already filled was sent as "
-					+ "recovered, with no time on it; the site decides whether it is new.",
+				"Found an offer that was already part-way done. What had already traded has been sent to your "
+					+ "journal as a recovered trade without a time, and flippingrs.com will check it isn't already there.",
 				ColorScheme.BRAND_ORANGE));
 		}
 
@@ -1066,7 +1066,7 @@ public class FlippingRsPlugin extends Plugin
 			if (key.isEmpty())
 			{
 				onPanel(p -> p.setStatus(
-					"No API key yet. Add one in the plugin settings; trades are being kept until you do.",
+					"No API key yet. Add one in the plugin settings. Your trades are being kept safe until you do.",
 					ColorScheme.BRAND_ORANGE));
 				return;
 			}
@@ -1074,7 +1074,8 @@ public class FlippingRsPlugin extends Plugin
 			if (accountId == null)
 			{
 				onPanel(p -> p.setStatus(
-					"No journal picked for this account. Choose one above; trades are being kept until you do.",
+					"No journal chosen for this character yet. Pick one on the Account tab. Your trades are being "
+						+ "kept safe until you do.",
 					ColorScheme.BRAND_ORANGE));
 				return;
 			}
@@ -1142,13 +1143,13 @@ public class FlippingRsPlugin extends Plugin
 				p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR);
 				if (result.getRejected() > 0)
 				{
-					p.setActivityNotice(result.getRejected() + " trade(s) could not be recorded and have been "
-						+ "dropped. See the client log for why.", ColorScheme.PROGRESS_ERROR_COLOR);
+					p.setActivityNotice("flippingrs.com couldn't record " + result.getRejected()
+						+ " trade(s). The client log says why.", ColorScheme.PROGRESS_ERROR_COLOR);
 				}
 				else if (result.getUnmatchedSellQty() > 0)
 				{
 					p.setActivityNotice(result.getUnmatchedSellQty()
-							+ " item(s) sold with no recorded purchase behind them, so they are not in a flip.",
+							+ " item(s) were sold without a recorded purchase, so they can't be counted as a flip yet.",
 						ColorScheme.BRAND_ORANGE);
 				}
 				else
@@ -1167,7 +1168,7 @@ public class FlippingRsPlugin extends Plugin
 		catch (RuntimeException e)
 		{
 			log.warn("unexpected failure while sending", e);
-			onPanel(p -> p.setLastSync(null, "Unexpected error; see the client log."));
+			onPanel(p -> p.setLastSync(null, "Something went wrong while sending. Details are in the client log."));
 		}
 		finally
 		{
@@ -1200,9 +1201,9 @@ public class FlippingRsPlugin extends Plugin
 			p.setCounts(recordedThisSession.get(), waiting);
 			p.setPending(buffered);
 			p.setLastSync(null, why);
-			p.setActivityNotice(batch.size() + " trade(s) were refused by flippingrs.com and set aside in "
-				+ queue.droppedFile().getName() + " under your RuneLite folder. See the client log for why.",
-				ColorScheme.PROGRESS_ERROR_COLOR);
+			p.setActivityNotice("flippingrs.com couldn't accept " + batch.size() + " trade(s). They have been set aside "
+				+ "in " + queue.droppedFile().getName() + " in your RuneLite folder so nothing is lost. The client log "
+				+ "says why.", ColorScheme.PROGRESS_ERROR_COLOR);
 		});
 	}
 
@@ -1294,14 +1295,14 @@ public class FlippingRsPlugin extends Plugin
 				p.setAccounts(accounts, chosen);
 				if (orphaned)
 				{
-					p.setStatus("The journal this account was filing under no longer exists on flippingrs.com. "
-						+ "Pick one above; trades are being kept until you do.", ColorScheme.BRAND_ORANGE);
+					p.setStatus("The journal this character was using no longer exists on flippingrs.com. Pick "
+						+ "another below. Your trades are being kept safe until you do.", ColorScheme.BRAND_ORANGE);
 					return;
 				}
 				if (connecting)
 				{
 					p.setStatus(accounts.isEmpty()
-							? "Connected, but this FlippingRS account has no game accounts to file trades under."
+							? "Connected, but your flippingrs.com account has no journals yet. Create one on the site first."
 							: "Connected and recording.",
 						accounts.isEmpty() ? ColorScheme.BRAND_ORANGE : ColorScheme.PROGRESS_COMPLETE_COLOR);
 				}
@@ -1372,12 +1373,12 @@ public class FlippingRsPlugin extends Plugin
 		{
 			onPanel(p -> {
 				p.setAccounts(Collections.emptyList(), null);
-				p.setStatus("Recording is off. Nothing is being captured and nothing is being sent to "
-					+ "flippingrs.com. Turn \"Record trades\" back on in the plugin settings to resume.",
+				p.setStatus("Recording is off. Nothing is being recorded or sent to flippingrs.com. Switch "
+					+ "\"Record trades\" back on in the plugin settings to carry on.",
 					ColorScheme.LIGHT_GRAY_COLOR);
 				// Old rows next to a status that says nothing is being read
 				// would be a picture of a journal the plugin is not looking at.
-				p.setPaused("Recording is off, so nothing is read from flippingrs.com.");
+				p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
 			});
 			return;
 		}
@@ -1387,9 +1388,9 @@ public class FlippingRsPlugin extends Plugin
 		{
 			onPanel(p -> {
 				p.setAccounts(Collections.emptyList(), null);
-				p.setStatus("Add your API key in the plugin settings. Create one at flippingrs.com "
-					+ "under Account, API keys, with the RuneLite plugin scope.", ColorScheme.LIGHT_GRAY_COLOR);
-				p.setPaused("Nothing is read from flippingrs.com until an API key is set.");
+				p.setStatus("Add your API key in the plugin settings. You can create one on flippingrs.com "
+					+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
+				p.setPaused("Add an API key to see your journal here.");
 			});
 			return;
 		}
@@ -1688,8 +1689,8 @@ public class FlippingRsPlugin extends Plugin
 			if (result.getRecovered() > 0)
 			{
 				final int recovered = result.getRecovered();
-				onPanel(p -> p.setActivityNotice("Recovered " + recovered + " fill(s) the plugin had missed on your "
-					+ "open offers. They have no time on them.", ColorScheme.BRAND_ORANGE));
+				onPanel(p -> p.setActivityNotice("Recovered " + recovered + " trade(s) from your open offers that had "
+					+ "been missed. They are saved without a time.", ColorScheme.BRAND_ORANGE));
 				refreshAccountTabsAfterSend();
 			}
 		}
@@ -1700,7 +1701,7 @@ public class FlippingRsPlugin extends Plugin
 			// rather than a log entry nobody reads.
 			log.warn("could not send the open offers: {}", e.getMessage());
 			final String why = describe(e);
-			onPanel(p -> p.setActivityNotice("Could not reconcile your open offers: " + why,
+			onPanel(p -> p.setActivityNotice("Couldn't check your open offers against your journal: " + why,
 				ColorScheme.BRAND_ORANGE));
 		}
 	}
@@ -1757,8 +1758,8 @@ public class FlippingRsPlugin extends Plugin
 			if (result.getAdded() > 0)
 			{
 				final int added = result.getAdded();
-				onPanel(p -> p.setActivityNotice("Recovered " + added + " trade(s) from the Grand Exchange history. "
-					+ "They have no time on them.", ColorScheme.BRAND_ORANGE));
+				onPanel(p -> p.setActivityNotice("Recovered " + added + " trade(s) from your Grand Exchange history. "
+					+ "They are saved without a time.", ColorScheme.BRAND_ORANGE));
 				refreshAccountTabsAfterSend();
 			}
 		}
@@ -1766,7 +1767,7 @@ public class FlippingRsPlugin extends Plugin
 		{
 			log.warn("could not send the exchange history: {}", e.getMessage());
 			final String why = describe(e);
-			onPanel(p -> p.setActivityNotice("Could not send the exchange history: " + why,
+			onPanel(p -> p.setActivityNotice("Couldn't send your Grand Exchange history: " + why,
 				ColorScheme.PROGRESS_ERROR_COLOR));
 		}
 	}
@@ -1832,7 +1833,7 @@ public class FlippingRsPlugin extends Plugin
 			// so beats writing it somewhere it will never be read back from.
 			if (interactive)
 			{
-				from.setStatus("Log in to RuneScape first, so this choice can be remembered for that account.",
+				from.setStatus("Log in first, so this choice can be saved for that character.",
 					ColorScheme.BRAND_ORANGE);
 			}
 			return;

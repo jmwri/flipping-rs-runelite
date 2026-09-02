@@ -271,7 +271,7 @@ public class FlippingRsPanel extends PluginPanel
 		body.add(activityNotice);
 		body.add(Box.createVerticalStrut(6));
 
-		syncNow.setToolTipText("Send anything waiting right now, instead of at the next interval.");
+		syncNow.setToolTipText("Send your waiting trades now instead of at the next scheduled time.");
 		syncNow.setAlignmentX(Component.LEFT_ALIGNMENT);
 		syncNow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		body.add(syncNow);
@@ -281,7 +281,7 @@ public class FlippingRsPanel extends PluginPanel
 		body.add(Box.createVerticalStrut(4));
 		pendingList.setLayout(new BoxLayout(pendingList, BoxLayout.Y_AXIS));
 		pendingList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		pendingList.setToolTipText("Fills captured here and not yet confirmed by the journal.");
+		pendingList.setToolTipText("Trades recorded here that your journal hasn't confirmed yet.");
 		body.add(pendingList);
 		return body;
 	}
@@ -291,7 +291,7 @@ public class FlippingRsPanel extends PluginPanel
 		final JPanel body = column();
 		recentList.setLayout(new BoxLayout(recentList, BoxLayout.Y_AXIS));
 		recentList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		recentList.setToolTipText("What the journal recorded most recently, as the server has it.");
+		recentList.setToolTipText("Your most recent trades, as your journal has them.");
 		body.add(recentList);
 		return body;
 	}
@@ -316,7 +316,7 @@ public class FlippingRsPanel extends PluginPanel
 		body.add(Box.createVerticalStrut(4));
 		positionList.setLayout(new BoxLayout(positionList, BoxLayout.Y_AXIS));
 		positionList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		positionList.setToolTipText("What you hold, what it cost, and what it is worth now, as the site has it.");
+		positionList.setToolTipText("What you're holding, what it cost you, and what it's worth right now.");
 		body.add(positionList);
 		return body;
 	}
@@ -326,7 +326,7 @@ public class FlippingRsPanel extends PluginPanel
 		final JPanel body = column();
 		watchlists.setAlignmentX(Component.LEFT_ALIGNMENT);
 		watchlists.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		watchlists.setToolTipText("Which of your watchlists the right-click entry adds to. Kept on the site.");
+		watchlists.setToolTipText("Which of your flippingrs.com watchlists to show. Right-clicking an item adds it here.");
 		watchlists.addActionListener(e -> onWatchlistChosen.run());
 		body.add(watchlists);
 		body.add(Box.createVerticalStrut(4));
@@ -364,13 +364,13 @@ public class FlippingRsPanel extends PluginPanel
 		body.add(Box.createVerticalStrut(4));
 		accounts.setAlignmentX(Component.LEFT_ALIGNMENT);
 		accounts.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		accounts.setToolTipText("Which game account this RuneScape account's trades are filed under. "
-			+ "Remembered per RuneScape account, so an alt can have its own journal.");
+		accounts.setToolTipText("Which journal this character's trades go into. Each character remembers its own "
+			+ "choice, so an alt can have its own journal.");
 		accounts.addActionListener(e -> onAccountChosen.run());
 		body.add(accounts);
 		body.add(Box.createVerticalStrut(10));
 
-		reconnect.setToolTipText("Re-check the API key and reload everything from the site.");
+		reconnect.setToolTipText("Check your API key again and reload everything from flippingrs.com.");
 		reconnect.setAlignmentX(Component.LEFT_ALIGNMENT);
 		reconnect.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		body.add(reconnect);
@@ -440,7 +440,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** The plan the key's owner is on, in the server's words, or null if not known. */
 	void setSubscription(@Nullable String text)
 	{
-		subscription.setText(wrap(text == null ? "Plan: not known yet" : text));
+		subscription.setText(wrap(text == null ? "Plan: not checked yet" : text));
 	}
 
 	/**
@@ -548,7 +548,7 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		if (problem != null)
 		{
-			lastSync.setText(wrap("Last attempt failed: " + problem));
+			lastSync.setText(wrap("Last send failed: " + problem));
 			lastSync.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			return;
 		}
@@ -584,7 +584,7 @@ public class FlippingRsPanel extends PluginPanel
 		pendingList.removeAll();
 		if (pending.isEmpty())
 		{
-			pendingList.add(small("Nothing waiting."));
+			pendingList.add(small("Nothing waiting to send."));
 		}
 		for (String line : pending)
 		{
@@ -632,13 +632,13 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		else if (recentProblem != null)
 		{
-			final JLabel problem = small("Could not load recent trades: " + recentProblem);
+			final JLabel problem = small("Couldn't load your recent trades: " + recentProblem);
 			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			recentList.add(problem);
 		}
 		else if (recent.isEmpty())
 		{
-			recentList.add(small("Nothing recorded yet."));
+			recentList.add(small("No trades recorded yet."));
 		}
 		else
 		{
@@ -674,7 +674,7 @@ public class FlippingRsPanel extends PluginPanel
 		final FlippingRsApi.Positions.Summary totals = open.getSummary();
 		positions = open.getPositions();
 		journalOpen.setText(wrap(positions.isEmpty()
-			? "Nothing open."
+			? "No open positions."
 			: totals.openPositions + " open · cost " + gp(totals.costBasis) + " · value " + gp(totals.marketValue)
 			+ " · P&L " + signed(totals.unrealisedPnl)
 			+ (totals.marketDataAvailable ? "" : " (no market data)")));
@@ -714,7 +714,7 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		else if (journalProblem != null)
 		{
-			journalSummary.setText(wrap("Could not load the journal: " + journalProblem));
+			journalSummary.setText(wrap("Couldn't load your journal: " + journalProblem));
 			journalSummary.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			journalOpen.setText("");
 		}
@@ -754,7 +754,7 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		if (p.isStale())
 		{
-			final JLabel stale = small("Stale: held longer than three of this item's usual flip cycles.");
+			final JLabel stale = small("Stale: you've held this much longer than this item usually takes to flip.");
 			stale.setForeground(ColorScheme.BRAND_ORANGE);
 			card.add(stale);
 		}
@@ -879,7 +879,7 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		else if (watchlistProblem != null)
 		{
-			final JLabel problem = small("Could not load watchlists: " + watchlistProblem);
+			final JLabel problem = small("Couldn't load your watchlists: " + watchlistProblem);
 			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			watchlistItems.add(problem);
 		}
@@ -933,12 +933,12 @@ public class FlippingRsPanel extends PluginPanel
 		if (item.quote != null)
 		{
 			final JLabel prices = small(pricesLine(item.quote));
-			prices.setToolTipText("Buy at the instant-sell price, sell at the instant-buy price, as the site quotes them.");
+			prices.setToolTipText("The price you can buy at and the price you can sell at right now, from flippingrs.com.");
 			card.add(prices);
 			final JLabel margin = small(marginLine(item.quote));
 			margin.setForeground(item.quote.getNetMargin() < 0
 				? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.PROGRESS_COMPLETE_COLOR);
-			margin.setToolTipText("Profit per item after tax, and that as a share of the buy price.");
+			margin.setToolTipText("Profit per item after tax, and the return on what you'd pay.");
 			card.add(margin);
 			final String limits = limitLine(item);
 			if (!limits.isEmpty())
@@ -949,7 +949,7 @@ public class FlippingRsPanel extends PluginPanel
 		else
 		{
 			final JLabel facts = small(facts(item));
-			facts.setToolTipText("The client's own price, buy limit and alch value; the site has no quote for this item.");
+			facts.setToolTipText("RuneLite's price, the buy limit and the alch value. flippingrs.com has no prices for this item yet.");
 			card.add(facts);
 		}
 		if (item.offer != null)

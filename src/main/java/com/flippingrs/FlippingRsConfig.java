@@ -13,7 +13,7 @@ public interface FlippingRsConfig extends Config
 
 	@ConfigSection(
 		name = "Connection",
-		description = "How the plugin talks to flippingrs.com",
+		description = "Linking the plugin to your flippingrs.com account",
 		position = 0
 	)
 	String connectionSection = "connection";
@@ -21,7 +21,7 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "apiKey",
 		name = "API key",
-		description = "Create one at flippingrs.com under Account, API keys. Choose the RuneLite plugin scope.",
+		description = "Paste the key from flippingrs.com. On the site, go to Account, then API keys, and create one for the RuneLite plugin.",
 		position = 1,
 		secret = true,
 		section = connectionSection
@@ -34,11 +34,13 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "enabled",
 		name = "Record trades",
-		description = "Sends your Grand Exchange fills -- item, quantity, price, gp value, slot, world and time -- "
-			+ "together with your IP address, to flippingrs.com, a third party server not controlled or verified "
-			+ "by the RuneLite developers. Your RuneScape display name is not sent. Turn off to stop capturing "
-			+ "and to stop contacting the server entirely. Trades that happen while it is off are discarded, not "
-			+ "queued; anything already waiting is sent when you turn it back on.",
+		description = "Sends your Grand Exchange trades to your flippingrs.com journal as they happen: the item, "
+			+ "how many, the price, the slot and world, and when. It also sends your open offers and what your "
+			+ "Grand Exchange history shows, so trades made while RuneLite was closed can be caught up. "
+			+ "flippingrs.com is a third-party service not run or checked by the RuneLite team, and like any "
+			+ "website it can see your IP address. Your character name is never sent. Switch this off and the "
+			+ "plugin stops recording and stops talking to flippingrs.com altogether. Trades made while it is "
+			+ "off are not recorded; anything already waiting is sent when you switch it back on.",
 		position = 2,
 		section = connectionSection
 	)
@@ -50,7 +52,7 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "syncSeconds",
 		name = "Send every (seconds)",
-		description = "How long to batch fills before sending them. A busy flipper fills a slot every few seconds; batching keeps that to one request.",
+		description = "How long to wait between sends. Your trades are grouped up and sent together, so busy flipping does not mean constant sending. Nothing is lost while it waits.",
 		position = 3,
 		section = connectionSection
 	)
@@ -62,7 +64,7 @@ public interface FlippingRsConfig extends Config
 
 	@ConfigSection(
 		name = "Grand Exchange",
-		description = "What the plugin adds to the Grand Exchange interface",
+		description = "What the plugin adds inside the Grand Exchange",
 		position = 10
 	)
 	String exchangeSection = "exchange";
@@ -70,10 +72,10 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "geMenuEntries",
 		name = "Right-click entries",
-		description = "Adds \"View item\" and \"Add to watchlist\" to items in the Grand Exchange: the offer "
-			+ "slots, the inventory beside them, the offer setup page and the history. \"View item\" opens the "
-			+ "item's page on flippingrs.com in your browser; \"Add to watchlist\" puts it on the watchlist "
-			+ "shown in the side panel, which lives on flippingrs.com. Neither sends anything to the game.",
+		description = "Adds \"View item\" and \"Add to watchlist\" when you right-click an item in the Grand "
+			+ "Exchange: your offer slots, the items beside them, the offer setup screen and your history. "
+			+ "\"View item\" opens the item on flippingrs.com in your browser. \"Add to watchlist\" puts it on "
+			+ "the watchlist in the sidebar. Neither one touches the game.",
 		position = 11,
 		section = exchangeSection
 	)
