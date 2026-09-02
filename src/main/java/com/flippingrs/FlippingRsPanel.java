@@ -24,7 +24,9 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.Border;
@@ -168,6 +170,9 @@ public class FlippingRsPanel extends PluginPanel
 	// Journal
 	private final JLabel journalSummary = new JLabel();
 	private final JLabel journalOpen = new JLabel();
+	private final JLabel journalNotice = new JLabel();
+	private final Timer journalNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
+		e -> setJournalNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
 	private final JPanel positionList = new JPanel();
 	private List<FlippingRsApi.Position> positions = new ArrayList<>();
 	private boolean journalLoaded;
@@ -217,6 +222,16 @@ public class FlippingRsPanel extends PluginPanel
 	};
 	private IntConsumer onRemoveItem = id -> {
 	};
+	private PositionClose onClosePosition = (id, price, quantity) -> {
+	};
+	private java.util.function.Consumer<String> onDeletePosition = id -> {
+	};
+
+	/** What the plugin does when the user closes a position from the sidebar. */
+	interface PositionClose
+	{
+		void close(String positionId, long sellPrice, @Nullable Long sellQty);
+	}
 
 	public FlippingRsPanel()
 	{
@@ -258,6 +273,7 @@ public class FlippingRsPanel extends PluginPanel
 		setLastSync(null, null);
 		setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
 		setWatchlistNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
+		setJournalNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
 		redrawPending();
 		redrawRecent();
 		redrawJournal();
@@ -326,6 +342,10 @@ public class FlippingRsPanel extends PluginPanel
 		journalOpen.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		journalOpen.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(journalOpen);
+		body.add(Box.createVerticalStrut(4));
+		journalNotice.setFont(FontManager.getRunescapeSmallFont());
+		journalNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(journalNotice);
 		body.add(Box.createVerticalStrut(4));
 		positionList.setLayout(new BoxLayout(positionList, BoxLayout.Y_AXIS));
 		positionList.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -430,6 +450,16 @@ public class FlippingRsPanel extends PluginPanel
 	void onFindFlips(Runnable action)
 	{
 		findFlips.addActionListener(e -> action.run());
+	}
+
+	void onClosePosition(PositionClose action)
+	{
+		onClosePosition = action;
+	}
+
+	void onDeletePosition(java.util.function.Consumer<String> action)
+	{
+		onDeletePosition = action;
 	}
 
 	private static JLabel header(String text)
@@ -703,6 +733,24 @@ public class FlippingRsPanel extends PluginPanel
 		redrawJournal();
 	}
 
+	/**
+	 * A note about the last close or delete: done, or refused in the
+	 * server's words. Null clears it; otherwise it clears itself after
+	 * {@link #NOTICE_SECONDS}.
+	 */
+	void setJournalNotice(@Nullable String text, Color colour)
+	{
+		journalNotice.setText(text == null ? "" : wrap(text));
+		journalNotice.setForeground(colour);
+		journalNotice.setVisible(text != null);
+		journalNoticeTimer.setRepeats(false);
+		journalNoticeTimer.stop();
+		if (text != null)
+		{
+			journalNoticeTimer.start();
+		}
+	}
+
 	/** The journal could not be read. Shown in the tab itself. */
 	void setJournalProblem(String why)
 	{
@@ -776,8 +824,114 @@ public class FlippingRsPanel extends PluginPanel
 			stale.setForeground(ColorScheme.BRAND_ORANGE);
 			card.add(stale);
 		}
+		if (!p.getId().isEmpty())
+		{
+			card.add(Box.createVerticalStrut(5));
+			final JPanel buttons = new JPanel(new GridLayout(1, 2, 4, 0));
+			buttons.setOpaque(false);
+			buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
+			buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+			final JButton close = new JButton("Close");
+			close.setToolTipText("Record a sale of this position at a price you enter.");
+			close.addActionListener(e -> promptClose(p));
+			final JButton delete = new JButton("Delete");
+			delete.setToolTipText("Not a flip? Delete this record so later sales of the item are not counted against it.");
+			delete.addActionListener(e -> promptDelete(p));
+			for (JButton button : new JButton[]{close, delete})
+			{
+				button.setFont(FontManager.getRunescapeSmallFont());
+				button.setMargin(new Insets(1, 4, 1, 4));
+				buttons.add(button);
+			}
+			card.add(buttons);
+		}
 		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
 		return card;
+	}
+
+	/**
+	 * Asks for the sale price and quantity, prefilled with the price a sale
+	 * lists at and everything still held, then hands the answer to the
+	 * plugin. Nothing is sent unless the user confirms.
+	 */
+	private void promptClose(FlippingRsApi.Position p)
+	{
+		final long suggested = p.getCurrentBuy() > 0 ? p.getCurrentBuy() : p.getCurrentSell();
+		final JTextField price = new JTextField(suggested > 0 ? exact(suggested) : "");
+		final JTextField quantity = new JTextField(Long.toString(p.getRemainingQty()));
+		final JPanel form = new JPanel(new GridLayout(0, 1, 0, 2));
+		form.add(new JLabel("Sale price per item"));
+		form.add(price);
+		form.add(new JLabel("How many sold (" + p.getRemainingQty() + " held)"));
+		form.add(quantity);
+		final int answer = JOptionPane.showConfirmDialog(this, form,
+			"Close " + (p.getItemName().isEmpty() ? "position" : p.getItemName()),
+			JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+		if (answer != JOptionPane.OK_OPTION)
+		{
+			return;
+		}
+		final long sellPrice = parseGp(price.getText());
+		final long sellQty = parseGp(quantity.getText());
+		if (sellPrice <= 0)
+		{
+			setJournalNotice("A sale price is needed to close a position.", ColorScheme.BRAND_ORANGE);
+			return;
+		}
+		closePosition(p.getId(), sellPrice, sellQty > 0 ? sellQty : null);
+	}
+
+	private void promptDelete(FlippingRsApi.Position p)
+	{
+		final int answer = JOptionPane.showConfirmDialog(this,
+			"Delete this record? Later sales of " + (p.getItemName().isEmpty() ? "this item" : p.getItemName())
+				+ " will not be counted against it. Your recorded trades are kept.",
+			"Delete position", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+		if (answer == JOptionPane.OK_OPTION)
+		{
+			onDeletePosition.accept(p.getId());
+		}
+	}
+
+	/** The way a user would close a position, without the dialog. */
+	void closePosition(String positionId, long sellPrice, @Nullable Long sellQty)
+	{
+		onClosePosition.close(positionId, sellPrice, sellQty);
+	}
+
+	/** "1,480,000", "1480000", "1.48m" and "1.5k" all read as gp; anything else is 0. */
+	static long parseGp(String text)
+	{
+		final String s = text == null ? "" : text.trim().toLowerCase(Locale.ROOT).replace(",", "").replace(" ", "");
+		if (s.isEmpty())
+		{
+			return 0;
+		}
+		try
+		{
+			long multiplier = 1;
+			String digits = s;
+			if (s.endsWith("k"))
+			{
+				multiplier = 1_000;
+				digits = s.substring(0, s.length() - 1);
+			}
+			else if (s.endsWith("m"))
+			{
+				multiplier = 1_000_000;
+				digits = s.substring(0, s.length() - 1);
+			}
+			else if (s.endsWith("b"))
+			{
+				multiplier = 1_000_000_000;
+				digits = s.substring(0, s.length() - 1);
+			}
+			return Math.round(Double.parseDouble(digits) * multiplier);
+		}
+		catch (NumberFormatException e)
+		{
+			return 0;
+		}
 	}
 
 	// ------------------------------------------------------------- watchlists
@@ -1194,6 +1348,11 @@ public class FlippingRsPanel extends PluginPanel
 		return journalSummary.getText();
 	}
 
+	String journalNoticeForTest()
+	{
+		return journalNotice.getText();
+	}
+
 	@Nullable
 	String journalProblemForTest()
 	{
@@ -1229,7 +1388,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** Fires the notice timers now, as if the interval had passed. */
 	void expireNoticesForTest()
 	{
-		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer})
+		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer, journalNoticeTimer})
 		{
 			if (timer.isRunning())
 			{

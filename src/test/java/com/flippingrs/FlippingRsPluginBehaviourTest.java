@@ -652,6 +652,57 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue("the send itself went through", support.queue().isEmpty());
 	}
 
+	// ------------------------------------------------------------- positions
+
+	@Test
+	public void closingAPositionSendsTheSaleAndReloadsTheJournal() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+
+		support.closePosition("f1", 1_520_000, 4L);
+
+		verify(support.api).closePosition("frs_key", "f1", 1_520_000, 4L);
+		verify(support.api).journal(eq("frs_key"), eq("acct-1"), anyInt());
+		assertTrue(support.panel.journalNoticeForTest().contains("Sale recorded"));
+	}
+
+	@Test
+	public void aRefusedCloseIsShownInTheServersWords() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		org.mockito.Mockito.doThrow(new java.io.IOException("Every item in this flip has already been sold."))
+			.when(support.api).closePosition(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(), any());
+
+		support.closePosition("f1", 1_520_000, null);
+
+		assertTrue(support.panel.journalNoticeForTest().contains("Every item in this flip has already been sold."));
+	}
+
+	@Test
+	public void deletingAPositionRemovesItAndReloadsTheJournal() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+
+		support.deletePosition("f1");
+
+		verify(support.api).deletePosition("frs_key", "f1");
+		verify(support.api).journal(eq("frs_key"), eq("acct-1"), anyInt());
+		assertTrue(support.panel.journalNoticeForTest().contains("deleted"));
+	}
+
+	/** "Record trades" off is a promise not to contact the server, journal edits included. */
+	@Test
+	public void recordingOffBlocksPositionEdits() throws Exception
+	{
+		when(support.config.enabled()).thenReturn(false);
+
+		support.closePosition("f1", 1_000, null);
+		support.deletePosition("f1");
+
+		verify(support.api, never()).closePosition(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(), any());
+		verify(support.api, never()).deletePosition(anyString(), anyString());
+	}
+
 	// --------------------------------------------------------------- account
 
 	@Test

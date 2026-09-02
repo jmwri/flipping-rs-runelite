@@ -60,7 +60,11 @@ Five tabs:
   and gp per hour, and everything you are currently holding: what you paid,
   the price a sale lists at and what an instant sale would get, your profit or
   loss so far, the price you need to sell at to break even, and a warning when
-  something has sat for much longer than it usually takes to flip.
+  something has sat for much longer than it usually takes to flip. Each
+  position has **Close**, to record a sale at a price you enter, and
+  **Delete**, for a lot that was never a flip, such as supplies you bought to
+  use, so later sales of that item are not counted against it. Delete asks
+  first, and your recorded trades are kept either way.
 - **Watchlists** shows one of your flippingrs.com watchlists. Each item shows
   the exact price you can buy and sell at right now, the profit per item after tax,
   the return on what you'd pay, the buy limit and the profit across one limit,
@@ -110,6 +114,7 @@ team. The plugin sends it:
 - your open offers and what your Grand Exchange history shows, so missed
   trades can be caught up
 - items you add to or remove from a watchlist
+- a sale you record against a position, or a position you delete
 - which journal you picked for this character
 - your API key, so the site knows the trades are yours
 

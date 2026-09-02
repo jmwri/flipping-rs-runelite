@@ -406,6 +406,40 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** Gp typed by a person: separators, and the k/m/b the game uses. */
+	@Test
+	public void typedGpIsReadTheWayPeopleWriteIt()
+	{
+		assertEquals(1_480_000L, FlippingRsPanel.parseGp("1,480,000"));
+		assertEquals(1_480_000L, FlippingRsPanel.parseGp("1480000"));
+		assertEquals(1_480_000L, FlippingRsPanel.parseGp("1.48m"));
+		assertEquals(1_500L, FlippingRsPanel.parseGp("1.5K"));
+		assertEquals(2_000_000_000L, FlippingRsPanel.parseGp("2b"));
+		assertEquals(0L, FlippingRsPanel.parseGp("lots"));
+		assertEquals(0L, FlippingRsPanel.parseGp(""));
+	}
+
+	/** The card's Close and Delete reach the plugin with the position's id. */
+	@Test
+	public void closingAndDeletingAPositionReachThePlugin() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final List<String> closed = new ArrayList<>();
+			final List<String> deleted = new ArrayList<>();
+			panel.onClosePosition((id, price, qty) -> closed.add(id + "@" + price + "x" + qty));
+			panel.onDeletePosition(deleted::add);
+
+			panel.closePosition("f1", 1_520_000, 4L);
+			panel.closePosition("f2", 1_000, null);
+			panel.setJournalNotice("Sale recorded.", java.awt.Color.WHITE);
+
+			assertEquals(Arrays.asList("f1@1520000x4", "f2@1000xnull"), closed);
+			assertTrue(panel.journalNoticeForTest().contains("Sale recorded"));
+		});
+	}
+
 	@Test
 	public void theSmallFormattersAreExact()
 	{

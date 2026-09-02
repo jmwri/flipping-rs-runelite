@@ -181,6 +181,23 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
+	void closePosition(String id, long price, Long qty) throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod(
+			"closePosition", String.class, long.class, Long.class);
+		m.setAccessible(true);
+		m.invoke(plugin, id, price, qty);
+		settleSwing();
+	}
+
+	void deletePosition(String id) throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("deletePosition", String.class);
+		m.setAccessible(true);
+		m.invoke(plugin, id);
+		settleSwing();
+	}
+
 	void removeFromWatchlist(int itemId) throws Exception
 	{
 		invoke("removeFromWatchlist", itemId);

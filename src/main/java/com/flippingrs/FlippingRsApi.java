@@ -24,7 +24,8 @@ import okhttp3.Response;
  *
  * <p>Everything the plugin does goes through {@code /api/plugin}: one read
  * per tab of the side panel, writes for fills, open offers and the history
- * screen, and two for watchlists. Nothing else. The general API is what the Elite plan sells,
+ * screen, two for watchlists, and the two position actions the site's own
+ * Positions page has. Nothing else. The general API is what the Elite plan sells,
  * and a plugin key is available on every plan, so the plugin's surface is
  * kept to things that are only ever a picture of the sidebar: nothing that
  * pages, filters or exports. A user who scripts against a plugin key gets
@@ -212,6 +213,8 @@ public class FlippingRsApi
 	/** One open position in the journal, marked to market by the server. */
 	public static class Position
 	{
+		/** The lot's id, for closing or deleting it. */
+		String id;
 		int itemId;
 		String itemName;
 		long buyPrice;
@@ -230,6 +233,11 @@ public class FlippingRsApi
 		long breakEvenSell;
 		double hoursHeld;
 		boolean stale;
+
+		public String getId()
+		{
+			return id == null ? "" : id;
+		}
 
 		public int getItemId()
 		{
@@ -750,6 +758,53 @@ public class FlippingRsApi
 		catch (JsonParseException e)
 		{
 			throw new IOException("flippingrs.com returned something that is not JSON", e);
+		}
+	}
+
+	/**
+	 * Records a sale against an open position: the same thing the site's
+	 * Positions page does with its Close button. The server folds it into
+	 * the position's sale price and caps the quantity at what is left.
+	 *
+	 * @param sellQty how many were sold, or null for everything still held
+	 */
+	public void closePosition(String apiKey, String positionId, long sellPrice, @Nullable Long sellQty)
+		throws IOException
+	{
+		final JsonObject payload = new JsonObject();
+		payload.addProperty("sellPrice", sellPrice);
+		if (sellQty != null)
+		{
+			payload.addProperty("sellQty", sellQty);
+		}
+		final Request request = new Request.Builder()
+			.url(url("api", "plugin", "positions", positionId, "close"))
+			.header("X-Api-Key", apiKey)
+			.post(RequestBody.create(JSON, gson.toJson(payload)))
+			.build();
+		try (Response response = http.newCall(request).execute())
+		{
+			check(response, bodyOf(response));
+		}
+	}
+
+	/**
+	 * Deletes a position that was never a flip -- supplies bought to use,
+	 * say -- so the next sale of that item is not matched against it and
+	 * journaled as a loss. The fills stay in the ledger; only the lot goes.
+	 * This is the one destructive thing the plugin can do, and it is behind
+	 * a confirmation in the sidebar.
+	 */
+	public void deletePosition(String apiKey, String positionId) throws IOException
+	{
+		final Request request = new Request.Builder()
+			.url(url("api", "plugin", "positions", positionId))
+			.header("X-Api-Key", apiKey)
+			.delete()
+			.build();
+		try (Response response = http.newCall(request).execute())
+		{
+			check(response, bodyOf(response));
 		}
 	}
 

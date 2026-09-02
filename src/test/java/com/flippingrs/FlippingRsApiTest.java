@@ -489,6 +489,67 @@ public class FlippingRsApiTest
 		}
 	}
 
+	// -------------------------------------------------------------- positions
+
+	@Test
+	public void closingAPositionPostsThePriceAndQuantityToItsRoute() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody("{\"id\":\"f1\",\"state\":\"closed\"}"));
+
+		api.closePosition("frs_secret", "f1", 1_520_000, 4L);
+
+		final RecordedRequest request = server.takeRequest();
+		assertEquals("POST", request.getMethod());
+		assertEquals("/api/plugin/positions/f1/close", request.getPath());
+		assertEquals("frs_secret", request.getHeader("X-Api-Key"));
+		final JsonObject body = new JsonParser().parse(request.getBody().readUtf8()).getAsJsonObject();
+		assertEquals(1_520_000L, body.get("sellPrice").getAsLong());
+		assertEquals(4L, body.get("sellQty").getAsLong());
+	}
+
+	/** No quantity means "everything still held", which the server applies when the field is absent. */
+	@Test
+	public void closingWithoutAQuantityLeavesTheFieldOut() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody("{}"));
+
+		api.closePosition("k", "f1", 1_520_000, null);
+
+		final JsonObject body = new JsonParser().parse(server.takeRequest().getBody().readUtf8()).getAsJsonObject();
+		assertFalse(body.has("sellQty"));
+	}
+
+	@Test
+	public void deletingAPositionUsesTheDeleteMethodOnItsRoute() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody("{\"status\":\"deleted\"}"));
+
+		api.deletePosition("frs_secret", "f1");
+
+		final RecordedRequest request = server.takeRequest();
+		assertEquals("DELETE", request.getMethod());
+		assertEquals("/api/plugin/positions/f1", request.getPath());
+		assertEquals("frs_secret", request.getHeader("X-Api-Key"));
+	}
+
+	/** A refusal carries the server's own words, which the Journal tab shows. */
+	@Test
+	public void aRefusedCloseSurfacesTheServersMessage() throws Exception
+	{
+		server.enqueue(new MockResponse().setResponseCode(409).setBody(
+			"{\"error\":{\"code\":\"conflict\",\"message\":\"Every item in this flip has already been sold.\"}}"));
+
+		try
+		{
+			api.closePosition("k", "f1", 1_000, null);
+			fail("expected a failure");
+		}
+		catch (IOException e)
+		{
+			assertEquals("Every item in this flip has already been sold.", e.getMessage());
+		}
+	}
+
 	// ------------------------------------------------- catching the server up
 
 	@Test
@@ -572,8 +633,12 @@ public class FlippingRsApiTest
 		api.updateWatchlist("k", "wl_1", Collections.singletonList(1));
 		api.submitOffers("k", "a", Collections.emptyList());
 		api.submitHistory("k", "a", Collections.emptyList());
+		server.enqueue(new MockResponse().setBody("{}"));
+		server.enqueue(new MockResponse().setBody("{}"));
+		api.closePosition("k", "f1", 1, null);
+		api.deletePosition("k", "f1");
 
-		for (int i = 0; i < 9; i++)
+		for (int i = 0; i < 11; i++)
 		{
 			final String path = server.takeRequest().getPath();
 			assertTrue(path, path.startsWith("/api/plugin/"));
