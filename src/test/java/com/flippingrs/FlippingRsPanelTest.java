@@ -605,6 +605,47 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** A trade card says what happened in exact gp, with the per-item price. */
+	@Test
+	public void aTradeCardSaysWhatHappenedToTheCoin()
+	{
+		final GeTransaction tx = new GeTransaction();
+		tx.side = "buy";
+		tx.quantity = 4;
+		tx.grossValue = 3_800_000;
+		assertEquals("Bought 4 for 3,800,000 (950,000 each)", FlippingRsPanel.whatHappened(tx));
+
+		tx.side = "sell";
+		tx.quantity = 1;
+		tx.grossValue = 1_520_000;
+		tx.estimated = true;
+		assertEquals("Sold 1 for 1,520,000 (approx)", FlippingRsPanel.whatHappened(tx));
+	}
+
+	/** When a trade happened, in words a person uses; recovered trades say so. */
+	@Test
+	public void aTradeCardSaysWhenInPlainWords()
+	{
+		final java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+		final Instant now = java.time.LocalDate.of(2026, 9, 2).atTime(20, 0).atZone(zone).toInstant();
+		final GeTransaction tx = new GeTransaction();
+
+		tx.occurredAt = java.time.LocalDate.of(2026, 9, 2).atTime(12, 0, 1).atZone(zone).toInstant().toString();
+		assertEquals("Today 12:00:01", FlippingRsPanel.when(tx, now));
+
+		tx.occurredAt = java.time.LocalDate.of(2026, 9, 1).atTime(18, 32).atZone(zone).toInstant().toString();
+		assertEquals("Yesterday 18:32", FlippingRsPanel.when(tx, now));
+
+		tx.occurredAt = java.time.LocalDate.of(2026, 8, 20).atTime(9, 5).atZone(zone).toInstant().toString();
+		assertEquals("20 Aug 09:05", FlippingRsPanel.when(tx, now));
+
+		tx.occurredAt = null;
+		assertEquals("Recovered, time unknown", FlippingRsPanel.when(tx, now));
+
+		tx.occurredAt = "not a time";
+		assertEquals("Time unknown", FlippingRsPanel.when(tx, now));
+	}
+
 	/**
 	 * The displayed time is the fill's own, not the clock. A queue draining
 	 * after a spell offline would otherwise stamp every recovered trade with

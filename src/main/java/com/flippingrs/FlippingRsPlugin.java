@@ -563,6 +563,21 @@ public class FlippingRsPlugin extends Plugin
 			liveOffer(itemId), quotes.get(itemId));
 	}
 
+	/** The item's sprite, or null if the client will not give one. Client thread. */
+	@Nullable
+	private net.runelite.client.util.AsyncBufferedImage spriteOf(int itemId)
+	{
+		try
+		{
+			return itemManager.getImage(itemId);
+		}
+		catch (RuntimeException e)
+		{
+			log.debug("no sprite for item {}", itemId, e);
+			return null;
+		}
+	}
+
 	/** The player's current offer on an item, in a few words, or null. */
 	@Nullable
 	private String liveOffer(int itemId)
@@ -1371,7 +1386,19 @@ public class FlippingRsPlugin extends Plugin
 		final List<GeTransaction> rows = panel.getRecentTransactions();
 		if (rows != null)
 		{
-			onPanel(p -> p.setActivity(rows));
+			// Sprites come from the item manager, which wants the client thread.
+			clientThread.invoke(() ->
+			{
+				final Map<Integer, net.runelite.client.util.AsyncBufferedImage> images = new java.util.HashMap<>();
+				for (GeTransaction tx : rows)
+				{
+					if (!images.containsKey(tx.itemId))
+					{
+						images.put(tx.itemId, spriteOf(tx.itemId));
+					}
+				}
+				onPanel(p -> p.setActivity(rows, images));
+			});
 		}
 
 		final FlippingRsApi.Analytics week = panel.getWeek();

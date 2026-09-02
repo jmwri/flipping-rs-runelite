@@ -7,6 +7,7 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -68,6 +69,10 @@ public class FlippingRsPanel extends PluginPanel
 {
 	private static final DateTimeFormatter TIME = DateTimeFormatter
 		.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
+	private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter
+		.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
+	private static final DateTimeFormatter DAY = DateTimeFormatter
+		.ofPattern("d MMM HH:mm", Locale.ENGLISH).withZone(ZoneId.systemDefault());
 
 	static final int RECENT_SHOWN = 8;
 
@@ -163,7 +168,8 @@ public class FlippingRsPanel extends PluginPanel
 
 	// Trades
 	private final JPanel recentList = new JPanel();
-	private final List<String> recent = new ArrayList<>();
+	private final List<GeTransaction> recent = new ArrayList<>();
+	private Map<Integer, AsyncBufferedImage> recentImages = new HashMap<>();
 	@Nullable
 	private String recentProblem;
 
@@ -285,6 +291,8 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel activityTab()
 	{
 		final JPanel body = column();
+		body.add(hint("What the plugin is doing on this computer: trades it has recorded this session, "
+			+ "and any still waiting to be sent to your journal."));
 		final JPanel stats = new JPanel(new GridLayout(0, 1, 0, 2));
 		for (JLabel label : new JLabel[]{recorded, queued, lastSync})
 		{
@@ -318,6 +326,7 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel tradesTab()
 	{
 		final JPanel body = column();
+		body.add(hint("Your most recent trades, as your flippingrs.com journal recorded them."));
 		recentList.setLayout(new BoxLayout(recentList, BoxLayout.Y_AXIS));
 		recentList.setAlignmentX(Component.LEFT_ALIGNMENT);
 		recentList.setToolTipText("Your most recent trades, as your journal has them.");
@@ -328,6 +337,7 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel journalTab()
 	{
 		final JPanel body = column();
+		body.add(hint("Your last seven days and what you are holding, worked out by flippingrs.com."));
 		body.add(header("Last 7 days"));
 		body.add(Box.createVerticalStrut(4));
 		journalSummary.setFont(FontManager.getRunescapeSmallFont());
@@ -357,6 +367,8 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel watchlistTab()
 	{
 		final JPanel body = column();
+		body.add(hint("One of your flippingrs.com watchlists, with live prices. Right-click an item in the "
+			+ "Grand Exchange to add it."));
 		watchlists.setAlignmentX(Component.LEFT_ALIGNMENT);
 		watchlists.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		watchlists.setToolTipText("Which of your flippingrs.com watchlists to show. Right-clicking an item adds it here.");
@@ -381,6 +393,7 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel accountTab()
 	{
 		final JPanel body = column();
+		body.add(hint("Your connection to flippingrs.com, and which journal this character's trades go into."));
 		body.add(header("Connection"));
 		body.add(Box.createVerticalStrut(4));
 		status.setFont(FontManager.getRunescapeSmallFont());
@@ -460,6 +473,18 @@ public class FlippingRsPanel extends PluginPanel
 	void onDeletePosition(java.util.function.Consumer<String> action)
 	{
 		onDeletePosition = action;
+	}
+
+	/** A line under a tab's title saying what the tab shows and where it comes from. */
+	private static JPanel hint(String text)
+	{
+		final JPanel holder = column();
+		final JLabel label = small(text);
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR.darker());
+		holder.add(label);
+		holder.add(Box.createVerticalStrut(8));
+		holder.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return holder;
 	}
 
 	private static JLabel header(String text)
@@ -654,6 +679,12 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setActivity(List<GeTransaction> newestFirst)
 	{
+		setActivity(newestFirst, new HashMap<>());
+	}
+
+	/** As above, with the items' sprites by item id, resolved by the plugin. */
+	void setActivity(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
+	{
 		paused = null;
 		recentProblem = null;
 		recent.clear();
@@ -663,8 +694,9 @@ public class FlippingRsPanel extends PluginPanel
 			{
 				break;
 			}
-			recent.add(line(tx));
+			recent.add(tx);
 		}
+		recentImages = new HashMap<>(images);
 		redrawRecent();
 	}
 
@@ -694,13 +726,97 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		else
 		{
-			for (String line : recent)
+			for (GeTransaction tx : recent)
 			{
-				recentList.add(small(line));
+				recentList.add(tradeRow(tx, recentImages.get(tx.itemId)));
+				recentList.add(Box.createVerticalStrut(4));
 			}
 		}
 		recentList.revalidate();
 		recentList.repaint();
+	}
+
+	/**
+	 * One recorded trade, as a card: the sprite beside the item's name, then
+	 * what happened in exact gp with the per-item price, then when.
+	 */
+	private JPanel tradeRow(GeTransaction tx, @Nullable AsyncBufferedImage image)
+	{
+		final JPanel card = card();
+		final String name = tx.itemName == null || tx.itemName.isEmpty() ? "Item " + tx.itemId : tx.itemName;
+
+		final JPanel head = new JPanel(new BorderLayout(6, 0));
+		head.setOpaque(false);
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
+		final JLabel icon = new JLabel();
+		icon.setPreferredSize(new Dimension(36, 32));
+		icon.setHorizontalAlignment(SwingConstants.CENTER);
+		if (image != null)
+		{
+			image.addTo(icon);
+		}
+		head.add(icon, BorderLayout.WEST);
+		final JLabel title = new JLabel(wrap(name));
+		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setForeground(Color.WHITE);
+		head.add(title, BorderLayout.CENTER);
+		card.add(head);
+		card.add(Box.createVerticalStrut(4));
+
+		final boolean buy = "buy".equals(tx.side);
+		final JLabel what = small(whatHappened(tx));
+		what.setForeground(buy ? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.BRAND_ORANGE);
+		card.add(what);
+		card.add(small(when(tx, Instant.now())));
+
+		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+		return card;
+	}
+
+	/** "Bought 4 for 3,800,000 (950,000 each)", with "(approx)" when the total was estimated. */
+	static String whatHappened(GeTransaction tx)
+	{
+		final StringBuilder out = new StringBuilder("buy".equals(tx.side) ? "Bought " : "Sold ");
+		out.append(tx.quantity).append(" for ").append(exact(tx.grossValue));
+		if (tx.quantity > 1)
+		{
+			out.append(" (").append(exact(Math.round((double) tx.grossValue / tx.quantity))).append(" each)");
+		}
+		if (tx.estimated)
+		{
+			out.append(" (approx)");
+		}
+		return out.toString();
+	}
+
+	/** "Today 12:00:01", "Yesterday 18:32", "2 Sep 18:32", or "Recovered, time unknown". */
+	static String when(GeTransaction tx, Instant now)
+	{
+		if (tx.occurredAt == null)
+		{
+			return "Recovered, time unknown";
+		}
+		final Instant at;
+		try
+		{
+			at = Instant.parse(tx.occurredAt);
+		}
+		catch (RuntimeException e)
+		{
+			return "Time unknown";
+		}
+		final ZoneId zone = ZoneId.systemDefault();
+		final LocalDate day = at.atZone(zone).toLocalDate();
+		final LocalDate today = now.atZone(zone).toLocalDate();
+		if (day.equals(today))
+		{
+			return "Today " + TIME.format(at);
+		}
+		if (day.equals(today.minusDays(1)))
+		{
+			return "Yesterday " + SHORT_TIME.format(at);
+		}
+		return DAY.format(at);
 	}
 
 	/** One fill as a line: its own time, or "recovered" when it has none, then side, quantity, item and gp. */
@@ -709,7 +825,7 @@ public class FlippingRsPanel extends PluginPanel
 		return (tx.occurredAt == null ? "recovered" : TIME.format(occurredAt(tx))) + "  "
 			+ ("buy".equals(tx.side) ? "Bought " : "Sold ")
 			+ tx.quantity + " x " + tx.itemName
-			+ " for " + gp(tx.grossValue) + (tx.estimated ? " (approx)" : "");
+			+ " for " + exact(tx.grossValue) + (tx.estimated ? " (approx)" : "");
 	}
 
 	// ---------------------------------------------------------------- journal
@@ -1277,9 +1393,15 @@ public class FlippingRsPanel extends PluginPanel
 	// against the Swing component tree, which breaks whenever the layout is
 	// touched and tests the wrong thing.
 
+	/** The recent trades as one line each, the way the buffer list shows them. */
 	List<String> recentForTest()
 	{
-		return new ArrayList<>(recent);
+		final List<String> lines = new ArrayList<>(recent.size());
+		for (GeTransaction tx : recent)
+		{
+			lines.add(line(tx));
+		}
+		return lines;
 	}
 
 	List<String> pendingForTest()
