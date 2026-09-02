@@ -63,12 +63,25 @@ public class SavedOffer
 	 * same offer again after collecting a finished one gives an identical item,
 	 * price and size, and the only thing that says it is a different purchase is
 	 * that the progress went backwards.
+	 *
+	 * <p>The side check covers the one case progress cannot: a buy placed and
+	 * cancelled untouched, then a sell of the same item at the same price and
+	 * size, with the collect in between never observed. Both sit at zero, and
+	 * without this they would share one offer reference.
 	 */
 	boolean isSameOfferAs(GrandExchangeOffer offer)
 	{
 		return itemId == offer.getItemId()
 			&& price == offer.getPrice()
 			&& totalQuantity == offer.getTotalQuantity()
-			&& offer.getQuantitySold() >= quantitySold;
+			&& offer.getQuantitySold() >= quantitySold
+			&& (state == null || isBuy(state) == isBuy(offer.getState()));
+	}
+
+	static boolean isBuy(GrandExchangeOfferState state)
+	{
+		return state == GrandExchangeOfferState.BUYING
+			|| state == GrandExchangeOfferState.BOUGHT
+			|| state == GrandExchangeOfferState.CANCELLED_BUY;
 	}
 }
