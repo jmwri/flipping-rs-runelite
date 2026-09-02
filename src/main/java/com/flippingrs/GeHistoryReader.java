@@ -1,9 +1,7 @@
 package com.flippingrs;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.IntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -16,13 +14,15 @@ import net.runelite.api.widgets.Widget;
  *
  * <p>The history is the one place the game shows offers that completed while
  * the plugin was not watching, so it is worth reading, but it is a screen and
- * not an API: rows are laid out as an item icon and a few text widgets on the
- * same line, with no ids and no times. This reads them defensively: rows are
- * grouped by their vertical position, the side is whichever of "Bought" or
- * "Sold" appears, the quantity is the icon's stack size, and the gp is the
- * number next to "coins". A row that does not yield all four is skipped and
- * logged rather than sent half-read, because a half-read trade is worse than
- * a missing one.
+ * not an API: each row is an item icon followed by three text widgets --
+ * "Sold:", "Irit seedx 6", "438 coins(444 - 6)= 73 each" -- with no ids and
+ * no times, and the icon does not even share the texts' vertical position.
+ * So rows are taken in sequence, an icon starting each one, and read
+ * defensively: the side is whichever of "Bought" or "Sold" appears, the
+ * quantity is the "x N" at the end of the name, and the gp is the figure
+ * before tax where the breakdown is shown, else the figure next to "coins".
+ * A row that does not yield all four is skipped and logged rather than sent
+ * half-read, because a half-read trade is worse than a missing one.
  *
  * <p>What the server does with the rows is its business: it knows which
  * completed offers it already has, and the plugin does not.
@@ -30,8 +30,14 @@ import net.runelite.api.widgets.Widget;
 @Slf4j
 class GeHistoryReader
 {
+	/** "438 coins(444 - 6)": the net, then the gross and the tax it was cut by. */
+	private static final Pattern BREAKDOWN = Pattern.compile(
+		"([\\d,]+)\\s*coins?\\s*\\(\\s*([\\d,]+)\\s*-\\s*([\\d,]+)\\s*\\)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern COINS = Pattern.compile("([\\d,]+)\\s*(?:coins?|gp)", Pattern.CASE_INSENSITIVE);
-	private static final Pattern QUANTITY = Pattern.compile("(?:x\\s*([\\d,]+))|(?:([\\d,]+)\\s*x)", Pattern.CASE_INSENSITIVE);
+	/** "= 73 each" */
+	private static final Pattern EACH = Pattern.compile("=\\s*([\\d,]+)\\s*each", Pattern.CASE_INSENSITIVE);
+	/** "Irit seedx 6", "Bought x 25" */
+	private static final Pattern QUANTITY = Pattern.compile("x\\s*([\\d,]+)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern NUMBER = Pattern.compile("[\\d,]{2,}");
 
 	/**
@@ -53,21 +59,33 @@ class GeHistoryReader
 			return out;
 		}
 
-		// Group by line. Widgets on one row share a y within a few pixels;
-		// grouping on the exact value is enough because the game lays each
-		// row's widgets out from the same origin.
-		final Map<Integer, List<Widget>> lines = new LinkedHashMap<>();
+		// Group in sequence: the icon comes first and the row's texts follow
+		// it. Grouping by vertical position does not work here, because the
+		// icon sits at a different y from the texts beside it.
+		final List<List<Widget>> lines = new ArrayList<>();
+		List<Widget> current = null;
 		for (Widget child : children)
 		{
 			if (child == null || child.isSelfHidden())
 			{
 				continue;
 			}
-			lines.computeIfAbsent(child.getRelativeY(), y -> new ArrayList<>()).add(child);
+			final boolean icon = child.getItemId() > 0;
+			final boolean text = child.getText() != null && !child.getText().isEmpty();
+			if (!icon && !text)
+			{
+				continue;
+			}
+			if (icon || current == null)
+			{
+				current = new ArrayList<>();
+				lines.add(current);
+			}
+			current.add(child);
 		}
 
 		int position = 0;
-		for (List<Widget> line : lines.values())
+		for (List<Widget> line : lines)
 		{
 			final FlippingRsApi.HistoryRow row = parse(line, names);
 			if (row == null)
@@ -84,9 +102,11 @@ class GeHistoryReader
 	private static FlippingRsApi.HistoryRow parse(List<Widget> line, IntFunction<String> names)
 	{
 		int itemId = 0;
-		long quantity = 0;
+		long iconQuantity = 0;
+		long textQuantity = 0;
 		String side = null;
 		long gross = 0;
+		long each = 0;
 		final List<String> texts = new ArrayList<>();
 
 		for (Widget w : line)
@@ -94,7 +114,7 @@ class GeHistoryReader
 			if (w.getItemId() > 0 && itemId == 0)
 			{
 				itemId = w.getItemId();
-				quantity = Math.max(1, w.getItemQuantity());
+				iconQuantity = w.getItemQuantity();
 			}
 			final String text = w.getText();
 			if (text == null || text.isEmpty())
@@ -112,34 +132,56 @@ class GeHistoryReader
 			{
 				side = "sell";
 			}
+			// The gp that moved is the figure before tax. A sale shows
+			// "438 coins(444 - 6)": 444 changed hands and 6 of it was tax,
+			// which the server works out for itself from the sale price. A
+			// buy has no tax and shows the one figure.
+			final Matcher breakdown = BREAKDOWN.matcher(plain);
+			if (gross == 0 && breakdown.find())
+			{
+				gross = digits(breakdown.group(2));
+			}
 			final Matcher coins = COINS.matcher(plain);
 			if (gross == 0 && coins.find())
 			{
 				gross = digits(coins.group(1));
 			}
-			final Matcher qty = QUANTITY.matcher(plain);
-			if (quantity <= 1 && qty.find())
+			final Matcher per = EACH.matcher(plain);
+			if (each == 0 && per.find())
 			{
-				quantity = digits(qty.group(1) != null ? qty.group(1) : qty.group(2));
+				each = digits(per.group(1));
+			}
+			final Matcher qty = QUANTITY.matcher(plain);
+			if (textQuantity == 0 && qty.find())
+			{
+				textQuantity = digits(qty.group(1));
 			}
 		}
 
 		if (gross == 0)
 		{
-			// No "coins" label. Fall back to the largest number on the line
-			// that is not the quantity; a price is always the biggest figure.
+			// No "coins" label. Fall back to the largest number on the line;
+			// a price is always the biggest figure.
 			for (String text : texts)
 			{
 				final Matcher n = NUMBER.matcher(text);
 				while (n.find())
 				{
-					final long value = digits(n.group());
-					if (value != quantity && value > gross)
-					{
-						gross = value;
-					}
+					gross = Math.max(gross, digits(n.group()));
 				}
 			}
+		}
+
+		// The "x N" on the name is the offer's quantity; the icon's stack is a
+		// fallback, and failing both, the total over the per-item price.
+		long quantity = textQuantity;
+		if (quantity <= 0)
+		{
+			quantity = iconQuantity;
+		}
+		if (quantity <= 0 && each > 0 && gross > 0)
+		{
+			quantity = Math.round((double) gross / each);
 		}
 
 		if (itemId <= 0 || side == null || quantity <= 0 || gross <= 0)

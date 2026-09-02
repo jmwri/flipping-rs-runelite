@@ -52,6 +52,50 @@ public class GeHistoryReaderTest
 		return id == 4151 ? "Abyssal whip" : "Item " + id;
 	}
 
+	/**
+	 * The screen as a live client actually lays it out: the icon on its own
+	 * line, then "Sold:", the name with "x N" glued on, and a price with the
+	 * tax breakdown. The gp sent is the figure before tax.
+	 */
+	@Test
+	public void theRealLayoutIsReadWithTheGrossBeforeTax()
+	{
+		item(10, 5280, 1);
+		text(0, "Sold:");
+		text(0, "Irit seedx 6");
+		text(0, "438 coins(444 - 6)= 73 each");
+		item(50, 5297, 1);
+		text(40, "Bought:");
+		text(40, "Toadflax seedx 8");
+		text(40, "8,760 coins= 1,095 each");
+
+		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+		assertEquals(2, rows.size());
+		assertEquals(5280, rows.get(0).itemId);
+		assertEquals("sell", rows.get(0).side);
+		assertEquals(6L, rows.get(0).quantity);
+		assertEquals("before tax: 444, not the 438 collected", 444L, rows.get(0).grossValue);
+		assertEquals(5297, rows.get(1).itemId);
+		assertEquals("buy", rows.get(1).side);
+		assertEquals(8L, rows.get(1).quantity);
+		assertEquals(8_760L, rows.get(1).grossValue);
+	}
+
+	/** With no "x N" and no stack, the quantity is the total over the per-item price. */
+	@Test
+	public void theQuantityFallsBackToTheTotalOverThePerItemPrice()
+	{
+		item(0, 4151, 0);
+		text(0, "Bought:");
+		text(0, "Abyssal whip");
+		text(0, "4,500,000 coins= 1,500,000 each");
+
+		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+		assertEquals(3L, rows.get(0).quantity);
+	}
+
 	@Test
 	public void rowsAreReadTopToBottomWithAllFourFacts()
 	{
