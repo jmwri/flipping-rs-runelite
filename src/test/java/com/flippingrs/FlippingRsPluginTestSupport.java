@@ -73,6 +73,7 @@ final class FlippingRsPluginTestSupport
 
 		when(config.apiKey()).thenReturn("frs_key");
 		when(config.enabled()).thenReturn(true);
+		when(config.setupOverlay()).thenReturn(true);
 		when(config.syncSeconds()).thenReturn(30);
 
 		// Nothing on the server until a test says otherwise: a reply with
@@ -164,6 +165,14 @@ final class FlippingRsPluginTestSupport
 	{
 		invoke("connect");
 		settleSwing();
+	}
+
+	/** What the offer-screen overlay would draw for an item right now. */
+	FlippingRsApi.Quote watchedQuote(int itemId) throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("watchedQuote", int.class);
+		m.setAccessible(true);
+		return (FlippingRsApi.Quote) m.invoke(plugin, itemId);
 	}
 
 	void addToWatchlist(int itemId) throws Exception

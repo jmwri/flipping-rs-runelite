@@ -64,7 +64,7 @@ Five tabs:
 - **Watchlists** shows one of your flippingrs.com watchlists. Each item shows
   the exact price you can buy and sell at right now, the profit per item after tax,
   the return on what you'd pay, the buy limit and the profit across one limit,
-  and the day's volume, refreshed every minute. If you have an offer on the
+  and the day's volume, refreshed every 30 seconds. If you have an offer on the
   item, that is shown too and updates as it fills. **Open** goes to the item's
   page on the site and **Find flips** opens the site's flip finder.
 - **Account** is whether the plugin is connected, which plan you are on, and

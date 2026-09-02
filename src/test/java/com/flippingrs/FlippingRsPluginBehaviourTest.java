@@ -773,6 +773,45 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("Buy 1,480,000 · Sell 1,520,000", support.panel.watchlistPricesForTest(4151));
 	}
 
+	/**
+	 * The offer-screen overlay reads the live caches, so it follows the
+	 * watchlist: an item removed in the sidebar stops showing on the offer
+	 * screen as soon as the server has confirmed it, and vice versa.
+	 */
+	@Test
+	public void theOfferScreenQuoteFollowsTheWatchlist() throws Exception
+	{
+		final FlippingRsApi.Panel server = serverPanel();
+		server.accounts = Collections.singletonList(account("acct-1", true));
+		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		whip.id = 4151;
+		whip.instantSell = 1_480_000;
+		whip.instantBuy = 1_520_000;
+		server.quotes = Collections.singletonList(whip);
+		support.connect();
+
+		assertNotNull("watched and quoted, so the offer screen shows it", support.watchedQuote(4151));
+		assertNull("not watched, so nothing is drawn", support.watchedQuote(11802));
+
+		when(support.api.updateWatchlist(eq("frs_key"), eq("wl_1"), eq(Collections.emptyList())))
+			.thenAnswer(inv ->
+			{
+				server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan"));
+				server.quotes = Collections.emptyList();
+				return server.watchlists.get(0);
+			});
+		support.removeFromWatchlist(4151);
+
+		assertNull("removed from the list, gone from the offer screen", support.watchedQuote(4151));
+
+		when(support.config.setupOverlay()).thenReturn(false);
+		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		server.quotes = Collections.singletonList(whip);
+		support.connect();
+		assertNull("the setting turns it off even for a watched item", support.watchedQuote(4151));
+	}
+
 	@Test
 	public void connectingShowsTheRememberedWatchlistWithItsItemsNamed() throws Exception
 	{

@@ -26,6 +26,7 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
+import javax.swing.Timer;
 import javax.swing.border.Border;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -67,6 +68,14 @@ public class FlippingRsPanel extends PluginPanel
 		.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
 
 	static final int RECENT_SHOWN = 8;
+
+	/**
+	 * How long a notice stays up. A notice is news -- a recovered trade, an
+	 * item added, a refused batch -- and news that never leaves stops being
+	 * read. Anything that still matters after this is somewhere permanent:
+	 * the log, the set-aside file, the tab's own problem line.
+	 */
+	static final int NOTICE_SECONDS = 20;
 
 	/** What the watchlist shows for one item. Resolved by the plugin, drawn here. */
 	static class WatchedItem
@@ -144,6 +153,8 @@ public class FlippingRsPanel extends PluginPanel
 	private final JLabel queued = new JLabel();
 	private final JLabel lastSync = new JLabel();
 	private final JLabel activityNotice = new JLabel();
+	private final Timer activityNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
+		e -> setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
 	private final JButton syncNow = new JButton("Send now");
 	private final JPanel pendingList = new JPanel();
 	private final List<String> pending = new ArrayList<>();
@@ -166,6 +177,8 @@ public class FlippingRsPanel extends PluginPanel
 	// Watchlists
 	private final JComboBox<FlippingRsApi.Watchlist> watchlists = new JComboBox<>();
 	private final JLabel watchlistNotice = new JLabel();
+	private final Timer watchlistNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
+		e -> setWatchlistNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
 	private final JPanel watchlistItems = new JPanel();
 	private final JButton findFlips = new JButton("Find flips");
 	private List<WatchedItem> watched = new ArrayList<>();
@@ -556,12 +569,21 @@ public class FlippingRsPanel extends PluginPanel
 		lastSync.setText(at == null ? "Last sent: never" : "Last sent: " + TIME.format(at));
 	}
 
-	/** A note about capturing or sending: an adopted offer, a refused batch. Null clears it. */
+	/**
+	 * A note about capturing or sending: an adopted offer, a refused batch.
+	 * Null clears it; otherwise it clears itself after {@link #NOTICE_SECONDS}.
+	 */
 	void setActivityNotice(@Nullable String text, Color colour)
 	{
 		activityNotice.setText(text == null ? "" : wrap(text));
 		activityNotice.setForeground(colour);
 		activityNotice.setVisible(text != null);
+		activityNoticeTimer.setRepeats(false);
+		activityNoticeTimer.stop();
+		if (text != null)
+		{
+			activityNoticeTimer.start();
+		}
 	}
 
 	/** Replaces the list of fills still buffered, newest first. */
@@ -857,12 +879,21 @@ public class FlippingRsPanel extends PluginPanel
 		redrawWatchlist();
 	}
 
-	/** A note about the last edit: added, removed, refused. Null clears it. */
+	/**
+	 * A note about the last edit: added, removed, refused. Null clears it;
+	 * otherwise it clears itself after {@link #NOTICE_SECONDS}.
+	 */
 	void setWatchlistNotice(@Nullable String text, Color colour)
 	{
 		watchlistNotice.setText(text == null ? "" : wrap(text));
 		watchlistNotice.setForeground(colour);
 		watchlistNotice.setVisible(text != null);
+		watchlistNoticeTimer.setRepeats(false);
+		watchlistNoticeTimer.stop();
+		if (text != null)
+		{
+			watchlistNoticeTimer.start();
+		}
 	}
 
 	private void redrawWatchlist()
@@ -1182,6 +1213,33 @@ public class FlippingRsPanel extends PluginPanel
 	String activityNoticeForTest()
 	{
 		return activityNotice.getText();
+	}
+
+	/** Whether a notice is still up, i.e. it has not been cleared or expired. */
+	boolean activityNoticeShowingForTest()
+	{
+		return activityNotice.isVisible() && !activityNotice.getText().isEmpty();
+	}
+
+	boolean watchlistNoticeShowingForTest()
+	{
+		return watchlistNotice.isVisible() && !watchlistNotice.getText().isEmpty();
+	}
+
+	/** Fires the notice timers now, as if the interval had passed. */
+	void expireNoticesForTest()
+	{
+		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer})
+		{
+			if (timer.isRunning())
+			{
+				timer.stop();
+				for (java.awt.event.ActionListener listener : timer.getActionListeners())
+				{
+					listener.actionPerformed(null);
+				}
+			}
+		}
 	}
 
 	String watchlistNoticeForTest()

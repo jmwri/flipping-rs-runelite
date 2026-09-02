@@ -455,6 +455,33 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * A notice is news, and news that never leaves stops being read. Both
+	 * notices clear themselves after a while, and a new one restarts the
+	 * clock.
+	 */
+	@Test
+	public void noticesExpireOnTheirOwn() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setActivityNotice("Recovered 2 trade(s) from your Grand Exchange history.", java.awt.Color.WHITE);
+			panel.setWatchlistNotice("Removed from Plan.", java.awt.Color.WHITE);
+			assertTrue(panel.activityNoticeShowingForTest());
+			assertTrue(panel.watchlistNoticeShowingForTest());
+
+			panel.expireNoticesForTest();
+
+			assertTrue("gone after the interval", !panel.activityNoticeShowingForTest());
+			assertTrue("gone after the interval", !panel.watchlistNoticeShowingForTest());
+
+			panel.setActivityNotice(null, java.awt.Color.WHITE);
+			panel.expireNoticesForTest();
+			assertTrue("clearing by hand does not leave a timer armed", !panel.activityNoticeShowingForTest());
+		});
+	}
+
 	/** Each tab keeps its own message; one tab's news must not overwrite another's. */
 	@Test
 	public void noticesStayOnTheirOwnTab() throws Exception

@@ -219,8 +219,8 @@ public class FlippingRsPlugin extends Plugin
 	private volatile Map<Integer, FlippingRsApi.Quote> quotes = Collections.emptyMap();
 	private ScheduledFuture<?> quoteTask;
 
-	/** How often the watchlist's quotes are refreshed. The site's own pages refresh at this rate for a visitor. */
-	private static final long QUOTE_REFRESH_SECONDS = 60;
+	/** How often the watchlist's quotes are refreshed: the same cadence the site's own data moves at. */
+	private static final long QUOTE_REFRESH_SECONDS = 30;
 	/** The tabs that are re-read on their own; Account is only read by connect. */
 	private enum Tab
 	{
@@ -608,7 +608,10 @@ public class FlippingRsPlugin extends Plugin
 
 	/**
 	 * The site's quote for an item, if it is on the shown watchlist and the
-	 * setting allows the overlay; else null. Client thread, from the overlay.
+	 * setting allows the overlay; else null. Client thread, from the overlay,
+	 * once per frame -- it reads the live watchlist and quote caches, so an
+	 * item added or removed in the sidebar shows or vanishes on the offer
+	 * screen the moment the server has confirmed the edit.
 	 */
 	@Nullable
 	private FlippingRsApi.Quote watchedQuote(int itemId)
