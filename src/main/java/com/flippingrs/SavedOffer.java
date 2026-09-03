@@ -31,9 +31,13 @@ public class SavedOffer
 
 	/**
 	 * True when the offer was already part-filled the first time we saw it, so
-	 * its history happened somewhere we were not watching. Reported in the panel
-	 * so a user who installs the plugin mid-flip understands why the first sale
-	 * out of that slot has no purchase behind it.
+	 * its history happened somewhere we were not watching.
+	 *
+	 * <p>Carried forward for the life of the offer, but nothing reads it: the
+	 * panel's notice about an adopted offer comes from the observation that
+	 * adopted it, once, and not from here. It is kept because it costs a field
+	 * in a config value and says, to anyone reading a baseline out of the
+	 * config by hand, where that slot's history came from.
 	 */
 	boolean adopted;
 

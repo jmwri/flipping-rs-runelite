@@ -262,7 +262,10 @@ One read per tab, each capped and unfilterable by design:
   the connection test.
 - `GET /api/plugin/trades?accountId=`: the last eight recorded fills.
 - `GET /api/plugin/journal?accountId=&tzOffset=`: the week's summary and the
-  open positions, marked to market.
+  open positions, marked to market. This and the one above are re-read after a
+  send and when the sidebar is opened, at most once every fifteen seconds, and
+  only while the sidebar is open: they are a picture of a panel, so there is
+  nothing to read them for while nobody can see it.
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
   for the items of one of them. Re-read every thirty seconds for the quotes,
   while the sidebar or the exchange is open.
