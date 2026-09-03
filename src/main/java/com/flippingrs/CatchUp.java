@@ -143,6 +143,9 @@ final class CatchUp
 		{
 			return;
 		}
+		// Read here, on the thread the slots and the baselines are read on, and
+		// checked again before the send. See sendOffers.
+		final long accountHash = client.getAccountHash();
 		final List<FlippingRsApi.OfferState> open = new ArrayList<>();
 		for (int slot = 0; slot < offers.length; slot++)
 		{
@@ -167,7 +170,7 @@ final class CatchUp
 			open.add(state);
 		}
 		lastOfferSnapshotAt = now;
-		netThread.accept(() -> sendOffers(open));
+		netThread.accept(() -> sendOffers(open, accountHash));
 	}
 
 	/**
@@ -178,8 +181,10 @@ final class CatchUp
 	 * is exactly the shortfall the server would otherwise recover from this
 	 * snapshot, and the server's dedupe deliberately trusts a fill under an
 	 * offer's own reference, so sending both would count it twice.
+	 *
+	 * @param accountHash whose slots these are, as read when they were read
 	 */
-	private void sendOffers(List<FlippingRsApi.OfferState> open)
+	private void sendOffers(List<FlippingRsApi.OfferState> open, long accountHash)
 	{
 		if (!config.enabled())
 		{
@@ -189,6 +194,10 @@ final class CatchUp
 		final String key = config.apiKey().trim();
 		final String accountId = store.chosenAccount();
 		if (key.isEmpty() || accountId == null)
+		{
+			return;
+		}
+		if (!stillTheSameAccount(accountHash))
 		{
 			return;
 		}
@@ -220,6 +229,31 @@ final class CatchUp
 		}
 	}
 
+	/**
+	 * Whether the character whose slots or history were read is still the one
+	 * logged in.
+	 *
+	 * <p>What was read came off the client thread; the journal it would be
+	 * filed under is read here, from whichever RuneScape profile is active
+	 * now, and the two are separated by a drain that can block for a whole
+	 * call timeout. Pairing a mismatched two would hand one character's open
+	 * offers to another character's journal, and the server's answer to a
+	 * shortfall is to take it on as a recovered trade -- so the mistake would
+	 * not merely be ignored, it would write the main's holdings into the alt's
+	 * journal, untimed and unattributable. The sender guards its batches the
+	 * same way and for the same reason. Cheaper to notice and let the next
+	 * snapshot do it.
+	 */
+	private boolean stillTheSameAccount(long accountHash)
+	{
+		if (client.getAccountHash() == accountHash)
+		{
+			return true;
+		}
+		log.debug("the account changed while a catch-up was in flight; dropping it");
+		return false;
+	}
+
 	// -------------------------------------------------------------- history
 
 	/** Client thread. The history list fills a tick or two after the screen opens. */
@@ -237,6 +271,7 @@ final class CatchUp
 			historyReadDueTick = tick + 1;
 			return;
 		}
+		final long accountHash = client.getAccountHash();
 		historyReadDueTick = -1;
 		if (rows.isEmpty())
 		{
@@ -251,15 +286,17 @@ final class CatchUp
 			}
 			return;
 		}
-		netThread.accept(() -> sendHistory(rows));
+		netThread.accept(() -> sendHistory(rows, accountHash));
 	}
 
 	/**
 	 * Net thread. The buffer is sent first, for the same reason as
 	 * {@link #sendOffers}: a completed offer whose fills are still queued
 	 * would be unmatched on the screen and added a second time.
+	 *
+	 * @param accountHash whose history screen this was, as read when it was read
 	 */
-	private void sendHistory(List<FlippingRsApi.HistoryRow> rows)
+	private void sendHistory(List<FlippingRsApi.HistoryRow> rows, long accountHash)
 	{
 		if (!config.enabled())
 		{
@@ -269,6 +306,10 @@ final class CatchUp
 		final String key = config.apiKey().trim();
 		final String accountId = store.chosenAccount();
 		if (key.isEmpty() || accountId == null)
+		{
+			return;
+		}
+		if (!stillTheSameAccount(accountHash))
 		{
 			return;
 		}

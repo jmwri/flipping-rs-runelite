@@ -1318,6 +1318,39 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue(support.panel.activityNoticeForTest().contains("Recovered 1"));
 	}
 
+	/**
+	 * The slots are read on the client thread; the journal they would be filed
+	 * under is read on the net thread, from whichever character is logged in
+	 * then, and a drain that can block for a whole call timeout sits between
+	 * the two. Pairing a mismatched two would hand the main's open offers to
+	 * the alt's journal -- and the server's answer to a shortfall is to take it
+	 * on as a recovered trade, so it would not be ignored, it would be written
+	 * in.
+	 */
+	@Test
+	public void anOfferSnapshotIsNotSentUnderAnotherCharactersJournal() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+
+		// Between the slots being read and the snapshot being sent, the client
+		// is on another character.
+		when(support.client.getAccountHash()).thenReturn(9999L);
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, never()).submitOffers(anyString(), anyString(), anyList());
+	}
+
 	@Test
 	@SuppressWarnings("unchecked")
 	public void openingTheHistorySendsWhatItShows() throws Exception
