@@ -239,6 +239,14 @@ public class FlippingRsPlugin extends Plugin
 	private int loggedInTick = -1;
 
 	/**
+	 * Whether the next LOGGED_IN is the client arriving in the world rather
+	 * than finishing a map load. See {@link #onGameStateChanged}. Starts true
+	 * so that a plugin enabled before login treats the first one as an
+	 * arrival, which is the conservative direction.
+	 */
+	private boolean arrivingInWorld = true;
+
+	/**
 	 * Set while the client or the plugin is stopping, so the final drain
 	 * sends and nothing more: the exit budget is ten seconds for every
 	 * plugin together, and re-reading tabs nobody will see is not worth any
@@ -296,6 +304,7 @@ public class FlippingRsPlugin extends Plugin
 		knownAccounts = null;
 		shuttingDown = false;
 		loggedInTick = -1;
+		arrivingInWorld = true;
 		// The deferred re-read these two coalesce was scheduled on the executor
 		// the last shutDown stopped, so it will never run and never clear the
 		// flag. Left set, it swallows the first coalesced re-read of the new
@@ -736,13 +745,48 @@ public class FlippingRsPlugin extends Plugin
 
 	// ---------------------------------------------------------- client events
 
+	/**
+	 * Notices the client arriving in the world, which is what the login burst
+	 * follows -- and only that.
+	 *
+	 * <p>LOGGED_IN is not the same thing as having just logged in. The client
+	 * drops to LOADING and back to LOGGED_IN every time it loads a map region,
+	 * which is every few minutes of running about. Treating each of those as a
+	 * login meant any fill that happened to land in the second after one was
+	 * stripped of its time and sent as though nobody had watched it, when the
+	 * plugin had watched it happen and knew exactly when. An untimed fill is
+	 * the right answer for progress made while the plugin was away; it is a
+	 * loss for one it saw.
+	 *
+	 * <p>LOADING is the only state that comes between two LOGGED_INs without
+	 * the client having left the world. Anything else -- LOGGING_IN, HOPPING,
+	 * CONNECTION_LOST, the login screen -- means the next LOGGED_IN is an
+	 * arrival, and after an arrival the exchange does replay every slot.
+	 */
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGGED_IN)
+		final GameState state = event.getGameState();
+		if (state == GameState.LOGGED_IN)
 		{
-			loggedInTick = client.getTickCount();
-			catchUp.loggedIn(loggedInTick);
+			if (arrivingInWorld)
+			{
+				arrivingInWorld = false;
+				loggedInTick = client.getTickCount();
+				catchUp.loggedIn(loggedInTick);
+			}
+			return;
+		}
+		if (state != GameState.LOADING)
+		{
+			arrivingInWorld = true;
+			// The exchange cannot still be open on a world the client has left,
+			// and it is only ever closed here: logging out tears the widget
+			// tree down without a WidgetClosed for each of its interfaces, so
+			// the flag stuck on and the quote timer went on making a request
+			// every thirty seconds, forever, against a thirty-a-minute limit,
+			// for an offer screen that had been gone since the last session.
+			watchlists.exchangeOpen(false);
 		}
 	}
 

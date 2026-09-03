@@ -1352,6 +1352,89 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * Walking across a map region is not logging in. The client drops to
+	 * LOADING and back to LOGGED_IN every time it loads one, and treating each
+	 * of those as a login threw away the time of any fill that landed in the
+	 * second afterwards -- a fill the plugin had watched happen and knew the
+	 * time of exactly.
+	 */
+	@Test
+	public void aFillJustAfterAMapLoadKeepsItsTime() throws Exception
+	{
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+
+		// A region boundary: LOGGED_IN -> LOADING -> LOGGED_IN, without ever
+		// leaving the world.
+		when(support.client.getTickCount()).thenReturn(500);
+		support.plugin.onGameStateChanged(state(GameState.LOADING));
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		when(support.client.getTickCount()).thenReturn(501);
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals(1, queued.size());
+		assertEquals("live", queued.get(0).source);
+		assertNotNull("the plugin watched this happen and knows when", queued.get(0).occurredAt);
+	}
+
+	/** A hop does replay the slots, so the burst window still applies after one. */
+	@Test
+	public void aFillJustAfterAHopIsStillSentUntimed() throws Exception
+	{
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+
+		when(support.client.getTickCount()).thenReturn(500);
+		support.plugin.onGameStateChanged(state(GameState.HOPPING));
+		support.plugin.onGameStateChanged(state(GameState.LOADING));
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		when(support.client.getTickCount()).thenReturn(501);
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals(1, queued.size());
+		assertEquals("adopted", queued.get(0).source);
+		assertNull("no time is claimed for what the exchange replayed", queued.get(0).occurredAt);
+	}
+
+	private static GameStateChanged state(GameState state)
+	{
+		final GameStateChanged event = new GameStateChanged();
+		event.setGameState(state);
+		return event;
+	}
+
+	/**
+	 * The quote timer runs while something can show a quote and not otherwise:
+	 * it is a request every thirty seconds against a thirty-a-minute limit the
+	 * sends also draw on. Logging out tears the widget tree down without a
+	 * WidgetClosed for each interface, so the exchange has to be closed on the
+	 * game state or the timer runs for the rest of the client's life for an
+	 * offer screen that went away with the last session.
+	 */
+	@Test
+	public void theQuoteTimerStopsWhenTheClientLeavesTheWorld() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.connect();
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+
+		support.quotesTick();
+		verify(support.api, times(2)).watchlists(anyString(), any());
+
+		support.plugin.onGameStateChanged(state(GameState.LOGIN_SCREEN));
+		support.quotesTick();
+
+		verify(support.api, times(2)).watchlists(anyString(), any());
+	}
+
+	/**
 	 * The buffer goes out before a snapshot. An adopted fill still queued is
 	 * the shortfall the server would recover from the snapshot, and it would
 	 * then count the queued fill too.

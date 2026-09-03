@@ -187,6 +187,13 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
+	/** One firing of the timer that keeps the watchlist quotes current. */
+	void quotesTick() throws Exception
+	{
+		invoke("quotesTick");
+		settleSwing();
+	}
+
 	/** What the offer-screen overlay would draw for an item right now. */
 	FlippingRsApi.Quote watchedQuote(int itemId) throws Exception
 	{
