@@ -1630,6 +1630,11 @@ public class FlippingRsPanel extends PluginPanel
 		return journalProblem;
 	}
 
+	String lastSyncTextForTest()
+	{
+		return lastSync.getText();
+	}
+
 	String statusTextForTest()
 	{
 		return status.getText();

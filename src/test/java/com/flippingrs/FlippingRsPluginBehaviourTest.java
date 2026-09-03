@@ -238,6 +238,25 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * Collecting a finished offer frees the slot, and the baseline has to go
+	 * with it. An offer placed and cancelled untouched, then collected and
+	 * placed again, is identical in every way the tracker compares -- the
+	 * progress is nought both times -- so the baseline having been cleared is
+	 * the only thing left saying the second one is a second purchase.
+	 */
+	@Test
+	public void collectingAnOfferForgetsItsSlot() throws Exception
+	{
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		assertTrue("the offer was baselined", support.profileConfig.containsKey("offer.3"));
+
+		fire(offer(GrandExchangeOfferState.EMPTY, 0, 0));
+
+		assertFalse("a freed slot must be forgotten, or the next offer in it inherits this one",
+			support.profileConfig.containsKey("offer.3"));
+	}
+
+	/**
 	 * The client clears every slot while logging in or hopping. Acting on that
 	 * would throw away the baselines that stop the next login re-reporting
 	 * everything still on the exchange.
@@ -400,6 +419,27 @@ public class FlippingRsPluginBehaviourTest
 		support.drain();
 
 		assertTrue(support.queue().isEmpty());
+	}
+
+	/**
+	 * A send that went through moves "Last sent". Leaving it saying "never" is
+	 * the opposite of what happened, and it is what the panel would go on
+	 * saying for the rest of the session.
+	 */
+	@Test
+	public void aSuccessfulSendMovesTheLastSentTime() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		support.drain();
+		support.settleSwing();
+
+		final String shown = support.panel.lastSyncTextForTest();
+		assertFalse("the panel must not still say never: " + shown, shown.contains("never"));
+		assertTrue(shown, shown.contains("Last sent"));
 	}
 
 	@Test
@@ -1595,10 +1635,30 @@ public class FlippingRsPluginBehaviourTest
 	public void anEmptyHistoryScreenIsLookedAtAgainThenLetGo() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
-		when(support.client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(null);
+		// Every mock is built and stubbed up front; what the screen shows is
+		// swapped through this, so nothing is re-stubbed while the plugin is
+		// running against it.
+		final java.util.concurrent.atomic.AtomicReference<Widget> screen =
+			new java.util.concurrent.atomic.AtomicReference<>();
+		when(support.client.getWidget(InterfaceID.GeHistory.LIST)).thenAnswer(inv -> screen.get());
+
+		final Widget icon = mock(Widget.class);
+		when(icon.getItemId()).thenReturn(4151);
+		when(icon.getItemQuantity()).thenReturn(10);
+		when(icon.getText()).thenReturn("");
+		final Widget side = mock(Widget.class);
+		when(side.getItemId()).thenReturn(-1);
+		when(side.getText()).thenReturn("Bought");
+		final Widget price = mock(Widget.class);
+		when(price.getItemId()).thenReturn(-1);
+		when(price.getText()).thenReturn("15,000,000 coins");
+		final Widget filled = mock(Widget.class);
+		when(filled.getDynamicChildren()).thenReturn(new Widget[]{icon, side, price});
 
 		final WidgetLoaded opened = new WidgetLoaded();
 		opened.setGroupId(InterfaceID.GE_HISTORY);
+
+		// Opened on a screen that never fills: looked at a few times, then let go.
 		support.plugin.onWidgetLoaded(opened);
 		for (int tick = 2; tick < 20; tick++)
 		{
@@ -1608,6 +1668,21 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 
 		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
+
+		// Giving up on one screenful must not give up for the session. Opening
+		// it again starts the looks over, or a history that was slow to fill
+		// once would never be read again for as long as the client ran.
+		screen.set(filled);
+		support.plugin.onWidgetLoaded(opened);
+		for (int tick = 20; tick < 40; tick++)
+		{
+			when(support.client.getTickCount()).thenReturn(tick);
+			support.plugin.onGameTick(new GameTick());
+		}
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api).submitHistory(anyString(), anyString(), anyList());
 	}
 
 	/** A plan cap on reconciliation is shown in the server's words, on Activity. */

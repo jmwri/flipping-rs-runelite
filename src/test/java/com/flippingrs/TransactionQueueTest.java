@@ -327,6 +327,14 @@ public class TransactionQueueTest
 		final List<GeTransaction> held = queue.peek(1000);
 		assertEquals("a3", held.get(0).id);
 		assertEquals("over-3", held.get(299).id);
+
+		// And the counting starts again from there. If it did not, every
+		// eviction after the first compaction would be past the interval and
+		// compact too, which is the rewrite-per-fill this exists to avoid.
+		queue.add(fill("over-4"));
+		assertEquals(301, lines(file));
+		queue.add(fill("over-5"));
+		assertEquals("counting up to the next compaction, not compacting", 302, lines(file));
 	}
 
 	/**
