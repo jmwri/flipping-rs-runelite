@@ -9,6 +9,7 @@ import org.junit.Test;
 import static net.runelite.api.GrandExchangeOfferState.BOUGHT;
 import static net.runelite.api.GrandExchangeOfferState.BUYING;
 import static net.runelite.api.GrandExchangeOfferState.CANCELLED_BUY;
+import static net.runelite.api.GrandExchangeOfferState.CANCELLED_SELL;
 import static net.runelite.api.GrandExchangeOfferState.EMPTY;
 import static net.runelite.api.GrandExchangeOfferState.SELLING;
 import static net.runelite.api.GrandExchangeOfferState.SOLD;
@@ -448,5 +449,103 @@ public class OfferTrackerTest
         observe(previous, new Offer(BOUGHT, WHIP, 1000, 10, 10, 10_000));
 
 		assertEquals("and this one did", 1, nameLookups.get());
+	}
+
+	/**
+	 * Over a randomised life of one slot -- offers placed, partly filled at
+	 * mixed prices, completed or cancelled, collected, and the slot reused --
+	 * every item the exchange filled is reported exactly once, and the gp
+	 * reported adds up to exactly what the client's running total moved by.
+	 *
+	 * <p>This is the class where a mistake is wrong money rather than a wrong
+	 * pixel, and its arithmetic is the kind that can be subtly wrong in a way
+	 * no hand-written case happens to hit: an off-by-one on a boundary, a
+	 * delta taken against the wrong baseline, a slot reuse counted twice.
+	 * Three thousand randomised lives cover ground a person would not think
+	 * to write down.
+	 *
+	 * <p>The offers generated stay inside the rules the exchange guarantees --
+	 * an offer never moves more than max cash, a buy fills at or under the
+	 * ask, a sale at or over it -- so nothing here should ever come back
+	 * flagged as approximate either.
+	 */
+	@Test
+	public void everyItemFilledIsReportedOnceOverTheLifeOfASlot()
+	{
+		final java.util.Random random = new java.util.Random(20260903L);
+		for (int run = 0; run < 3000; run++)
+		{
+			SavedOffer saved = null;
+			long reportedQuantity = 0;
+			long reportedGross = 0;
+			long actuallyFilled = 0;
+			long actuallyMoved = 0;
+
+			final int offers = 1 + random.nextInt(4);
+			for (int o = 0; o < offers; o++)
+			{
+				final boolean buy = random.nextBoolean();
+				final GrandExchangeOfferState running = buy ? BUYING : SELLING;
+				// Two or more, so a fill can never come to nothing; and small
+				// enough that one offer stays well inside max cash, which is
+				// what the exchange itself caps an offer at.
+				final int price = 2 + random.nextInt(1_000_000);
+				final int total = 1 + random.nextInt(Math.max(1, Math.min(1000, Integer.MAX_VALUE / 2 / price)));
+
+				// Placed: nothing filled, so nothing to adopt.
+				OfferTracker.Observation seen = observe(saved, new Offer(running, WHIP, price, total, 0, 0));
+				saved = seen.saved;
+				assertNull("placing an offer is not a trade", seen.transaction);
+
+				int sold = 0;
+				int spent = 0;
+				final int looks = 1 + random.nextInt(8);
+				for (int look = 1; look <= looks; look++)
+				{
+					final int more = random.nextInt(Math.max(1, total - sold + 1));
+					sold += more;
+					spent += buy
+						? (long) more * price - random.nextInt(Math.max(1, more))
+						: (long) more * price + random.nextInt(Math.max(1, more));
+
+					final GrandExchangeOfferState state;
+					if (look < looks)
+					{
+						state = running;
+					}
+					else if (random.nextBoolean())
+					{
+						state = buy ? BOUGHT : SOLD;
+					}
+					else
+					{
+						state = buy ? CANCELLED_BUY : CANCELLED_SELL;
+					}
+
+					seen = observe(saved, new Offer(state, WHIP, price, total, sold, spent));
+					saved = seen.saved;
+					if (seen.transaction != null)
+					{
+						reportedQuantity += seen.transaction.quantity;
+						reportedGross += seen.transaction.grossValue;
+						assertFalse("run " + run + ": an offer inside the exchange's own rules is not a guess",
+							seen.transaction.estimated);
+					}
+				}
+				actuallyFilled += sold;
+				actuallyMoved += spent;
+
+				// Collected, freeing the slot for the next offer.
+				seen = observe(saved, new Offer(EMPTY, 0, 0, 0, 0, 0));
+				saved = seen.saved;
+				assertNull("collecting is not a trade", seen.transaction);
+				assertNull("and it forgets the slot", saved);
+			}
+
+			assertEquals("run " + run + ": every item filled must be reported exactly once",
+				actuallyFilled, reportedQuantity);
+			assertEquals("run " + run + ": the gp reported must be the gp the client tracked",
+				actuallyMoved, reportedGross);
+		}
 	}
 }
