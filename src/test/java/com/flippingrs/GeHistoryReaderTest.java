@@ -249,4 +249,102 @@ public class GeHistoryReaderTest
 		item(10, 4151, 1);
 		assertTrue(GeHistoryReader.showsItems(list()));
 	}
+	/**
+	 * Any screenful of well-formed rows is read back exactly: the same items,
+	 * the same sides, the same counts, the same gp before tax, in the same
+	 * order.
+	 *
+	 * <p>The cases above each pin one decision. This one varies everything the
+	 * screen is allowed to vary -- whether the icon comes before or after its
+	 * texts and how far below them it sits, whether the count is written on the
+	 * name or left to the icon's stack, whether the side has a colon, whether
+	 * the price carries a tax breakdown, whether the numbers are written with
+	 * separators, and whether the name is wrapped in colour tags -- because a
+	 * reader built out of regular expressions goes wrong on combinations rather
+	 * than on cases, and a wrong row here is a wrong trade in a journal.
+	 */
+	@Test
+	public void anyWellFormedScreenIsReadBackExactly()
+	{
+		final java.util.Random random = new java.util.Random(20260903L);
+		for (int run = 0; run < 2000; run++)
+		{
+			children.clear();
+			final List<long[]> expected = new ArrayList<>();
+
+			final int rows = 1 + random.nextInt(8);
+			for (int row = 0; row < rows; row++)
+			{
+				// Rows sit forty apart, and an icon belongs to the line it is
+				// nearest to, so it stays well inside half that.
+				final int y = row * 40;
+				final int itemId = 4151 + random.nextInt(50);
+				final boolean buy = random.nextBoolean();
+				final long each = 1 + random.nextInt(2_000_000);
+				// One of the three ways the screen can say how many: written on
+				// the name, left to the icon's stack, or only implied by the
+				// total over the per-item price. Exactly one per row, so a row
+				// cannot be read right by a path this one was not testing.
+				final int says = random.nextInt(3);
+				final long quantity = says == 1 ? 2 + random.nextInt(999) : 1 + random.nextInt(1000);
+				final long gross = quantity * each;
+				final long tax = buy ? 0 : Math.min(gross - 1, random.nextInt(1000));
+
+				// "Toadflax" ends in an x, which is exactly what the count is
+				// written with, so it belongs in here.
+				final String itemName = ITEM_NAMES[random.nextInt(ITEM_NAMES.length)];
+
+				// Rows sit forty apart, and an icon belongs to the line it is
+				// nearest to, so it stays well inside half that.
+				final Widget icon = item(y + random.nextInt(16), itemId,
+					says == 1 ? (int) quantity : 1);
+				final boolean iconAfterItsTexts = random.nextBoolean();
+				if (iconAfterItsTexts)
+				{
+					children.remove(icon);
+				}
+
+				text(y, (buy ? "Bought" : "Sold") + (random.nextBoolean() ? ":" : ""));
+				final String named = itemName + (says == 0 ? "x " + group(quantity, random) : "");
+				text(y, random.nextBoolean() ? "<col=ff981f>" + named + "</col>" : named);
+				final String perItem = says == 2 ? "= " + group(each, random) + " each" : "";
+				text(y, buy
+					? group(gross, random) + " coins" + perItem
+					: group(gross - tax, random) + " coins(" + group(gross, random) + " - "
+						+ group(tax, random) + ")" + perItem);
+
+				if (iconAfterItsTexts)
+				{
+					children.add(icon);
+				}
+				expected.add(new long[]{itemId, buy ? 1 : 0, quantity, gross});
+			}
+
+			final List<FlippingRsApi.HistoryRow> read =
+				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+			assertEquals("run " + run + ": every row must be read", expected.size(), read.size());
+			for (int i = 0; i < expected.size(); i++)
+			{
+				final long[] want = expected.get(i);
+				final FlippingRsApi.HistoryRow got = read.get(i);
+				final String where = "run " + run + ", row " + i;
+				assertEquals(where + ": item", want[0], got.itemId);
+				assertEquals(where + ": side", want[1] == 1 ? "buy" : "sell", got.side);
+				assertEquals(where + ": quantity", want[2], got.quantity);
+				assertEquals(where + ": gp before tax", want[3], got.grossValue);
+				assertEquals(where + ": position", i, got.position);
+			}
+		}
+	}
+
+	private static final String[] ITEM_NAMES = {
+		"Abyssal whip", "Toadflax seed", "Ruby bolts (e)", "Zulrah's scales", "Xerician fabric",
+	};
+
+	/** A number as the screen might write it, with or without separators. */
+	private static String group(long n, java.util.Random random)
+	{
+		return random.nextBoolean() ? String.format(java.util.Locale.ROOT, "%,d", n) : Long.toString(n);
+	}
 }
