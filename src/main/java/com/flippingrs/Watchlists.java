@@ -293,6 +293,14 @@ final class Watchlists
 	/** The user picked a watchlist in the sidebar. Swing thread. */
 	void chosen(String id)
 	{
+		if (id.equals(store.rememberedWatchlistId()))
+		{
+			// A combo box fires its action on any pick, including re-picking
+			// what was already selected, and that would cost a settings write,
+			// a rebuild of every card and a request against a thirty-a-minute
+			// limit to arrive back where it started.
+			return;
+		}
 		store.rememberWatchlist(id);
 		show();
 		netThread.accept(reread);

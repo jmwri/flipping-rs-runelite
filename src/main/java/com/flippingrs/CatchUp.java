@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GrandExchangeOffer;
@@ -64,6 +65,13 @@ final class CatchUp
 	private int historyReadDueTick = -1;
 	private int historyReadAttempts;
 	private volatile long lastOfferSnapshotAt;
+
+	/**
+	 * The history screen as last handed to the server. Net thread only.
+	 * See {@link #sendHistory}.
+	 */
+	@Nullable
+	private String lastHistorySent;
 
 	CatchUp(Client client, FlippingRsConfig config, ProfileStore store, Supplier<FlippingRsApi> api,
 		PanelUpdates panel, IntFunction<String> itemName, Runnable drain, Runnable afterRecovery,
@@ -313,9 +321,23 @@ final class CatchUp
 		{
 			return;
 		}
+		final String screen = signatureOf(accountHash, accountId, rows);
+		if (screen.equals(lastHistorySent))
+		{
+			// The same screen the server has already been shown. Opening the
+			// history is a click, and there is no gap between one open and the
+			// next: without this, a user flicking between their offers and
+			// their history spent a request on each one, against a limit of
+			// thirty a minute that the sends themselves draw on. The screen
+			// changes when an offer completes and is collected, and that is
+			// exactly when this stops matching.
+			log.debug("the history screen has not changed since it was last sent");
+			return;
+		}
 		try
 		{
 			final FlippingRsApi.Reconciliation result = api.get().submitHistory(key, accountId, rows);
+			lastHistorySent = screen;
 			if (!result.getProblems().isEmpty())
 			{
 				log.warn("flippingrs.com could not read {} history row(s): {}",
@@ -336,5 +358,24 @@ final class CatchUp
 			panel.onPanel(p -> p.setActivityNotice("Couldn't send your Grand Exchange history: " + why,
 				ColorScheme.PROGRESS_ERROR_COLOR));
 		}
+	}
+
+	/**
+	 * The screen as one string, for telling one screenful from another.
+	 *
+	 * <p>The character and the journal are in it as well as the rows, so that
+	 * an alt whose history happens to read the same is still sent. Only set
+	 * after a send that went through, so a failed one is tried again.
+	 */
+	private static String signatureOf(long accountHash, String accountId, List<FlippingRsApi.HistoryRow> rows)
+	{
+		final StringBuilder out = new StringBuilder(rows.size() * 24);
+		out.append(accountHash).append('/').append(accountId);
+		for (FlippingRsApi.HistoryRow row : rows)
+		{
+			out.append('|').append(row.itemId).append(',').append(row.side).append(',')
+				.append(row.quantity).append(',').append(row.grossValue);
+		}
+		return out.toString();
 	}
 }

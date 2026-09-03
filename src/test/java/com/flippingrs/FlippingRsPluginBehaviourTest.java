@@ -1414,6 +1414,28 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(15_000_000L, sent.getValue().get(0).grossValue);
 		assertEquals("Abyssal whip", sent.getValue().get(0).itemName);
 		assertTrue(support.panel.activityNoticeForTest().contains("history"));
+
+		// Opening it again with the same screen on it sends nothing. It is a
+		// click, and there is no gap between one open and the next, so without
+		// this a user flicking between their offers and their history spent a
+		// request on each one against a limit of thirty a minute.
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(10);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, times(1)).submitHistory(anyString(), anyString(), anyList());
+
+		// A completed trade changes the screen, and that is sent.
+		when(price.getText()).thenReturn("16,000,000 coins");
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(20);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, times(2)).submitHistory(anyString(), anyString(), anyList());
 	}
 
 	/** The history list fills a tick or two after the screen opens; an empty first look is retried. */
