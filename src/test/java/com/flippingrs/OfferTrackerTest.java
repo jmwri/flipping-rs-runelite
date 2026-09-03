@@ -486,6 +486,36 @@ public class OfferTrackerTest
 	}
 
 	/**
+	 * Each of the things that identify an offer has to count. A finished
+	 * purchase collected unseen, then a new one in the same slot that is
+	 * already full: the progress cannot tell those apart, so the item, the
+	 * price and the size are all that is left. Drop any one of them and the
+	 * new purchase's fills are filed under the finished one, because fills are
+	 * grouped into a purchase by its reference.
+	 */
+	@Test
+	public void anOfferDifferingInAnyOneThingIsANewPurchase()
+	{
+		final SavedOffer finished = SavedOffer.of(
+			new Offer(BOUGHT, WHIP, 1000, 10, 10, 10_000), "ref-old", false);
+
+		final GrandExchangeOffer[] differing = {
+			new Offer(BOUGHT, 11802, 1000, 10, 10, 10_000),   // another item
+			new Offer(BOUGHT, WHIP, 2000, 10, 10, 20_000),    // another price
+			new Offer(BOUGHT, WHIP, 1000, 20, 20, 20_000),    // another size
+		};
+		for (GrandExchangeOffer offer : differing)
+		{
+			final OfferTracker.Observation seen = observe(finished, offer);
+
+			assertNotNull(seen.saved);
+			assertEquals("this is not the purchase that finished", "ref-1", seen.saved.offerRef);
+			assertNotNull("and what it has already filled is recovered", seen.transaction);
+			assertEquals("ref-1", seen.transaction.offerRef);
+		}
+	}
+
+	/**
 	 * Over a randomised life of one slot -- offers placed, partly filled at
 	 * mixed prices, completed or cancelled, collected, and the slot reused --
 	 * every item the exchange filled is reported exactly once, and the gp

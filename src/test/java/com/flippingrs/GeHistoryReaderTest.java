@@ -228,6 +228,22 @@ public class GeHistoryReaderTest
 		assertEquals(1_500_000L, rows.get(0).grossValue);
 	}
 
+	/**
+	 * Without a side there is no trade, whatever else the row says. The case
+	 * below skips its bad row for want of a price; this one has a price and a
+	 * count and still cannot say whether the gp came in or went out.
+	 */
+	@Test
+	public void aRowThatDoesNotSayBoughtOrSoldIsSkipped()
+	{
+		item(0, 4151, 10);
+		text(0, "Abyssal whipx 10");
+		text(0, "15,000,000 coins");
+
+		assertTrue("a row that cannot say which way the gp went is not a trade",
+			GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
+	}
+
 	/** A row missing a side or a price is skipped, not sent half-read. */
 	@Test
 	public void anUnreadableRowIsSkippedNotGuessed()

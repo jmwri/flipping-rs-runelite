@@ -332,6 +332,27 @@ public class GeMenuTest
 		assertTrue(created.isEmpty());
 	}
 
+	/**
+	 * A row scrolled out of view is still in the widget list, at the height it
+	 * would have been. Offering its item for whatever the mouse is over would
+	 * name something the user cannot see.
+	 */
+	@Test
+	public void aHiddenHistoryRowIsNotTheOneUnderTheMouse()
+	{
+		final Widget list = mock(Widget.class);
+		when(list.getBounds()).thenReturn(new Rectangle(100, 100, 400, 300));
+		final Widget scrolledAway = historyIcon(WHIP, 160);
+		when(scrolledAway.isHidden()).thenReturn(true);
+		when(list.getDynamicChildren()).thenReturn(new Widget[]{scrolledAway});
+		when(client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(list);
+		when(client.getMouseCanvasPosition()).thenReturn(new Point(400, 170));
+
+		geMenu.onMenuOpened(openedOverNothing());
+
+		assertNull("a row nobody can see is not the row under the mouse", entry(GeMenu.VIEW));
+	}
+
 	private static Widget historyIcon(int itemId, int y)
 	{
 		final Widget icon = mock(Widget.class);
