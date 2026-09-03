@@ -125,6 +125,33 @@ public class FlippingRsApiTest
 		assertEquals("a null entry in the quotes array is skipped", 1, lists.getQuotes().size());
 	}
 
+	/**
+	 * The combo boxes render toString through a JLabel, which interprets a
+	 * string beginning with "<html>" as markup. A name like that must reach
+	 * the label in a form Swing will not interpret, and any other name must
+	 * reach it untouched.
+	 */
+	@Test
+	public void namesThatLookLikeMarkupAreShownAsTyped()
+	{
+		final FlippingRsApi.GameAccount account = new FlippingRsApi.GameAccount();
+		account.id = "a1";
+		account.label = "<html><b>Main</b>";
+		assertFalse(javax.swing.plaf.basic.BasicHTML.isHTMLString(account.toString()));
+		assertTrue(account.toString().trim().startsWith("<html>"));
+
+		final FlippingRsApi.Watchlist watchlist = new FlippingRsApi.Watchlist();
+		watchlist.id = "w1";
+		watchlist.name = "<HTML>Plan";
+		assertFalse("the check is case-insensitive, so the guard must be too",
+			javax.swing.plaf.basic.BasicHTML.isHTMLString(watchlist.toString()));
+
+		watchlist.name = "Plan <html> not at the start";
+		assertEquals("only a leading tag is touched", "Plan <html> not at the start", watchlist.toString());
+		assertEquals("Plan", FlippingRsApi.plain("Plan"));
+		assertNull(FlippingRsApi.plain(null));
+	}
+
 	/** Without a journal chosen the account parameter is simply left off. */
 	@Test
 	public void anUnchosenJournalIsLeftOffTheQuery() throws Exception

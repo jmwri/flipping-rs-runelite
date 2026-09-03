@@ -232,6 +232,10 @@ public class FlippingRsPanel extends PluginPanel
 	};
 	private java.util.function.Consumer<String> onDeletePosition = id -> {
 	};
+	private Runnable onShown = () -> {
+	};
+	private Runnable onHidden = () -> {
+	};
 
 	/** What the plugin does when the user closes a position from the sidebar. */
 	interface PositionClose
@@ -473,6 +477,32 @@ public class FlippingRsPanel extends PluginPanel
 	void onDeletePosition(java.util.function.Consumer<String> action)
 	{
 		onDeletePosition = action;
+	}
+
+	/** Fires when the sidebar opens on this panel. */
+	void onShown(Runnable action)
+	{
+		onShown = action;
+	}
+
+	/** Fires when the sidebar closes or moves off this panel. */
+	void onHidden(Runnable action)
+	{
+		onHidden = action;
+	}
+
+	/** RuneLite calls this when the panel becomes the sidebar's content. */
+	@Override
+	public void onActivate()
+	{
+		onShown.run();
+	}
+
+	/** And this when it stops being. */
+	@Override
+	public void onDeactivate()
+	{
+		onHidden.run();
 	}
 
 	/** A line under a tab's title saying what the tab shows and where it comes from. */
@@ -1681,19 +1711,27 @@ public class FlippingRsPanel extends PluginPanel
 		return String.format(Locale.ROOT, "%.1f%%", fraction * 100d);
 	}
 
-	/** "5h", "2d 3h", "40m". */
+	/**
+	 * "5h", "2d 3h", "40m".
+	 *
+	 * <p>Rounded once, up front, and the days and hours taken from that one
+	 * figure. Rounding the remainder separately produced "2d 24h" for anything
+	 * that landed in the last half hour of a day -- a duration that reads as
+	 * nonsense next to the "3d 0h" it is.
+	 */
 	static String hours(double hours)
 	{
-		if (hours < 1)
+		final long minutes = Math.round(hours * 60);
+		if (minutes < 60)
 		{
-			return Math.round(hours * 60) + "m";
+			return minutes + "m";
 		}
-		if (hours < 48)
+		final long total = Math.round(hours);
+		if (total < 48)
 		{
-			return Math.round(hours) + "h";
+			return total + "h";
 		}
-		final long days = (long) (hours / 24);
-		return days + "d " + Math.round(hours - days * 24) + "h";
+		return (total / 24) + "d " + (total % 24) + "h";
 	}
 
 	/**

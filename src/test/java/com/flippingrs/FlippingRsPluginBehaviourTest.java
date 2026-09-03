@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.ArrayList;
 import java.util.List;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
@@ -408,6 +409,101 @@ public class FlippingRsPluginBehaviourTest
 		final File dropped = new File(queueDir, "dropped-1234.json");
 		assertTrue("the refused fill must still exist somewhere", dropped.isFile());
 		assertTrue(new String(Files.readAllBytes(dropped.toPath()), StandardCharsets.UTF_8).contains(id));
+	}
+
+	private static GeTransaction fill(String id)
+	{
+		final GeTransaction tx = new GeTransaction();
+		tx.id = id;
+		tx.side = "buy";
+		tx.quantity = 1;
+		tx.grossValue = 1000;
+		tx.itemName = "Abyssal whip";
+		tx.occurredAt = "2026-08-31T12:00:00Z";
+		return tx;
+	}
+
+	private static FlippingRsApi.IngestResult accepted(int rows)
+	{
+		final FlippingRsApi.IngestResult result = new FlippingRsApi.IngestResult();
+		result.accepted = rows;
+		return result;
+	}
+
+	/**
+	 * A 4xx names the batch, not the row. Setting aside the whole batch for
+	 * one bad row lost up to five hundred good trades, so a refused batch is
+	 * split until the bad row is on its own: the good ones go through and
+	 * only the bad one is set aside.
+	 */
+	@Test
+	public void oneBadRowInABatchIsFoundAndTheRestGoThrough() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		for (String id : new String[]{"a", "b", "bad", "c", "d"})
+		{
+			support.queue().add(fill(id));
+		}
+		final List<Integer> batchSizes = new ArrayList<>();
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenAnswer(inv ->
+			{
+				final List<GeTransaction> batch = inv.getArgument(2);
+				batchSizes.add(batch.size());
+				for (GeTransaction tx : batch)
+				{
+					if ("bad".equals(tx.id))
+					{
+						throw new FlippingRsApi.PermanentException("transactions[" + batch.indexOf(tx) + "].quantity must be positive");
+					}
+				}
+				return accepted(batch.size());
+			});
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue("every good row was confirmed", support.queue().isEmpty());
+		final String setAside = new String(
+			Files.readAllBytes(new File(queueDir, "dropped-1234.json").toPath()), StandardCharsets.UTF_8);
+		assertTrue(setAside.contains("\"bad\""));
+		for (String good : new String[]{"\"a\"", "\"b\"", "\"c\"", "\"d\""})
+		{
+			assertFalse("a good row must not be set aside: " + good, setAside.contains(good));
+		}
+		assertEquals("the whole batch was tried first", 5, (int) batchSizes.get(0));
+		assertTrue("the search is a handful of requests, got " + batchSizes, batchSizes.size() <= 6);
+		assertTrue(support.panel.activityNoticeForTest().contains("1 trade(s)"));
+		assertTrue("the good rows count as a send", support.panel.statusTextForTest().contains("Connected"));
+	}
+
+	/**
+	 * When both halves of a refused batch are refused too, the fault is the
+	 * batch as a whole and no split will help. Stop there, at three requests,
+	 * rather than probing every row.
+	 */
+	@Test
+	public void aBatchRefusedInBothHalvesIsSetAsideWithoutProbingEveryRow() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		for (String id : new String[]{"a", "b", "c", "d", "e", "f", "g", "h"})
+		{
+			support.queue().add(fill(id));
+		}
+		final int[] calls = {0};
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenAnswer(inv ->
+			{
+				calls[0]++;
+				throw new FlippingRsApi.PermanentException("accountId is not one of yours");
+			});
+
+		support.drain();
+		support.settleSwing();
+
+		assertEquals("the batch, then each half, and no further", 3, calls[0]);
+		assertTrue("everything was set aside", support.queue().isEmpty());
+		assertTrue(support.panel.activityNoticeForTest().contains("8 trade(s)"));
 	}
 
 	/**
@@ -861,6 +957,36 @@ public class FlippingRsPluginBehaviourTest
 		server.quotes = Collections.singletonList(whip);
 		support.connect();
 		assertNull("the setting turns it off even for a watched item", support.watchedQuote(4151));
+	}
+
+	/**
+	 * Picking a different watchlist re-points the offer screen at it. The
+	 * overlay asks this on every frame it draws, so the answer is held ready
+	 * rather than resolved each time -- and something held has to be put down
+	 * again when the choice moves.
+	 */
+	@Test
+	public void theOfferScreenQuoteFollowsAChangeOfWatchlist() throws Exception
+	{
+		final FlippingRsApi.Panel server = serverPanel();
+		server.accounts = Collections.singletonList(account("acct-1", true));
+		server.watchlists = Arrays.asList(
+			watchlist("wl_1", "Plan", 4151),
+			watchlist("wl_2", "Bonds", 13190));
+		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		whip.id = 4151;
+		final FlippingRsApi.Quote bond = new FlippingRsApi.Quote();
+		bond.id = 13190;
+		server.quotes = Arrays.asList(whip, bond);
+		support.connect();
+
+		assertNotNull("the first list is the shown one", support.watchedQuote(4151));
+		assertNull("the other list's item is not on it", support.watchedQuote(13190));
+
+		support.chooseWatchlist("wl_2");
+
+		assertNotNull("the newly chosen list's item is now quoted", support.watchedQuote(13190));
+		assertNull("and the old list's item is not", support.watchedQuote(4151));
 	}
 
 	@Test

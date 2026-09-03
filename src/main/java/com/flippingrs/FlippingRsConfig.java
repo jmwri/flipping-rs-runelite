@@ -40,7 +40,9 @@ public interface FlippingRsConfig extends Config
 			+ "flippingrs.com is a third-party service not run or checked by the RuneLite team, and like any "
 			+ "website it can see your IP address. Your character name is never sent. Switch this off and the "
 			+ "plugin stops recording and stops talking to flippingrs.com altogether. Trades made while it is "
-			+ "off are not recorded; anything already waiting is sent when you switch it back on.",
+			+ "off are not recorded as they happen; anything already waiting is sent when you switch it back on. "
+			+ "Once it is back on, the catch-up from your open offers and your Grand Exchange history can still "
+			+ "add an offer that completed while it was off, saved without a time.",
 		position = 2,
 		section = connectionSection
 	)

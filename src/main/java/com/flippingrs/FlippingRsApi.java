@@ -141,8 +141,21 @@ public class FlippingRsApi
 		public String toString()
 		{
 			// This is what the combo box renders.
-			return getName().isEmpty() ? id : getName();
+			return plain(getName().isEmpty() ? id : getName());
 		}
+	}
+
+	/**
+	 * A name for a Swing label, shown as typed. A JLabel treats any string
+	 * that begins with {@code <html>} as markup, so a watchlist or journal
+	 * named that way would render as a formatted fragment rather than its
+	 * name. A leading space defeats the check and is invisible in a combo
+	 * box. Only the owner can name their own lists, so this is a display
+	 * oddity rather than an attack, but it is a cheap one to close.
+	 */
+	static String plain(String text)
+	{
+		return text != null && text.regionMatches(true, 0, "<html", 0, 5) ? " " + text : text;
 	}
 
 	/**
@@ -405,7 +418,7 @@ public class FlippingRsApi
 		public String toString()
 		{
 			// This is what the combo box renders.
-			return label == null || label.isEmpty() ? id : label;
+			return plain(label == null || label.isEmpty() ? id : label);
 		}
 	}
 
@@ -906,6 +919,17 @@ public class FlippingRsApi
 	}
 
 	// ---------------------------------------------------------------- plumbing
+
+	/**
+	 * Something to show for an exception. Not every IOException carries a
+	 * message, and passing null on to the panel made a failed send read as
+	 * "Last sent: never", which is the opposite of what happened.
+	 */
+	static String describe(Throwable e)
+	{
+		final String message = e.getMessage();
+		return message == null || message.isEmpty() ? e.getClass().getSimpleName() : message;
+	}
 
 	/**
 	 * A list as JSON. Copied into an ArrayList first: the Gson RuneLite ships

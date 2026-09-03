@@ -6,6 +6,7 @@ import net.runelite.api.widgets.Widget;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -210,5 +211,23 @@ public class GeHistoryReaderTest
 	{
 		assertTrue(GeHistoryReader.read(null, GeHistoryReaderTest::name).isEmpty());
 		assertTrue(GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
+	}
+
+	/**
+	 * The plugin warns when a screen with items on it yields no rows, since
+	 * that means the layout has changed under the reader. An empty history
+	 * must not trip that, or every new player would see the warning.
+	 */
+	@Test
+	public void aScreenWithIconsShowsItemsAndAnEmptyOneDoesNot()
+	{
+		assertFalse(GeHistoryReader.showsItems(null));
+		assertFalse("no children at all", GeHistoryReader.showsItems(list()));
+
+		text(0, "You have no Grand Exchange history.");
+		assertFalse("text but no item icon", GeHistoryReader.showsItems(list()));
+
+		item(10, 4151, 1);
+		assertTrue(GeHistoryReader.showsItems(list()));
 	}
 }

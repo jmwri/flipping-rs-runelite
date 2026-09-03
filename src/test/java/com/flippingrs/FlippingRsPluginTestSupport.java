@@ -138,6 +138,10 @@ final class FlippingRsPluginTestSupport
 
 		// Point the queue at a temporary directory instead of ~/.runelite.
 		set("queueDir", queueDir);
+
+		// What startUp does after the fields are in place: build the
+		// collaborators that hold them. startUp itself is still not called.
+		plugin.wire();
 	}
 
 	private void set(String name, Object value) throws Exception
@@ -201,6 +205,16 @@ final class FlippingRsPluginTestSupport
 	void removeFromWatchlist(int itemId) throws Exception
 	{
 		invoke("removeFromWatchlist", itemId);
+		settleSwing();
+	}
+
+	/** The user picking a different watchlist in the sidebar. */
+	void chooseWatchlist(String id) throws Exception
+	{
+		final Field f = FlippingRsPlugin.class.getDeclaredField("watchlists");
+		f.setAccessible(true);
+		((Watchlists) f.get(plugin)).chosen(id);
+		settleNet();
 		settleSwing();
 	}
 

@@ -43,6 +43,10 @@ class GeHistoryReader
 	private static final Pattern QUANTITY = Pattern.compile("x\\s*([\\d,]+)", Pattern.CASE_INSENSITIVE);
 	private static final Pattern NUMBER = Pattern.compile("[\\d,]{2,}");
 
+	/** Jagex's colour and formatting tags, which are not part of the text. */
+	private static final Pattern TAG = Pattern.compile("<[^>]*>");
+	private static final Pattern NOT_DIGIT = Pattern.compile("[^0-9]");
+
 	/**
 	 * How far, in pixels, an icon may sit from the line it belongs to. Rows
 	 * are a good deal taller than this, so the nearest line is the right one
@@ -115,6 +119,27 @@ class GeHistoryReader
 		return out;
 	}
 
+	/**
+	 * Whether the list has any item icons on it at all: the difference
+	 * between an empty history and one the reader could not make sense of.
+	 */
+	static boolean showsItems(@Nullable Widget list)
+	{
+		final Widget[] children = list == null ? null : list.getDynamicChildren();
+		if (children == null)
+		{
+			return false;
+		}
+		for (Widget child : children)
+		{
+			if (child != null && child.getItemId() > 0 && !child.isSelfHidden())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	@Nullable
 	private static Integer nearestLine(TreeMap<Integer, List<Widget>> lines, int y)
 	{
@@ -165,25 +190,25 @@ class GeHistoryReader
 			// "438 coins(444 - 6)": 444 changed hands and 6 of it was tax,
 			// which the server works out for itself from the sale price. A
 			// buy has no tax and shows the one figure.
-			final Matcher breakdown = BREAKDOWN.matcher(plain);
-			if (gross == 0 && breakdown.find())
+			//
+			// Each matcher is built only if its figure is still wanted. Four
+			// per text widget, built and thrown away whether or not they were
+			// consulted, is work the client thread does not need.
+			if (gross == 0)
 			{
-				gross = digits(breakdown.group(2));
+				gross = firstNumber(BREAKDOWN, plain, 2);
 			}
-			final Matcher coins = COINS.matcher(plain);
-			if (gross == 0 && coins.find())
+			if (gross == 0)
 			{
-				gross = digits(coins.group(1));
+				gross = firstNumber(COINS, plain, 1);
 			}
-			final Matcher per = EACH.matcher(plain);
-			if (each == 0 && per.find())
+			if (each == 0)
 			{
-				each = digits(per.group(1));
+				each = firstNumber(EACH, plain, 1);
 			}
-			final Matcher qty = QUANTITY.matcher(plain);
-			if (textQuantity == 0 && qty.find())
+			if (textQuantity == 0)
 			{
-				textQuantity = digits(qty.group(1));
+				textQuantity = firstNumber(QUANTITY, plain, 1);
 			}
 		}
 
@@ -236,9 +261,16 @@ class GeHistoryReader
 		return row;
 	}
 
+	/** The given group of the first match, as a number, or 0 if it does not match. */
+	private static long firstNumber(Pattern pattern, String text, int group)
+	{
+		final Matcher matcher = pattern.matcher(text);
+		return matcher.find() ? digits(matcher.group(group)) : 0;
+	}
+
 	private static long digits(String s)
 	{
-		final String clean = s.replaceAll("[^0-9]", "");
+		final String clean = NOT_DIGIT.matcher(s).replaceAll("");
 		if (clean.isEmpty())
 		{
 			return 0;
@@ -255,6 +287,6 @@ class GeHistoryReader
 
 	private static String stripTags(@Nullable String text)
 	{
-		return text == null ? "" : text.replaceAll("<[^>]*>", "").trim();
+		return text == null ? "" : TAG.matcher(text).replaceAll("").trim();
 	}
 }

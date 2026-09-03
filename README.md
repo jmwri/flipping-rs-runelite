@@ -128,8 +128,12 @@ your bank, where you are, or your chat. Opening an item page is an ordinary
 visit in your browser.
 
 Nothing is sent until you enter an API key, and nothing is sent while
-**Record trades** is off. Trades made while it is off are not recorded;
-anything already waiting is sent when you switch it back on.
+**Record trades** is off. Trades made while it is off are not recorded as
+they happen; anything already waiting is sent when you switch it back on.
+Switching it off is not a way to keep a trade out of your journal for good:
+once it is back on, the catch-up described above can still add an offer that
+completed while it was off, saved without a time, from your open offers or
+your Grand Exchange history.
 
 Trades on Deadman, Leagues, beta, tournament, speedrunning, PvP Arena and
 Fresh Start worlds are not recorded, since their prices and items have nothing
@@ -260,7 +264,8 @@ One read per tab, each capped and unfilterable by design:
 - `GET /api/plugin/journal?accountId=&tzOffset=`: the week's summary and the
   open positions, marked to market.
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
-  for the items of one of them. Re-read once a minute for the quotes.
+  for the items of one of them. Re-read every thirty seconds for the quotes,
+  while the sidebar or the exchange is open.
 
 `POST /api/plugin/watchlists` and `PATCH /api/plugin/watchlists/{id}` create a
 watchlist and replace its items. The plugin never deletes one.

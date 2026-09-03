@@ -454,6 +454,22 @@ public class FlippingRsPanelTest
 		assertEquals("2d 3h", FlippingRsPanel.hours(51));
 	}
 
+	/**
+	 * Days and hours have to come from one rounding. Rounding the leftover
+	 * hours separately reported "2d 24h" for anything held into the last half
+	 * hour of a day, which is not a duration.
+	 */
+	@Test
+	public void aDurationNeverRollsOverIntoTwentyFourHours()
+	{
+		assertEquals("3d 0h", FlippingRsPanel.hours(71.9));
+		assertEquals("2d 0h", FlippingRsPanel.hours(48.0));
+		assertEquals("2d 2h", FlippingRsPanel.hours(50.4));
+		// And the minutes below an hour do the same at their own boundary.
+		assertEquals("1h", FlippingRsPanel.hours(0.999));
+		assertEquals("59m", FlippingRsPanel.hours(0.99));
+	}
+
 	// ------------------------------------------------------------------ tabs
 
 	@Test
@@ -678,6 +694,31 @@ public class FlippingRsPanelTest
 			assertTrue("expected the fill's own time (" + expected + "), got: " + line,
 				line.startsWith(expected));
 			assertTrue(line.contains("Bond"));
+		});
+	}
+
+	// ------------------------------------------------------------ visibility
+
+	/**
+	 * The quote refresh only runs while something is showing the quotes, and
+	 * the sidebar tells the plugin when it is. RuneLite drives these through
+	 * the Activatable hooks the panel inherits.
+	 */
+	@Test
+	public void theSidebarReportsWhenItIsShownAndHidden() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final List<String> seen = new ArrayList<>();
+			panel.onShown(() -> seen.add("shown"));
+			panel.onHidden(() -> seen.add("hidden"));
+
+			panel.onActivate();
+			panel.onDeactivate();
+			panel.onActivate();
+
+			assertEquals(Arrays.asList("shown", "hidden", "shown"), seen);
 		});
 	}
 }

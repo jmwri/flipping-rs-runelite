@@ -62,7 +62,17 @@ class GeQuoteOverlay extends OverlayPanel
 	@Nullable
 	FlippingRsApi.Quote visibleQuote()
 	{
-		final Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
+		return quoteOn(client.getWidget(InterfaceID.GeOffers.SETUP));
+	}
+
+	/**
+	 * The same question, for a setup screen the caller already has. render
+	 * needs the widget anyway, to place the panel against its corner, and
+	 * looking it up a second time is a widget-tree walk on the frame path.
+	 */
+	@Nullable
+	private FlippingRsApi.Quote quoteOn(@Nullable Widget setup)
+	{
 		if (setup == null || setup.isHidden())
 		{
 			return null;
@@ -74,13 +84,13 @@ class GeQuoteOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		final FlippingRsApi.Quote quote = visibleQuote();
+		final Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
+		final FlippingRsApi.Quote quote = quoteOn(setup);
 		if (quote == null)
 		{
 			return null;
 		}
-		final Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-		final Rectangle bounds = setup == null ? null : setup.getBounds();
+		final Rectangle bounds = setup.getBounds();
 		if (bounds == null)
 		{
 			return null;
