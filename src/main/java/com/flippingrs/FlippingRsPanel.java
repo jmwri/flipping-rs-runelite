@@ -1661,6 +1661,12 @@ public class FlippingRsPanel extends PluginPanel
 		return watchlistNotice.isVisible() && !watchlistNotice.getText().isEmpty();
 	}
 
+	/** Whether the notice is still counting down to clearing itself. */
+	boolean activityNoticeTimerArmedForTest()
+	{
+		return activityNoticeTimer.isRunning();
+	}
+
 	/** Fires the notice timers now, as if the interval had passed. */
 	void expireNoticesForTest()
 	{

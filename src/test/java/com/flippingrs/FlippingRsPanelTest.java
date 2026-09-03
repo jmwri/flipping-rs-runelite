@@ -78,6 +78,37 @@ public class FlippingRsPanelTest
 	}
 
 	/**
+	 * A journal that has loaded must stop saying it has not. The summary is
+	 * written as the reply arrives and then written over by whichever of the
+	 * three "nothing to show" lines applies, so the flag saying one has
+	 * arrived is what decides which of the two the user reads.
+	 */
+	@Test
+	public void aLoadedJournalStopsSayingNotLoadedYet() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			assertTrue(panel.journalSummaryForTest(), panel.journalSummaryForTest().contains("Not loaded yet"));
+
+			final FlippingRsApi.Analytics week = new FlippingRsApi.Analytics();
+			week.completedFlips = 12;
+			week.realisedProfit = 1_200_000;
+			week.winRate = 0.75;
+			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+			open.positions = new ArrayList<>();
+			open.summary = new FlippingRsApi.Positions.Summary();
+
+			panel.setJournal(week, open);
+
+			final String shown = panel.journalSummaryForTest();
+			assertTrue("a journal that has arrived must not still say it has not: " + shown,
+				!shown.contains("Not loaded"));
+			assertTrue(shown, shown.contains("12 flips"));
+		});
+	}
+
+	/**
 	 * The exact points where the shortening changes unit. A formatter goes
 	 * wrong on its own boundaries or nowhere, and every one of these is a
 	 * figure a person reads as money.
@@ -620,7 +651,11 @@ public class FlippingRsPanelTest
 			assertTrue("gone after the interval", !panel.activityNoticeShowingForTest());
 			assertTrue("gone after the interval", !panel.watchlistNoticeShowingForTest());
 
+			panel.setActivityNotice("Recovered 2 trade(s) from your Grand Exchange history.", java.awt.Color.WHITE);
+			assertTrue("a notice that is up is counting down", panel.activityNoticeTimerArmedForTest());
 			panel.setActivityNotice(null, java.awt.Color.WHITE);
+			assertTrue("clearing by hand must stop the countdown, not leave it to fire later",
+				!panel.activityNoticeTimerArmedForTest());
 			panel.expireNoticesForTest();
 			assertTrue("clearing by hand does not leave a timer armed", !panel.activityNoticeShowingForTest());
 		});
