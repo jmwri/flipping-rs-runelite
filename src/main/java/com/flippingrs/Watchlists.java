@@ -223,7 +223,11 @@ final class Watchlists
 	 */
 	void offerChanged(int itemId)
 	{
-		if (!isWatched(itemId))
+		// Nothing to bring up to date while the sidebar is shut, and a fill on
+		// a watched item is otherwise a scan of the eight exchange slots here
+		// and, when the line appears or disappears, a rebuild of every card on
+		// the Swing thread. Opening the sidebar reads the live offers afresh.
+		if (!sidebarShown || !isWatched(itemId))
 		{
 			return;
 		}

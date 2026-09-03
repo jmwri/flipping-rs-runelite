@@ -1062,6 +1062,30 @@ public class FlippingRsPluginBehaviourTest
 		assertNull("and the old list's item is not", support.watchedQuote(4151));
 	}
 
+	/**
+	 * A fill on a watched item brings that card's live-offer line up to date.
+	 * The line is the one thing on a card a fill changes, and it is skipped
+	 * altogether while the sidebar is shut, so this is what says the skip has
+	 * not swallowed the case it was meant to leave alone.
+	 */
+	@Test
+	public void aFillOnAWatchedItemUpdatesItsCardsOfferLine() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+		assertNull("no offer on it yet", support.panel.watchlistOfferForTest(4151));
+
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		support.settleSwing();
+
+		assertEquals("Buying 4/10 at 1.00M", support.panel.watchlistOfferForTest(4151));
+	}
+
 	@Test
 	public void connectingShowsTheRememberedWatchlistWithItsItemsNamed() throws Exception
 	{

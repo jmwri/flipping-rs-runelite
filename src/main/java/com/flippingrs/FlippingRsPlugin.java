@@ -1337,9 +1337,16 @@ public class FlippingRsPlugin extends Plugin
 
 		watchlists.accept(reply.getWatchlists(), reply.getQuotes());
 
-		final List<GeTransaction> rows = reply.getRecentTransactions();
-		if (rows != null)
+		final List<GeTransaction> all = reply.getRecentTransactions();
+		if (all != null)
 		{
+			// Only the rows that will actually be drawn. The tab shows the
+			// newest few and drops the rest, and resolving a sprite for a row
+			// nobody will see is item-manager work on the game thread for
+			// nothing -- however many the server decides to send back.
+			final List<GeTransaction> rows = all.size() > FlippingRsPanel.RECENT_SHOWN
+				? all.subList(0, FlippingRsPanel.RECENT_SHOWN)
+				: all;
 			// Sprites come from the item manager, which wants the client thread.
 			clientThread.invoke(() ->
 			{
