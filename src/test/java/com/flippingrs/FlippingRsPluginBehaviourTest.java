@@ -1674,12 +1674,20 @@ public class FlippingRsPluginBehaviourTest
 
 		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
 
-		// Giving up on one screenful must not give up for the session. Opening
-		// it again starts the looks over, or a history that was slow to fill
-		// once would never be read for as long as the client ran.
-		screen.set(filled);
+		// Giving up on one screenful must not give up for the session. Opened
+		// again, and slow to fill again -- which is the case that needs the
+		// looks to start over, because a screen that is ready on the first
+		// look never asks how many looks are left.
 		support.plugin.onWidgetLoaded(opened);
-		for (int t = 20; t < 40; t++)
+		for (int t = 20; t <= 21; t++)
+		{
+			tick.set(t);
+			support.plugin.onGameTick(new GameTick());
+		}
+		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
+
+		screen.set(filled);
+		for (int t = 22; t < 30; t++)
 		{
 			tick.set(t);
 			support.plugin.onGameTick(new GameTick());
