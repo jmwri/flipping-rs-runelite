@@ -852,10 +852,36 @@ public class FlippingRsPanel extends PluginPanel
 	/** One fill as a line: its own time, or "recovered" when it has none, then side, quantity, item and gp. */
 	private static String line(GeTransaction tx)
 	{
-		return (tx.occurredAt == null ? "recovered" : TIME.format(occurredAt(tx))) + "  "
+		return at(tx) + "  "
 			+ ("buy".equals(tx.side) ? "Bought " : "Sold ")
 			+ tx.quantity + " x " + nameOf(tx)
 			+ " for " + exact(tx.grossValue) + (tx.estimated ? " (approx)" : "");
+	}
+
+	/**
+	 * When a fill happened, for the buffer list: the time it carries,
+	 * "recovered" when it never had one, and "unknown" when it has one that
+	 * cannot be read.
+	 *
+	 * <p>That last case used to read as the current time. A fill whose stamp
+	 * is unreadable -- a row restored from a damaged queue file -- is not a
+	 * fill that happened just now, and the whole of this plugin's dealings
+	 * with time rest on never claiming one it does not have.
+	 */
+	private static String at(GeTransaction tx)
+	{
+		if (tx.occurredAt == null)
+		{
+			return "recovered";
+		}
+		try
+		{
+			return TIME.format(Instant.parse(tx.occurredAt));
+		}
+		catch (RuntimeException e)
+		{
+			return "unknown";
+		}
 	}
 
 	/**
@@ -1643,19 +1669,6 @@ public class FlippingRsPanel extends PluginPanel
 			}
 		}
 		throw new IllegalArgumentException("no such account in the list: " + id);
-	}
-
-	private static Instant occurredAt(GeTransaction tx)
-	{
-		try
-		{
-			return Instant.parse(tx.occurredAt);
-		}
-		catch (RuntimeException e)
-		{
-			// Missing or unparseable: the line is still worth showing.
-			return Instant.now();
-		}
 	}
 
 	/**

@@ -1086,6 +1086,32 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("Buying 4/10 at 1.00M", support.panel.watchlistOfferForTest(4151));
 	}
 
+	/**
+	 * Switching recording off tells the sidebar that nothing is being read
+	 * from flippingrs.com, and the offer screen has to agree. Its quotes stop
+	 * refreshing the moment the plugin stops talking to the site, so leaving
+	 * them up puts the site's prices, silently frozen, in front of the box
+	 * where a price gets typed.
+	 */
+	@Test
+	public void switchingRecordingOffTakesTheQuotesOffTheOfferScreen() throws Exception
+	{
+		final FlippingRsApi.Panel server = serverPanel();
+		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		whip.id = 4151;
+		whip.instantSell = 1_480_000;
+		server.quotes = Collections.singletonList(whip);
+		support.connect();
+		assertNotNull(support.watchedQuote(4151));
+
+		when(support.config.enabled()).thenReturn(false);
+		support.connect();
+
+		assertNull("nothing from the site is shown while the plugin is not reading it",
+			support.watchedQuote(4151));
+	}
+
 	@Test
 	public void connectingShowsTheRememberedWatchlistWithItsItemsNamed() throws Exception
 	{

@@ -653,6 +653,37 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * A stamp that cannot be read is not the current time. The whole of this
+	 * plugin's dealings with time rest on never claiming one it does not have,
+	 * and the buffer line used to fill an unreadable stamp in with now.
+	 */
+	@Test
+	public void anUnreadableTimeIsSaidToBeUnknownRatherThanNow() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final GeTransaction damaged = new GeTransaction();
+			damaged.side = "buy";
+			damaged.quantity = 1;
+			damaged.itemName = "Abyssal whip";
+			damaged.grossValue = 1000;
+			damaged.occurredAt = "not a time";
+			final GeTransaction recovered = new GeTransaction();
+			recovered.side = "buy";
+			recovered.quantity = 1;
+			recovered.itemName = "Abyssal whip";
+			recovered.grossValue = 1000;
+
+			panel.setPending(Arrays.asList(damaged, recovered));
+
+			final List<String> lines = panel.pendingForTest();
+			assertTrue(lines.get(0), lines.get(0).startsWith("unknown "));
+			assertTrue(lines.get(1), lines.get(1).startsWith("recovered "));
+		});
+	}
+
 	/** A trade card says what happened in exact gp, with the per-item price. */
 	@Test
 	public void aTradeCardSaysWhatHappenedToTheCoin()

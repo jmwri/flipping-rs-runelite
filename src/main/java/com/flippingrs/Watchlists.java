@@ -109,11 +109,21 @@ final class Watchlists
 		exchangeOpen = false;
 	}
 
-	/** Forgets the lists, for a change of server. The next read replaces them. */
+	/**
+	 * Forgets everything read from the server, keeping what is on screen.
+	 *
+	 * <p>For a change of server, and for recording being switched off or the
+	 * key being taken away. In those last two the sidebar says plainly that
+	 * nothing is being read from flippingrs.com, and the offer screen has to
+	 * agree with it: quotes that stop refreshing but go on being drawn are
+	 * prices from a service the user has turned off, silently frozen at
+	 * whatever they were, in front of the box where a price gets typed.
+	 */
 	void forget()
 	{
 		lists = null;
 		watchedIds = Collections.emptySet();
+		quotes = Collections.emptyMap();
 	}
 
 	void sidebarShown(boolean shown)

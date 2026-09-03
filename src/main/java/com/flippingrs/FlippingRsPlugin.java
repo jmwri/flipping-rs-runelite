@@ -1391,6 +1391,11 @@ public class FlippingRsPlugin extends Plugin
 				// would be a picture of a journal the plugin is not looking at.
 				p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
 			});
+			// And the offer screen, which draws the same quotes the sidebar
+			// does. Left alone it would go on showing the site's prices, frozen
+			// at whatever they were when recording was switched off, in front
+			// of the box where a price gets typed.
+			watchlists.forget();
 			return;
 		}
 
@@ -1403,6 +1408,7 @@ public class FlippingRsPlugin extends Plugin
 					+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
 				p.setPaused("Add an API key to see your journal here.");
 			});
+			watchlists.forget();
 			return;
 		}
 
