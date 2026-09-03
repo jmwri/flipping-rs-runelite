@@ -807,6 +807,11 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, times(3)).submit(anyString(), anyString(), anyList());
 		verify(support.api, times(1)).trades(anyString(), any());
 		verify(support.api, times(1)).journal(anyString(), any(), anyInt());
+		// The two sends that came too soon share one deferred re-read between
+		// them. Three of those, each firing on its own fifteen seconds later,
+		// is the burst this exists to prevent.
+		assertEquals("sends inside the window queue one deferred re-read, not one each",
+			1, support.deferredReadsForTest());
 	}
 
 	// --------------------------------------------------------------- journal
@@ -1705,6 +1710,12 @@ public class FlippingRsPluginBehaviourTest
 	public void closingTheClientFlushesAndSendsWhatIsWaiting() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		// The sidebar is open, as it would be for someone who was looking at it
+		// when they closed the client -- otherwise the tabs are not read anyway
+		// and this would prove nothing.
+		support.showSidebar();
+		support.tabsLastReadLongAgo();
+		org.mockito.Mockito.clearInvocations(support.api);
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		when(support.api.submit(anyString(), anyString(), anyList()))

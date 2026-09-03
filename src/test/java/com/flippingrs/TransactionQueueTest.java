@@ -337,21 +337,26 @@ public class TransactionQueueTest
 	@Test
 	public void aFileRestoredFromOverTheCapIsBroughtBackDown() throws IOException
 	{
+		// A thousand, so the compaction interval is ten: dropping three at once
+		// is well under it, and only the rule about dropping more than one can
+		// bring the file back down. At three hundred the interval would be
+		// three, and the same add would have compacted either way -- which is
+		// what this test used to be quietly asserting.
 		final File file = file();
-		final TransactionQueue first = new TransactionQueue(gson, file, 300);
-		for (int i = 0; i < 302; i++)
+		final TransactionQueue first = new TransactionQueue(gson, file, 1000);
+		for (int i = 0; i < 1002; i++)
 		{
 			first.add(fill("a" + i));
 		}
-		assertEquals("two evictions, not yet compacted", 302, lines(file));
+		assertEquals("two evictions, not yet compacted", 1002, lines(file));
 
-		final TransactionQueue reopened = new TransactionQueue(gson, file, 300);
-		assertEquals("the file's extra rows are all restored", 302, reopened.size());
+		final TransactionQueue reopened = new TransactionQueue(gson, file, 1000);
+		assertEquals("the file's extra rows are all restored", 1002, reopened.size());
 
 		reopened.add(fill("next"));
 
-		assertEquals("back to the cap", 300, reopened.size());
-		assertEquals("and compacted, because it had to drop more than one", 300, lines(file));
+		assertEquals("back to the cap", 1000, reopened.size());
+		assertEquals("and compacted, because it had to drop more than one", 1000, lines(file));
 	}
 
 	private static int lines(File file) throws IOException

@@ -61,7 +61,39 @@ final class FlippingRsPluginTestSupport
 	final Map<String, String> pluginConfig = new HashMap<>();
 
 	private final ScheduledExecutorService diskExecutor = Executors.newSingleThreadScheduledExecutor();
-	private final ScheduledExecutorService sendExecutor = Executors.newSingleThreadScheduledExecutor();
+
+	/**
+	 * The net thread, counting the delayed work put on it.
+	 *
+	 * <p>The plugin coalesces the account-tab re-reads it defers, so a burst of
+	 * sends cannot become a burst of requests fifteen seconds later. Nothing
+	 * about that is visible once the tasks are queued -- they all fire long
+	 * after any test would wait -- so the only way to see it is to count what
+	 * was queued.
+	 */
+	private static final class Net extends java.util.concurrent.ScheduledThreadPoolExecutor
+	{
+		private final java.util.concurrent.atomic.AtomicInteger delayed =
+			new java.util.concurrent.atomic.AtomicInteger();
+
+		Net()
+		{
+			super(1);
+		}
+
+		@Override
+		public java.util.concurrent.ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)
+		{
+			// submit and execute come through here too, with no delay at all.
+			if (delay > 0)
+			{
+				delayed.incrementAndGet();
+			}
+			return super.schedule(command, delay, unit);
+		}
+	}
+
+	private final Net sendExecutor = new Net();
 
 	FlippingRsPluginTestSupport(java.io.File queueDir) throws Exception
 	{
@@ -244,6 +276,12 @@ final class FlippingRsPluginTestSupport
 		m.invoke(plugin, true);
 		settleNet();
 		settleSwing();
+	}
+
+	/** How many delayed re-reads the plugin has queued on the net thread. */
+	int deferredReadsForTest()
+	{
+		return sendExecutor.delayed.get();
 	}
 
 	/**
