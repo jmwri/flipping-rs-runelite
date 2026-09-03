@@ -46,6 +46,12 @@ final class CatchUp
 	private static final long OFFER_SNAPSHOT_AFTER_SEND_SECONDS = 60;
 	/** The history screen fills a tick or two after it opens; give up after this many looks. */
 	private static final int HISTORY_READ_ATTEMPTS = 5;
+	/**
+	 * "No snapshot yet". The nanoTime clock's origin is arbitrary and it may
+	 * well be negative, so zero is a time it is allowed to return and cannot
+	 * stand in for "never".
+	 */
+	private static final long NEVER = Long.MIN_VALUE;
 
 	private final Client client;
 	private final FlippingRsConfig config;
@@ -64,7 +70,7 @@ final class CatchUp
 	private int offerSnapshotDueTick = -1;
 	private int historyReadDueTick = -1;
 	private int historyReadAttempts;
-	private volatile long lastOfferSnapshotAt;
+	private volatile long lastOfferSnapshotAt = NEVER;
 
 	/**
 	 * The history screen as last handed to the server. Net thread only.
@@ -142,7 +148,7 @@ final class CatchUp
 			return;
 		}
 		final long now = System.nanoTime();
-		if (lastOfferSnapshotAt != 0 && now - lastOfferSnapshotAt < TimeUnit.SECONDS.toNanos(minGapSeconds))
+		if (lastOfferSnapshotAt != NEVER && now - lastOfferSnapshotAt < TimeUnit.SECONDS.toNanos(minGapSeconds))
 		{
 			return;
 		}
