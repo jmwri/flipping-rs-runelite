@@ -1094,8 +1094,12 @@ public class FlippingRsPlugin extends Plugin
 				}
 				else if (sent.rejected > 0)
 				{
+					// Not "set aside": the reply says how many rows it refused, not
+					// which, so there is nothing to file. This notice is the only
+					// time anybody is told, so it has to say that they are gone.
 					p.setActivityNotice("flippingrs.com couldn't record " + sent.rejected
-						+ " trade(s). The client log says why.", ColorScheme.PROGRESS_ERROR_COLOR);
+						+ " trade(s), and they won't be sent again. The client log says why.",
+						ColorScheme.PROGRESS_ERROR_COLOR);
 				}
 				else if (sent.unmatchedSellQty > 0)
 				{

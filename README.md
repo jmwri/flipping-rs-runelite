@@ -159,6 +159,10 @@ redirect your key or your trades anywhere else.
   journal all just hold your trades until things are fixed. The one thing the
   site will not accept, a trade it says is malformed, is kept in a file in
   your RuneLite folder rather than deleted, and the sidebar tells you where.
+  The one exception is a batch the site takes in and then refuses part of:
+  its reply says how many rows it would not record, not which, so there is
+  nothing to put in a file. Those are not sent again. The sidebar says how
+  many and the client log says what the site objected to.
 
 ---
 

@@ -999,6 +999,36 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/** A refused batch is Activity's news, not the connection's. */
+	/**
+	 * A batch the site takes in and then refuses part of. Its reply says how
+	 * many rows it would not record, not which, so there is nothing to set
+	 * aside and nothing to retry -- the whole batch leaves the queue either
+	 * way. This notice is the only time anyone is told those trades did not
+	 * make it, so it has to say they are gone rather than merely that
+	 * something went wrong.
+	 */
+	@Test
+	public void rowsRefusedInsideAGoodReplyAreReportedAsGone() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		final FlippingRsApi.IngestResult refused = new FlippingRsApi.IngestResult();
+		refused.accepted = 0;
+		refused.rejected = 1;
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(refused);
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue("the queue is cleared either way, so this is the only telling",
+			support.queue().isEmpty());
+		final String notice = support.panel.activityNoticeForTest();
+		assertTrue(notice, notice.contains("1 trade(s)"));
+		assertTrue("it must say they are not coming back: " + notice,
+			notice.contains("won't be sent again"));
+	}
+
 	@Test
 	public void aRefusedBatchIsReportedOnTheActivityTab() throws Exception
 	{
