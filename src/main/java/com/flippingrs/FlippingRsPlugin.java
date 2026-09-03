@@ -877,7 +877,7 @@ public class FlippingRsPlugin extends Plugin
 		{
 			// Everything the game thread handed over before this ran is now on
 			// disk. From here the send is the only thing left.
-			final boolean sending = submit(sendExecutor, () ->
+			final boolean draining = submit(sendExecutor, () ->
 			{
 				try
 				{
@@ -888,7 +888,7 @@ public class FlippingRsPlugin extends Plugin
 					done.complete(null);
 				}
 			});
-			if (!sending)
+			if (!draining)
 			{
 				done.complete(null);
 			}
@@ -1609,9 +1609,12 @@ public class FlippingRsPlugin extends Plugin
 	 * and somewhere it is shown.
 	 *
 	 * <p>Guarded for the same reason {@link #drain} is: this runs as a
-	 * fixed-delay task, and an exception escaping one cancels it for good.
-	 * Deciding whether there is anything to quote reads a setting through a
-	 * config proxy, which is outside refresh's own guard.
+	 * fixed-delay task, and an exception escaping one cancels it for good --
+	 * the quotes would stop refreshing for the rest of the session with
+	 * nothing in the log to say why. Deciding whether there is anything to
+	 * quote reads nothing that can throw today; the guard is here so that it
+	 * stays true of whatever this comes to ask, because the cost of being
+	 * wrong about it is silent and lasts all session.
 	 */
 	private void quotesTick()
 	{

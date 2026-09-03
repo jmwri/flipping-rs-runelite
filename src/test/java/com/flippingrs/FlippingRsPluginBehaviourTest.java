@@ -343,28 +343,25 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
-	 * Both of these run as fixed-delay tasks, and an exception escaping one of
-	 * those cancels it for good: the plugin goes quiet for the rest of the
-	 * session with nothing in the log to say why. Reading a setting goes
-	 * through a config proxy, and in both cases that read sat outside the
-	 * guard that was supposed to make this impossible.
+	 * drain runs as a fixed-delay task, and an exception escaping one of those
+	 * cancels it for good: the plugin stops sending for the rest of the
+	 * session with nothing in the log to say why. Its javadoc says in as many
+	 * words that it never throws, and reading a setting -- which goes through
+	 * a RuneLite config proxy, not a field -- was the first thing it did,
+	 * outside the guard.
 	 */
 	@Test
-	public void theScheduledTasksSurviveAConfigReadThatThrows() throws Exception
+	public void theSenderSurvivesAConfigReadThatThrows() throws Exception
 	{
-		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
-		support.connect();
-		final WidgetLoaded opened = new WidgetLoaded();
-		opened.setGroupId(InterfaceID.GE_OFFERS);
-		support.plugin.onWidgetLoaded(opened);
-
 		when(support.config.enabled()).thenThrow(new IllegalStateException("the config proxy fell over"));
-		when(support.configManager.getConfiguration(eq(FlippingRsConfig.GROUP), anyString()))
-			.thenThrow(new IllegalStateException("the config proxy fell over"));
+		org.mockito.Mockito.clearInvocations(support.config);
 
-		// Neither may propagate. A failure here is the exception escaping.
+		// A failure here is the exception escaping.
 		support.drain();
-		support.quotesTick();
+
+		// And it really did reach the read that throws, rather than passing by
+		// turning back before it.
+		verify(support.config, org.mockito.Mockito.atLeastOnce()).enabled();
 	}
 
 	/**
