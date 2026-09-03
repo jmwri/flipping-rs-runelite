@@ -1103,10 +1103,13 @@ public class FlippingRsPlugin extends Plugin
 							+ " item(s) were sold without a recorded purchase, so they can't be counted as a flip yet.",
 						ColorScheme.BRAND_ORANGE);
 				}
-				else
-				{
-					p.setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
-				}
+				// A send with nothing to report leaves whatever is up alone.
+				// Clearing here wiped every notice, and the one it wiped most
+				// reliably was the explanation of an adopted offer: adopting
+				// queues a recovered fill, so the very next send is the one
+				// carrying it, and it removed the sentence saying why that
+				// trade has no purchase behind it. Every notice expires on its
+				// own after twenty seconds, which is what that interval is for.
 			});
 		}
 		catch (IOException e)

@@ -367,6 +367,29 @@ public class FlippingRsPluginBehaviourTest
 		support.quotesTick();
 	}
 
+	/**
+	 * Adopting an offer queues a recovered fill, so the very next send is the
+	 * one carrying it -- and that send used to clear every notice on its way
+	 * to reporting nothing. The sentence explaining why that trade has no
+	 * purchase behind it was wiped by the act of sending it.
+	 */
+	@Test
+	public void theAdoptedOfferNoticeSurvivesTheSendThatCarriesIt() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+
+		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
+		support.settleSwing();
+		assertTrue(support.panel.activityNoticeForTest().contains("part-way"));
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue("the explanation must outlive the send that carries the trade",
+			support.panel.activityNoticeForTest().contains("part-way"));
+	}
+
 	@Test
 	public void aSuccessfulSendClearsTheBatch() throws Exception
 	{
