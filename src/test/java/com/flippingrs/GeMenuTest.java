@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -194,6 +195,39 @@ public class GeMenuTest
 
 		view.click.accept(view.mock);
 		assertEquals(Integer.valueOf(unknown), opened.get(0));
+	}
+
+	/**
+	 * The eight slots are consecutive component ids and the bound is written as
+	 * the distance between the first and the last, so both ends of that range
+	 * have to work. An off-by-one at the far end would quietly leave the eighth
+	 * slot without entries, and only somebody using all eight would notice.
+	 */
+	@Test
+	public void theFirstAndLastOfferSlotsBothGetEntries()
+	{
+		for (int slot : new int[]{0, 7})
+		{
+			created.clear();
+			offers[slot] = offer(GrandExchangeOfferState.BUYING, WHIP);
+
+			geMenu.onMenuOpened(openedOver(InterfaceID.GeOffers.INDEX_0 + slot, -1));
+
+			final Entry view = entry(GeMenu.VIEW);
+			assertNotNull("slot " + slot + " must get its entries", view);
+			assertEquals("Abyssal whip", view.target);
+		}
+
+		created.clear();
+		geMenu.onMenuOpened(openedOver(InterfaceID.GeOffers.INDEX_7 + 1, -1));
+		assertNull("a component past the last slot is not a slot", entry(GeMenu.VIEW));
+
+		// And a client that hands back fewer slots than the interface has must
+		// not be indexed past the end of what it gave.
+		created.clear();
+		when(client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[3]);
+		geMenu.onMenuOpened(openedOver(InterfaceID.GeOffers.INDEX_3, -1));
+		assertNull("a slot past the end of what the client returned is not one", entry(GeMenu.VIEW));
 	}
 
 	/** The labels are generic; the plugin's name is on the panel already. */

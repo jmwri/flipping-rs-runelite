@@ -1579,6 +1579,33 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * The window is two ticks wide, which is what RuneLite's own Grand Exchange
+	 * plugin uses for the same burst. A fill on the second tick is still the
+	 * replay; one on the third is the player trading, and stripping its time
+	 * would throw away something the plugin watched happen.
+	 */
+	@Test
+	public void theLoginBurstWindowIsExactlyTwoTicksWide() throws Exception
+	{
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+
+		when(support.client.getTickCount()).thenReturn(102);
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		when(support.client.getTickCount()).thenReturn(103);
+		fire(offer(GrandExchangeOfferState.BUYING, 6, 6_000_000));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals(2, queued.size());
+		assertEquals("two ticks after arriving is still the replay", "adopted", queued.get(0).source);
+		assertNull(queued.get(0).occurredAt);
+		assertEquals("three ticks after is the player trading", "live", queued.get(1).source);
+		assertNotNull(queued.get(1).occurredAt);
+	}
+
+	/**
 	 * Walking across a map region is not logging in. The client drops to
 	 * LOADING and back to LOGGED_IN every time it loads one, and treating each
 	 * of those as a login threw away the time of any fill that landed in the

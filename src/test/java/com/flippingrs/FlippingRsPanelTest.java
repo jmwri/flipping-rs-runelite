@@ -77,6 +77,24 @@ public class FlippingRsPanelTest
 		assertTrue(FlippingRsPanel.gp(-1_500_000).startsWith("-"));
 	}
 
+	/**
+	 * The exact points where the shortening changes unit. A formatter goes
+	 * wrong on its own boundaries or nowhere, and every one of these is a
+	 * figure a person reads as money.
+	 */
+	@Test
+	public void gpChangesUnitAtExactlyTheRightAmounts()
+	{
+		assertEquals("999gp", FlippingRsPanel.gp(999));
+		assertEquals("1.0K", FlippingRsPanel.gp(1_000));
+		assertEquals("1.00M", FlippingRsPanel.gp(1_000_000));
+		assertEquals("1.00B", FlippingRsPanel.gp(1_000_000_000L));
+		// And a count, which shortens on the same boundaries but is not money.
+		assertEquals("999", FlippingRsPanel.count(999));
+		assertEquals("1.0K", FlippingRsPanel.count(1_000));
+		assertEquals("1.0M", FlippingRsPanel.count(1_000_000));
+	}
+
 	// ------------------------------------------------------- account picker
 
 	@Test
@@ -694,6 +712,37 @@ public class FlippingRsPanelTest
 			// A later read replaces, rather than accumulates.
 			panel.setActivity(Collections.emptyList());
 			assertTrue(panel.recentForTest().isEmpty());
+		});
+	}
+
+	/**
+	 * The buffer list is capped the same way the trade list is. Its twin was
+	 * pinned and this one was not, which is how the sidebar ends up a row
+	 * taller than it was drawn to be.
+	 */
+	@Test
+	public void theBufferListShowsOnlyTheNewestFew() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final List<GeTransaction> many = new ArrayList<>();
+			for (int i = 20; i > 0; i--)
+			{
+				final GeTransaction tx = new GeTransaction();
+				tx.side = "buy";
+				tx.quantity = i;
+				tx.itemName = "Abyssal whip";
+				tx.grossValue = 1000;
+				many.add(tx);
+			}
+
+			panel.setPending(many);
+
+			final List<String> lines = panel.pendingForTest();
+			assertEquals(FlippingRsPanel.RECENT_SHOWN, lines.size());
+			assertTrue("newest first: " + lines.get(0), lines.get(0).contains("Bought 20 "));
+			assertTrue("and it stops there: " + lines.get(7), lines.get(7).contains("Bought 13 "));
 		});
 	}
 

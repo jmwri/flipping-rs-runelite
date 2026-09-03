@@ -208,6 +208,26 @@ public class GeHistoryReaderTest
 			GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
 	}
 
+	/**
+	 * No count on the name, no stack on the icon and no per-item price: one
+	 * item is the only reading left, and the row is a real trade that must not
+	 * be dropped for want of a number the screen never wrote.
+	 */
+	@Test
+	public void aRowWithNoCountAnywhereIsOneItem()
+	{
+		item(0, 4151, 1);
+		text(0, "Bought");
+		text(0, "Abyssal whip");
+		text(0, "1,500,000 coins");
+
+		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+		assertEquals(1, rows.size());
+		assertEquals(1L, rows.get(0).quantity);
+		assertEquals(1_500_000L, rows.get(0).grossValue);
+	}
+
 	/** A row missing a side or a price is skipped, not sent half-read. */
 	@Test
 	public void anUnreadableRowIsSkippedNotGuessed()
