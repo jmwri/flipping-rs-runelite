@@ -453,7 +453,6 @@ public class TransactionQueue
 		try
 		{
 			Files.createDirectories(parent);
-			evictionsSinceRewrite = 0;
 			// Write beside the target and move it into place, so a client killed
 			// mid-rewrite leaves the previous good queue rather than half a file.
 			//
@@ -480,6 +479,11 @@ public class TransactionQueue
 			{
 				Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			}
+			// Only now: the file matches the deque, so the rows evictions have
+			// been leaving behind are gone. Resetting before the write would
+			// have a failed one look like a compaction and leave the file
+			// growing for another hundred evictions.
+			evictionsSinceRewrite = 0;
 		}
 		catch (IOException e)
 		{
