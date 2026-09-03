@@ -1271,6 +1271,32 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(Collections.singletonList(11802), support.panel.watchlistForTest());
 	}
 
+	/**
+	 * A watchlist already at the server's cap is not asked to take another.
+	 * The server would refuse it, so the request would be spent being told
+	 * what the plugin already knew -- against a limit of thirty a minute --
+	 * and the user would get the site's words for something the sidebar can
+	 * say plainly.
+	 */
+	@Test
+	public void addingToAFullWatchlistSendsNothingAndSaysWhy() throws Exception
+	{
+		final Integer[] full = new Integer[Watchlists.MAX_WATCHLIST_ITEMS];
+		for (int i = 0; i < full.length; i++)
+		{
+			full[i] = 1000 + i;
+		}
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", full));
+		support.showSidebar();
+		support.connect();
+
+		support.addToWatchlist(4151);
+
+		verify(support.api, never()).updateWatchlist(anyString(), anyString(), anyList());
+		assertTrue("the sidebar must say why: " + support.panel.watchlistNoticeForTest(),
+			support.panel.watchlistNoticeForTest().contains("full"));
+	}
+
 	@Test
 	public void addingAnItemAlreadyWatchedSendsNothing() throws Exception
 	{
