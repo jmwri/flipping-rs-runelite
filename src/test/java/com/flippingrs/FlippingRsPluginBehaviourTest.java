@@ -1635,11 +1635,16 @@ public class FlippingRsPluginBehaviourTest
 	public void anEmptyHistoryScreenIsLookedAtAgainThenLetGo() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
-		// Every mock is built and stubbed up front; what the screen shows is
-		// swapped through this, so nothing is re-stubbed while the plugin is
-		// running against it.
+		// Everything the plugin reads off the client comes through a holder, so
+		// that nothing is stubbed while it is running. Once a read succeeds the
+		// net thread is calling this same mock, and stubbing one from the test
+		// thread while another invokes it is not something Mockito supports --
+		// it fails perhaps one run in three, a long way from the cause.
+		final java.util.concurrent.atomic.AtomicInteger tick =
+			new java.util.concurrent.atomic.AtomicInteger();
 		final java.util.concurrent.atomic.AtomicReference<Widget> screen =
 			new java.util.concurrent.atomic.AtomicReference<>();
+		when(support.client.getTickCount()).thenAnswer(inv -> tick.get());
 		when(support.client.getWidget(InterfaceID.GeHistory.LIST)).thenAnswer(inv -> screen.get());
 
 		final Widget icon = mock(Widget.class);
@@ -1658,11 +1663,11 @@ public class FlippingRsPluginBehaviourTest
 		final WidgetLoaded opened = new WidgetLoaded();
 		opened.setGroupId(InterfaceID.GE_HISTORY);
 
-		// Opened on a screen that never fills: looked at a few times, then let go.
+		// Opened on a screen that never fills: looked at a few times, let go.
 		support.plugin.onWidgetLoaded(opened);
-		for (int tick = 2; tick < 20; tick++)
+		for (int t = 2; t < 20; t++)
 		{
-			when(support.client.getTickCount()).thenReturn(tick);
+			tick.set(t);
 			support.plugin.onGameTick(new GameTick());
 		}
 		support.settleNet();
@@ -1671,12 +1676,12 @@ public class FlippingRsPluginBehaviourTest
 
 		// Giving up on one screenful must not give up for the session. Opening
 		// it again starts the looks over, or a history that was slow to fill
-		// once would never be read again for as long as the client ran.
+		// once would never be read for as long as the client ran.
 		screen.set(filled);
 		support.plugin.onWidgetLoaded(opened);
-		for (int tick = 20; tick < 40; tick++)
+		for (int t = 20; t < 40; t++)
 		{
-			when(support.client.getTickCount()).thenReturn(tick);
+			tick.set(t);
 			support.plugin.onGameTick(new GameTick());
 		}
 		support.settleNet();
