@@ -212,28 +212,48 @@ public class TransactionQueue
 		{
 			return;
 		}
-		final Path parent = parent();
-		if (parent != null)
+		if (!writeDropped(refused))
 		{
-			try
+			// These are about to leave the queue whether or not they could be
+			// filed -- holding them would wedge every later trade -- and the
+			// panel is at this moment telling the user they were set aside
+			// where they can be found. That has to be true somewhere, so if it
+			// is not the file it is the log.
+			for (GeTransaction tx : refused)
 			{
-				Files.createDirectories(parent);
-				try (Writer out = Files.newBufferedWriter(dropped.toPath(), StandardCharsets.UTF_8,
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND))
-				{
-					for (GeTransaction tx : refused)
-					{
-						out.write(gson.toJson(tx));
-						out.write('\n');
-					}
-				}
-			}
-			catch (IOException e)
-			{
-				log.warn("could not record the refused fills in {}: {}", dropped, e.toString());
+				log.warn("refused fill that could not be written to {}: {}", dropped, gson.toJson(tx));
 			}
 		}
 		confirm(refused);
+	}
+
+	/** @return whether the refused fills reached the sibling file */
+	private boolean writeDropped(Collection<GeTransaction> refused)
+	{
+		final Path parent = parent();
+		if (parent == null)
+		{
+			return false;
+		}
+		try
+		{
+			Files.createDirectories(parent);
+			try (Writer out = Files.newBufferedWriter(dropped.toPath(), StandardCharsets.UTF_8,
+				StandardOpenOption.CREATE, StandardOpenOption.APPEND))
+			{
+				for (GeTransaction tx : refused)
+				{
+					out.write(gson.toJson(tx));
+					out.write('\n');
+				}
+			}
+			return true;
+		}
+		catch (IOException e)
+		{
+			log.warn("could not record the refused fills in {}: {}", dropped, e.toString());
+			return false;
+		}
 	}
 
 	/** Where refused fills are kept. Exposed for the log line that points at it. */

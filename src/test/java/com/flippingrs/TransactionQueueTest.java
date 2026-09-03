@@ -229,6 +229,31 @@ public class TransactionQueueTest
 	}
 
 	/**
+	 * A refusal that cannot be filed must still leave the queue. Holding it
+	 * would wedge every later trade behind it forever, which is the whole
+	 * reason refused rows are set aside rather than retried -- and the panel
+	 * is meanwhile telling the user they were put somewhere they can be found,
+	 * so the rows go to the log when they cannot go to the file.
+	 */
+	@Test
+	public void refusedFillsThatCannotBeSetAsideStillLeaveTheQueue() throws IOException
+	{
+		final File dir = folder.newFolder("flippingrs");
+		final File file = new File(dir, "queue-1.json");
+		// A directory in the way of the set-aside file, so the write cannot work.
+		assertTrue(new File(dir, "dropped-1.json").mkdir());
+
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+		queue.add(fill("a"));
+		queue.add(fill("b"));
+
+		queue.reject(queue.peek(1));
+
+		assertEquals("the queue must not wedge behind a row it could not file", 1, queue.size());
+		assertEquals("b", queue.peek(10).get(0).id);
+	}
+
+	/**
 	 * A full queue must not rewrite itself on every fill.
 	 *
 	 * <p>Evicting the oldest needs the file rewritten, because an append cannot
