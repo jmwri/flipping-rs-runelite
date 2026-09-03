@@ -149,12 +149,10 @@ final class Watchlists
 	/** Whether the quote timer has anything to do: something is showing quotes, and there are items to quote. */
 	boolean wantsQuotes()
 	{
-		if (!sidebarShown && !exchangeOpen)
-		{
-			return false;
-		}
-		final FlippingRsApi.Watchlist current = current();
-		return current != null && !current.getItemIds().isEmpty();
+		// The shown list's items are already resolved, so this asks them rather
+		// than working the chosen watchlist out again -- which meant a RuneLite
+		// config read on the net thread every half minute.
+		return (sidebarShown || exchangeOpen) && !watchedIds.isEmpty();
 	}
 
 	/**
@@ -176,14 +174,6 @@ final class Watchlists
 		{
 			show();
 		}
-	}
-
-	/** The watchlist the right-click entry adds to: the remembered one, else the first, else null. */
-	@Nullable
-	FlippingRsApi.Watchlist current()
-	{
-		final List<FlippingRsApi.Watchlist> known = lists;
-		return known == null ? null : currentOf(known);
 	}
 
 	@Nullable
