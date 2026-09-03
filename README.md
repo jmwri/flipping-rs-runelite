@@ -238,10 +238,11 @@ passing `--developer-mode` to `RuneLite.exe` does nothing, silently. Getting it
 into a launcher-started client means the Plugin Hub.
 
 If you do side-load into a client you started yourself, use `./gradlew jar`, not
-`shadowJar`. The shadow jar is 31 MB and contains its own copy of the RuneLite
-client; loading that under a child classloader gives you two of every RuneLite
-class and it fails with a `LinkageError`. The thin jar is 31 KB of just this
-plugin, which is what `PluginClassLoader` expects.
+`shadowJar`. The shadow jar is tens of megabytes and contains its own copy of
+the RuneLite client; loading that under a child classloader gives you two of
+every RuneLite class and it fails with a `LinkageError`. The thin jar is a
+hundred-odd kilobytes of just this plugin, which is what `PluginClassLoader`
+expects.
 
 Every dependency is a transitive of `runelite-client`, so this builds on the
 Plugin Hub in `standard` mode without the dependency-verification step.
