@@ -1073,7 +1073,7 @@ public class FlippingRsPlugin extends Plugin
 			}
 
 			final Instant syncedAt = lastSyncAt;
-			final String droppedFile = queue.droppedFile().getName();
+			final String droppedFile = whereItIs(queue.droppedFile());
 			onPanel(p -> {
 				p.setCounts(recordedThisSession.get(), waiting);
 				p.setPending(buffered);
@@ -1128,6 +1128,20 @@ public class FlippingRsPlugin extends Plugin
 		{
 			sending.set(false);
 		}
+	}
+
+	/**
+	 * Where to tell someone a set-aside file is, relative to the RuneLite
+	 * folder the panel names.
+	 *
+	 * <p>The file sits in a subfolder, and naming it alone sent a user who had
+	 * just been told nothing was lost to look in the wrong place -- from where
+	 * the only reasonable conclusion is that it was.
+	 */
+	private static String whereItIs(File file)
+	{
+		final File folder = file.getParentFile();
+		return folder == null ? file.getName() : folder.getName() + "/" + file.getName();
 	}
 
 	/** What one drain achieved, added up over however many sends it took. */

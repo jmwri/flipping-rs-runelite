@@ -1007,6 +1007,9 @@ public class FlippingRsPluginBehaviourTest
 		support.settleSwing();
 
 		assertTrue(support.panel.activityNoticeForTest().contains("set aside"));
+		assertTrue("and it says where, including the folder the file is actually in: "
+			+ support.panel.activityNoticeForTest(),
+			support.panel.activityNoticeForTest().contains(queueDir.getName() + "/dropped-1234.json"));
 	}
 
 	// -------------------------------------------------------------- activity
