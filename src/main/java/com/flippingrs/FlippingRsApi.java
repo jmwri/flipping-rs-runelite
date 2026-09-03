@@ -1003,6 +1003,18 @@ public class FlippingRsApi
 		throw new IOException(message);
 	}
 
+	/**
+	 * How much of the server's message is worth repeating: enough for a
+	 * sentence or two, which is all a 205-pixel sidebar can show anyway.
+	 *
+	 * <p>The body is already capped at a megabyte, and this is what stops the
+	 * rest of that megabyte arriving in a Swing label. The panel lays its
+	 * messages out as wrapped HTML on the event thread, so a reply that is
+	 * long rather than large would freeze the client's interface -- the same
+	 * failure {@link #MAX_BODY_BYTES} exists to prevent, one step further in.
+	 */
+	private static final int MAX_MESSAGE_CHARS = 300;
+
 	/** Digs the human-readable message out of the API's error envelope. */
 	private String messageIn(String body, int code)
 	{
@@ -1014,7 +1026,7 @@ public class FlippingRsApi
 				final JsonObject error = root.getAsJsonObject("error");
 				if (error.has("message"))
 				{
-					return error.get("message").getAsString();
+					return shorten(error.get("message").getAsString());
 				}
 			}
 		}
@@ -1023,5 +1035,12 @@ public class FlippingRsApi
 			log.debug("could not parse the error body", e);
 		}
 		return "flippingrs.com returned HTTP " + code;
+	}
+
+	private static String shorten(String message)
+	{
+		return message.length() <= MAX_MESSAGE_CHARS
+			? message
+			: message.substring(0, MAX_MESSAGE_CHARS) + "...";
 	}
 }

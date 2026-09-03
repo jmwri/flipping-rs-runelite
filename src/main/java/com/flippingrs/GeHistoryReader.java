@@ -164,6 +164,8 @@ class GeHistoryReader
 		final int itemId = icon == null ? 0 : icon.getItemId();
 		final long iconQuantity = icon == null ? 0 : icon.getItemQuantity();
 		long textQuantity = 0;
+		/** The text the "x N" was read off, if any. See the fallback below. */
+		String countedOn = null;
 		String side = null;
 		long gross = 0;
 		long each = 0;
@@ -208,7 +210,12 @@ class GeHistoryReader
 			}
 			if (textQuantity == 0)
 			{
-				textQuantity = firstNumber(QUANTITY, plain, 1);
+				final long counted = firstNumber(QUANTITY, plain, 1);
+				if (counted > 0)
+				{
+					textQuantity = counted;
+					countedOn = plain;
+				}
 			}
 		}
 
@@ -216,8 +223,21 @@ class GeHistoryReader
 		{
 			// No "coins" label. Fall back to the largest number on the line;
 			// a price is always the biggest figure.
+			//
+			// Except on the text the item count came off, whose numbers are
+			// that count. A layout that put the name and the side together but
+			// the price somewhere else would otherwise leave "Abyssal whipx 10"
+			// as the only numbers on the line, and this would report a purchase
+			// of ten whips for ten coins -- all four facts present, every one
+			// of them read, and the trade wrong. A row that cannot be read is
+			// meant to be skipped, and skipping is what happens when the only
+			// numbers left are the ones already spoken for.
 			for (String text : texts)
 			{
+				if (text.equals(countedOn))
+				{
+					continue;
+				}
 				final Matcher n = NUMBER.matcher(text);
 				while (n.find())
 				{

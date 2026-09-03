@@ -189,6 +189,25 @@ public class GeHistoryReaderTest
 		assertEquals(15_000_000L, rows.get(0).grossValue);
 	}
 
+	/**
+	 * A row whose price is missing must be skipped, not have its item count
+	 * read as one. The largest-number fallback is for a layout that writes the
+	 * price without the word "coins"; a layout that puts the price somewhere
+	 * else entirely leaves the count as the only number on the line, and
+	 * "Abyssal whipx 10" must not become ten whips for ten coins -- all four
+	 * facts present, every one of them read, and the trade wrong.
+	 */
+	@Test
+	public void aRowWithNoPriceIsNotGivenItsQuantityAsOne()
+	{
+		item(0, 4151, 10);
+		text(0, "Bought");
+		text(0, "Abyssal whipx 10");
+
+		assertTrue("a row with no price is not a trade",
+			GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
+	}
+
 	/** A row missing a side or a price is skipped, not sent half-read. */
 	@Test
 	public void anUnreadableRowIsSkippedNotGuessed()

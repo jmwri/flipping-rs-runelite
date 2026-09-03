@@ -212,6 +212,36 @@ public class FlippingRsApiTest
 		}
 	}
 
+	/**
+	 * The panel lays a failure's message out as wrapped HTML on the event
+	 * thread. The body is capped at a megabyte; without this, the rest of that
+	 * megabyte would arrive in a Swing label and freeze the interface -- the
+	 * same failure the body cap exists to prevent, one step further in.
+	 */
+	@Test
+	public void anEnormousServerMessageIsCutDownBeforeItReachesThePanel() throws Exception
+	{
+		final StringBuilder huge = new StringBuilder();
+		for (int i = 0; i < 20_000; i++)
+		{
+			huge.append('x');
+		}
+		server.enqueue(new MockResponse().setResponseCode(422).setBody(
+			"{\"error\":{\"code\":\"bad\",\"message\":\"" + huge + "\"}}"));
+
+		try
+		{
+			api.submit("frs_key", "acct-1", java.util.Collections.singletonList(new GeTransaction()));
+			fail("expected a failure");
+		}
+		catch (IOException e)
+		{
+			assertTrue("the message must be cut down: " + e.getMessage().length(),
+				e.getMessage().length() < 400);
+			assertTrue(e.getMessage().endsWith("..."));
+		}
+	}
+
 	// ------------------------------------------------------------- ingest
 
 	/**
