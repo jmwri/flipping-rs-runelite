@@ -118,7 +118,17 @@ final class Watchlists
 
 	void sidebarShown(boolean shown)
 	{
+		final boolean opened = shown && !sidebarShown;
 		sidebarShown = shown;
+		if (opened)
+		{
+			// Draw what is already cached at once. The plugin starts a read
+			// alongside this, but that is a network round trip, and the tab
+			// should not be blank or stale for the length of one. It is also
+			// what makes it safe for show() to skip a closed sidebar: whatever
+			// it skipped is drawn here.
+			show();
+		}
 	}
 
 	void exchangeOpen(boolean open)
@@ -413,6 +423,20 @@ final class Watchlists
 		// watchlist is the shown one. Every path that changes the lists or the
 		// choice ends up here.
 		watchedIds = setOf(ids);
+
+		if (!sidebarShown)
+		{
+			// The offer-screen overlay reads the ids above and the quotes, and
+			// both are now current, which is the whole of what it needs. The
+			// cards are not: describing an item asks the item manager for a
+			// price, its stats, its composition and its sprite, and scans the
+			// eight exchange slots for a live offer, all on the game thread --
+			// and then rebuilds fifty cards on the Swing thread. Doing that
+			// every half minute for a sidebar nobody has open is the common
+			// case for a flipper, who keeps the exchange open and the sidebar
+			// shut. Opening it redraws from this same cache.
+			return;
+		}
 		// Names, prices and sprites come from the item manager, which wants
 		// the client thread.
 		clientThread.invoke(() ->

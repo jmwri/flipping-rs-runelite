@@ -977,6 +977,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void watchedItemsCarryTheSitesQuote() throws Exception
 	{
+		// The cards are only built while the sidebar is open.
+		support.showSidebar();
 		final FlippingRsApi.Panel server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
@@ -1063,6 +1065,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void connectingShowsTheRememberedWatchlistWithItsItemsNamed() throws Exception
 	{
+		// The cards are only built while the sidebar is open.
+		support.showSidebar();
 		final FlippingRsApi.Panel server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Arrays.asList(
@@ -1080,6 +1084,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theFirstAddCreatesAWatchlistOnTheServer() throws Exception
 	{
+		// The cards are only built while the sidebar is open.
+		support.showSidebar();
 		when(support.api.createWatchlist(eq("frs_key"), anyString(), eq(Collections.singletonList(4151))))
 			.thenReturn(watchlist("wl_new", "Plan", 4151));
 
@@ -1095,6 +1101,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void addingAndRemovingEditTheChosenWatchlistOnTheServer() throws Exception
 	{
+		// The cards are only built while the sidebar is open.
+		support.showSidebar();
 		// The server's list changes when it is edited, and the re-read after
 		// an edit sees the change, as it would on the real server.
 		final FlippingRsApi.Panel server = serverPanel();

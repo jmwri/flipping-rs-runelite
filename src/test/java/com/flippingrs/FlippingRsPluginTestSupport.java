@@ -165,9 +165,25 @@ final class FlippingRsPluginTestSupport
 		invoke("drain");
 	}
 
+	/**
+	 * Connects and waits for everything it set going.
+	 *
+	 * <p>Both threads, and the Swing thread twice, because connect hands work
+	 * to each and each hands work back: the panel adopts a journal on the
+	 * Swing thread, which sends the net thread off to re-read two tabs, which
+	 * post their results back to the Swing thread.
+	 *
+	 * <p>Waiting for all of it is not tidiness. A test that carries on while
+	 * the net thread is still calling the api mock, and then stubs that same
+	 * mock, is stubbing it from one thread while another invokes it -- which
+	 * Mockito does not support, and which showed up as one test in the class
+	 * failing perhaps one run in three.
+	 */
 	void connect() throws Exception
 	{
 		invoke("connect");
+		settleSwing();
+		settleNet();
 		settleSwing();
 	}
 
@@ -205,6 +221,19 @@ final class FlippingRsPluginTestSupport
 	void removeFromWatchlist(int itemId) throws Exception
 	{
 		invoke("removeFromWatchlist", itemId);
+		settleSwing();
+	}
+
+	/**
+	 * The sidebar being opened on the FlippingRS panel, which is what startUp
+	 * wires the panel's onShown to. The watchlist cards are only built while
+	 * it is open, so a test about what they show has to say so.
+	 */
+	void showSidebar() throws Exception
+	{
+		final Field f = FlippingRsPlugin.class.getDeclaredField("watchlists");
+		f.setAccessible(true);
+		((Watchlists) f.get(plugin)).sidebarShown(true);
 		settleSwing();
 	}
 
