@@ -233,15 +233,31 @@ final class FlippingRsPluginTestSupport
 
 	/**
 	 * The sidebar being opened on the FlippingRS panel, which is what startUp
-	 * wires the panel's onShown to. The watchlist cards are only built while
-	 * it is open, so a test about what they show has to say so.
+	 * wires the panel's onShown to. Nothing the sidebar shows is read or drawn
+	 * while it is shut, so a test about what it shows has to say it is open.
 	 */
 	void showSidebar() throws Exception
 	{
-		final Field f = FlippingRsPlugin.class.getDeclaredField("watchlists");
-		f.setAccessible(true);
-		((Watchlists) f.get(plugin)).sidebarShown(true);
+		final java.lang.reflect.Method m = FlippingRsPlugin.class
+			.getDeclaredMethod("sidebarShown", boolean.class);
+		m.setAccessible(true);
+		m.invoke(plugin, true);
+		settleNet();
 		settleSwing();
+	}
+
+	/**
+	 * As if the account tabs had last been read long ago, so the next read
+	 * goes out rather than being coalesced into the fifteen-second window.
+	 * Opening the sidebar reads them, and a test that then asserts on the read
+	 * a send triggers would otherwise be asserting against a read the opening
+	 * had already used up.
+	 */
+	void tabsLastReadLongAgo() throws Exception
+	{
+		final Field f = FlippingRsPlugin.class.getDeclaredField("accountTabsRefreshedAt");
+		f.setAccessible(true);
+		f.setLong(plugin, System.nanoTime() - TimeUnit.MINUTES.toNanos(1));
 	}
 
 	/** The user picking a journal in the Account tab, listener and all. */

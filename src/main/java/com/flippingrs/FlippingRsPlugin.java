@@ -264,6 +264,13 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private static final long NEVER = Long.MIN_VALUE;
 
+	/**
+	 * Whether the sidebar is currently showing this panel. Set from the
+	 * panel's own activate and deactivate, and read on the net thread to
+	 * decide whether a tab is worth re-reading at all.
+	 */
+	private volatile boolean sidebarShown;
+
 	private volatile long accountTabsRefreshedAt = NEVER;
 	private final AtomicBoolean accountTabsRefreshPending = new AtomicBoolean();
 
@@ -311,6 +318,7 @@ public class FlippingRsPlugin extends Plugin
 		// session.
 		accountTabsRefreshedAt = NEVER;
 		accountTabsRefreshPending.set(false);
+		sidebarShown = false;
 
 		api = newApi();
 		wire();
@@ -330,12 +338,8 @@ public class FlippingRsPlugin extends Plugin
 		panel.onFindFlips(() -> LinkBrowser.browse(api.finderUrl()));
 		panel.onClosePosition((id, price, qty) -> submit(sendExecutor, () -> closePosition(id, price, qty)));
 		panel.onDeletePosition(id -> submit(sendExecutor, () -> deletePosition(id)));
-		panel.onShown(() ->
-		{
-			watchlists.sidebarShown(true);
-			submit(sendExecutor, () -> refresh(PanelTab.WATCHLISTS));
-		});
-		panel.onHidden(() -> watchlists.sidebarShown(false));
+		panel.onShown(() -> sidebarShown(true));
+		panel.onHidden(() -> sidebarShown(false));
 
 		navButton = NavigationButton.builder()
 			.tooltip("FlippingRS")
@@ -1432,8 +1436,55 @@ public class FlippingRsPlugin extends Plugin
 		submit(sendExecutor, this::drain);
 	}
 
+	/**
+	 * The sidebar opened on this panel, or closed. Swing thread.
+	 *
+	 * <p>Opening reads everything the sidebar shows, because while it was shut
+	 * none of it was. The two account tabs go through the same throttle the
+	 * sends use, so opening and closing it repeatedly cannot become a burst of
+	 * requests against a limit of thirty a minute.
+	 */
+	private void sidebarShown(boolean shown)
+	{
+		sidebarShown = shown;
+		watchlists.sidebarShown(shown);
+		if (!shown)
+		{
+			return;
+		}
+		submit(sendExecutor, () ->
+		{
+			refresh(PanelTab.WATCHLISTS);
+			refreshAccountTabs();
+		});
+	}
+
 	/** Re-reads Trades and Journal after a send, no more often than the limit allows. Net thread. */
 	private void refreshAccountTabsAfterSend()
+	{
+		// Not a panel read, and so not conditional on anyone looking: this is
+		// how the server learns what the open slots hold and recovers a fill
+		// the plugin never saw. CatchUp keeps its own, longer, minimum gap.
+		clientThread.invoke(catchUp::snapshotAfterSend);
+
+		if (!sidebarShown)
+		{
+			// Nobody can see the two tabs. Reading them anyway is two requests
+			// per send against a limit of thirty a minute that the sends
+			// themselves draw on, to redraw a panel that is shut -- and a
+			// flipper keeps the exchange open and the sidebar shut. Opening it
+			// reads them.
+			return;
+		}
+		refreshAccountTabs();
+	}
+
+	/**
+	 * Re-reads Trades and Journal, no more often than the limit allows. Net
+	 * thread. A read that comes too soon is deferred rather than dropped, so
+	 * the last send of a burst still gets its refresh.
+	 */
+	private void refreshAccountTabs()
 	{
 		final long now = System.nanoTime();
 		final long since = now - accountTabsRefreshedAt;
@@ -1441,7 +1492,6 @@ public class FlippingRsPlugin extends Plugin
 		if (accountTabsRefreshedAt == NEVER || since >= window)
 		{
 			accountTabsRefreshedAt = now;
-			clientThread.invoke(catchUp::snapshotAfterSend);
 			refresh(PanelTab.TRADES);
 			refresh(PanelTab.JOURNAL);
 			return;
@@ -1458,7 +1508,6 @@ public class FlippingRsPlugin extends Plugin
 			{
 				accountTabsRefreshPending.set(false);
 				accountTabsRefreshedAt = System.nanoTime();
-				clientThread.invoke(catchUp::snapshotAfterSend);
 				refresh(PanelTab.TRADES);
 				refresh(PanelTab.JOURNAL);
 			}, wait, TimeUnit.NANOSECONDS);

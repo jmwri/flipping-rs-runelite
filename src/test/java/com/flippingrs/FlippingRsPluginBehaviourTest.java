@@ -745,6 +745,11 @@ public class FlippingRsPluginBehaviourTest
 	public void refreshesAfterSendsAreCoalesced() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		// The tabs are only read while somebody can see them, and opening the
+		// sidebar reads them once; the sends are what is under test here.
+		support.showSidebar();
+		support.tabsLastReadLongAgo();
+		org.mockito.Mockito.clearInvocations(support.api);
 		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
 		for (int i = 0; i < 3; i++)
 		{
@@ -796,6 +801,40 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * A send with the sidebar shut reads neither account tab. Nobody can see
+	 * them, and two requests per send against a limit of thirty a minute --
+	 * which the sends themselves draw on -- is a lot to spend on redrawing a
+	 * panel that is not on screen. The open slots still go to the server,
+	 * because that is not a panel read: it is how the server recovers a fill
+	 * the plugin never saw.
+	 */
+	@Test
+	public void sendsWithTheSidebarShutDoNotReadTheAccountTabs() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		support.drain();
+		support.settleNet();
+
+		verify(support.api).submit(anyString(), anyString(), anyList());
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+
+		// And opening it reads them, because while it was shut nothing was.
+		support.showSidebar();
+
+		verify(support.api).trades(anyString(), any());
+		verify(support.api).journal(anyString(), any(), anyInt());
+	}
+
+	/**
 	 * A refusal on a partial refresh lands on the tabs those parts belong
 	 * to, and does not undo the send that triggered it.
 	 */
@@ -803,6 +842,8 @@ public class FlippingRsPluginBehaviourTest
 	public void aRefusedPartialRefreshIsShownOnItsTabs() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		support.showSidebar();
+		support.tabsLastReadLongAgo();
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
@@ -934,6 +975,8 @@ public class FlippingRsPluginBehaviourTest
 	public void recentTradesAreWhatTheServerRecordedNotWhatWasSent() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		support.showSidebar();
+		support.tabsLastReadLongAgo();
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		support.settleSwing();
