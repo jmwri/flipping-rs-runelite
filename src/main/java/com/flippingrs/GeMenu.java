@@ -2,6 +2,7 @@ package com.flippingrs;
 
 import java.awt.Rectangle;
 import java.util.function.IntConsumer;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
@@ -35,6 +36,7 @@ import net.runelite.client.game.ItemManager;
  * watchlist are handed to it as callbacks so that this can be tested without
  * opening anything.
  */
+@Slf4j
 class GeMenu
 {
 	static final String VIEW = "View item";
@@ -102,6 +104,7 @@ class GeMenu
 		}
 		catch (RuntimeException e)
 		{
+			log.debug("could not canonicalize item {}", itemId, e);
 			return itemId;
 		}
 	}
@@ -116,6 +119,7 @@ class GeMenu
 		}
 		catch (RuntimeException e)
 		{
+			log.debug("could not resolve a name for item {}", itemId, e);
 			return "";
 		}
 	}
