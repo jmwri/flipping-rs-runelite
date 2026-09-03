@@ -773,7 +773,7 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel tradeRow(GeTransaction tx, @Nullable AsyncBufferedImage image)
 	{
 		final JPanel card = card();
-		final String name = tx.itemName == null || tx.itemName.isEmpty() ? "Item " + tx.itemId : tx.itemName;
+		final String name = nameOf(tx);
 
 		final JPanel head = new JPanel(new BorderLayout(6, 0));
 		head.setOpaque(false);
@@ -854,8 +854,19 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		return (tx.occurredAt == null ? "recovered" : TIME.format(occurredAt(tx))) + "  "
 			+ ("buy".equals(tx.side) ? "Bought " : "Sold ")
-			+ tx.quantity + " x " + tx.itemName
+			+ tx.quantity + " x " + nameOf(tx)
 			+ " for " + exact(tx.grossValue) + (tx.estimated ? " (approx)" : "");
+	}
+
+	/**
+	 * What to call the item. The name is resolved when the fill is captured
+	 * and can be missing -- an item the client would not name, or a row
+	 * restored from a queue file an older version wrote -- and the id is a
+	 * good deal more use to anyone reading the line than the word "null".
+	 */
+	private static String nameOf(GeTransaction tx)
+	{
+		return tx.itemName == null || tx.itemName.isEmpty() ? "Item " + tx.itemId : tx.itemName;
 	}
 
 	// ---------------------------------------------------------------- journal

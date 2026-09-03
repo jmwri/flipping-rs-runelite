@@ -208,6 +208,25 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
+	/** The user picking a journal in the Account tab, listener and all. */
+	void chooseAccount(String id) throws Exception
+	{
+		SwingUtilities.invokeAndWait(() ->
+		{
+			panel.setSelectedForTest(id);
+			try
+			{
+				invoke("rememberChosenAccount");
+			}
+			catch (Exception e)
+			{
+				throw new IllegalStateException(e);
+			}
+		});
+		settleNet();
+		settleSwing();
+	}
+
 	/** The user picking a different watchlist in the sidebar. */
 	void chooseWatchlist(String id) throws Exception
 	{

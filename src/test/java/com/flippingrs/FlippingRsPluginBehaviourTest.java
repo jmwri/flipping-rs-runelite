@@ -664,6 +664,54 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * Trades and Journal are read for one journal. Picking a different one has
+	 * to re-read both, or the sidebar goes on showing the old journal's rows
+	 * under the new journal's name until something else happens to refresh
+	 * them -- and whatever was held for want of a journal goes out, because
+	 * the panel has been promising the user exactly that.
+	 */
+	@Test
+	public void pickingAJournalRereadsTheTabsAndSendsWhatWasHeld() throws Exception
+	{
+		serverPanel().accounts = Arrays.asList(account("a1", true), account("a2", false));
+		support.profileConfig.put("gameAccountId", "a1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.connect();
+		support.settleNet();
+
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		support.chooseAccount("a2");
+
+		assertEquals("a2", support.profileConfig.get("gameAccountId"));
+		verify(support.api).trades(anyString(), eq("a2"));
+		verify(support.api).journal(anyString(), eq("a2"), anyInt());
+		verify(support.api).submit(anyString(), eq("a2"), anyList());
+		assertTrue("the held fill goes to the journal just chosen", support.queue().isEmpty());
+	}
+
+	/**
+	 * And re-selecting the same journal reads nothing. The picker is
+	 * repopulated on every reconnect, which re-selects whatever was already
+	 * chosen, and two requests per reconnect for no news is a third of a
+	 * thirty-a-minute budget.
+	 */
+	@Test
+	public void reSelectingTheSameJournalReadsNothing() throws Exception
+	{
+		serverPanel().accounts = Arrays.asList(account("a1", true), account("a2", false));
+		support.profileConfig.put("gameAccountId", "a2");
+		support.connect();
+		support.settleNet();
+
+		support.chooseAccount("a2");
+
+		verify(support.api, times(1)).trades(anyString(), eq("a2"));
+		verify(support.api, times(1)).journal(anyString(), eq("a2"), anyInt());
+	}
+
+	/**
 	 * A journal deleted on the site. Sending to it would be refused every
 	 * tick, and the picker used to show whichever entry sorted first while
 	 * that happened. Forget it, show nothing, hold the trades.

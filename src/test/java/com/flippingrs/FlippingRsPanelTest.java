@@ -621,6 +621,38 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * A fill whose name never resolved -- an item the client would not name,
+	 * or a row restored from a queue file an older version wrote -- must fall
+	 * back to the id in the buffer list the way the trade cards already do.
+	 * "1 x null" is not a line to show anyone about their money.
+	 */
+	@Test
+	public void aFillWithNoItemNameFallsBackToItsId() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final GeTransaction unnamed = new GeTransaction();
+			unnamed.side = "buy";
+			unnamed.quantity = 1;
+			unnamed.itemId = 4151;
+			unnamed.grossValue = 1000;
+			final GeTransaction blank = new GeTransaction();
+			blank.side = "sell";
+			blank.quantity = 2;
+			blank.itemId = 11802;
+			blank.itemName = "";
+			blank.grossValue = 2000;
+
+			panel.setPending(Arrays.asList(unnamed, blank));
+
+			final List<String> lines = panel.pendingForTest();
+			assertTrue(lines.get(0), lines.get(0).contains("1 x Item 4151"));
+			assertTrue(lines.get(1), lines.get(1).contains("2 x Item 11802"));
+		});
+	}
+
 	/** A trade card says what happened in exact gp, with the per-item price. */
 	@Test
 	public void aTradeCardSaysWhatHappenedToTheCoin()

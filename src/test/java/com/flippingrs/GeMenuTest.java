@@ -172,6 +172,30 @@ public class GeMenuTest
 		assertEquals(Integer.valueOf(WHIP), watched.get(0));
 	}
 
+	/**
+	 * This runs straight off RuneLite's event bus on every right-click inside
+	 * the exchange. An id the client cannot resolve must cost the entry its
+	 * target, not throw out of the subscriber and put an uncaught plugin error
+	 * in the log every time the user opens a menu.
+	 */
+	@Test
+	public void anItemTheClientCannotNameStillGetsItsEntries()
+	{
+		// Nothing is stubbed for this id, so both lookups fail.
+		final int unknown = 999_999;
+		offers[3] = offer(GrandExchangeOfferState.BUYING, unknown);
+		when(itemManager.canonicalize(unknown)).thenThrow(new IllegalArgumentException("no such item"));
+
+		geMenu.onMenuOpened(openedOver(InterfaceID.GeOffers.INDEX_3, -1));
+
+		final Entry view = entry(GeMenu.VIEW);
+		assertNotNull("the entries must still be added", view);
+		assertEquals("", view.target);
+
+		view.click.accept(view.mock);
+		assertEquals(Integer.valueOf(unknown), opened.get(0));
+	}
+
 	/** The labels are generic; the plugin's name is on the panel already. */
 	@Test
 	public void theLabelsDoNotNameTheSite()

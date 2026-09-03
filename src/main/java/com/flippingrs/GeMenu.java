@@ -65,8 +65,8 @@ class GeMenu
 			return;
 		}
 
-		final int canonical = itemManager.canonicalize(itemId);
-		final String name = itemManager.getItemComposition(canonical).getName();
+		final int canonical = canonicalize(itemId);
+		final String name = nameOf(canonical);
 
 		// Added in reverse so that "View" ends up above "Add to watchlist":
 		// each createMenuEntry(-1) goes on the top of the menu.
@@ -80,6 +80,44 @@ class GeMenu
 			.setTarget(name)
 			.setType(MenuAction.RUNELITE)
 			.onClick(e -> openItem.accept(canonical));
+	}
+
+	/**
+	 * The unnoted form of an item, or the item itself if the client will not
+	 * say.
+	 *
+	 * <p>This and {@link #nameOf} guard their lookups because this method runs
+	 * on every right-click inside the exchange, straight off RuneLite's event
+	 * bus. An id the client cannot resolve -- one read off a history row whose
+	 * layout has moved, say -- would otherwise throw out of the subscriber and
+	 * be logged as an uncaught plugin error every time the user opened a menu.
+	 * A menu entry is worth having with a worse target on it; it is not worth
+	 * a stack trace a second.
+	 */
+	private int canonicalize(int itemId)
+	{
+		try
+		{
+			return itemManager.canonicalize(itemId);
+		}
+		catch (RuntimeException e)
+		{
+			return itemId;
+		}
+	}
+
+	/** The item's name for the entry's target, or empty if the client will not give one. */
+	private String nameOf(int itemId)
+	{
+		try
+		{
+			final String name = itemManager.getItemComposition(itemId).getName();
+			return name == null ? "" : name;
+		}
+		catch (RuntimeException e)
+		{
+			return "";
+		}
 	}
 
 	/** The item the menu's leading entry is on, if it is an exchange widget. */

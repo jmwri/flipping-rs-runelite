@@ -1523,6 +1523,18 @@ public class FlippingRsPlugin extends Plugin
 	/**
 	 * Stores the panel's selection as this RuneScape account's journal.
 	 *
+	 * <p>The journal is what Trades and Journal are read for, so a change of
+	 * one has to re-read both. Without that, picking a different journal left
+	 * the two tabs showing the previous one's rows until something else
+	 * happened to refresh them -- a sidebar naming one journal over another
+	 * journal's numbers, which is the one thing this panel exists to get
+	 * right. The same call covers the first journal a character adopts: the
+	 * adoption is handed to the Swing thread and lands after the connect that
+	 * asked for it has already read both tabs and found nothing chosen.
+	 *
+	 * <p>And whatever is queued goes out, because the panel has been telling
+	 * the user their trades are being kept safe until they pick one.
+	 *
 	 * @param interactive true when the user just picked it, in which case a
 	 *                    choice that cannot be stored is worth telling them
 	 *                    about. The automatic adoptions pass false: on a client
@@ -1547,7 +1559,20 @@ public class FlippingRsPlugin extends Plugin
 			}
 			return;
 		}
+		if (id.equals(store.chosenAccount()))
+		{
+			// Repopulating the picker on every reconnect re-selects the same
+			// entry, and re-reading two tabs for that would be two requests
+			// against a thirty-a-minute limit for no news.
+			return;
+		}
 		store.rememberChosenAccount(id);
+		submit(sendExecutor, () ->
+		{
+			refresh(PanelTab.TRADES);
+			refresh(PanelTab.JOURNAL);
+			drain();
+		});
 	}
 
 	// ------------------------------------------------------------- the queue
