@@ -190,7 +190,10 @@ work is in the cases where that is not straightforward:
   that is exactly wrong.
 - **Region loads.** The client's state leaves `LOGGED_IN` briefly whenever a
   new area loads, and an offer can fill during that. Only the slot clears the
-  client does on login and hop are ignored; a fill is a fill in any state.
+  client does on login and hop are ignored; a fill is a fill in any state. The
+  burst window above is drawn the same way: the exchange replays its slots when
+  the client arrives in the world, and a map load is not an arrival, so a fill
+  that lands just after one keeps the time the plugin watched it happen.
 
 Exact gp comes from the `spent` delta rather than price times quantity wherever
 it can, because a buy fills at or under your offer and a part-filled offer mixes
@@ -300,7 +303,8 @@ has; each answers with how much it already had and how much it took on.
       "estimated": false,
       "slot": 3,
       "world": 302,
-      "occurredAt": "2026-08-31T16:10:12.482Z"
+      "occurredAt": "2026-08-31T16:10:12.482Z",
+      "source": "live"
     }
   ]
 }
@@ -310,7 +314,9 @@ has; each answers with how much it already had and how much it took on.
 belongs to and is repeated across every fill of it, so a thousand partial fills
 are recognised as one purchase rather than a thousand. `grossValue` is the exact
 gp that moved and is the only field used for money; `offerPrice` is what was
-asked for.
+asked for. `source` is `live` for a fill the plugin watched happen and `adopted`
+for one it found already done, which is sent with no `occurredAt` at all rather
+than a time nobody observed.
 
 The response says what happened, which is what the panel shows:
 
