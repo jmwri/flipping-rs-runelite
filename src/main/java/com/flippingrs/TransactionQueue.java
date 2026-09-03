@@ -55,6 +55,30 @@ public class TransactionQueue
 	private final Gson gson;
 	private final File file;
 
+	/** {@link #CAPACITY}, unless a test asked for a smaller one. */
+	private final int capacity;
+
+	/**
+	 * How many evictions the file may run ahead by before it is compacted.
+	 *
+	 * <p>A removal cannot be expressed by appending, so an eviction needs the
+	 * whole file rewritten. Doing that on the add that evicts sounds like it
+	 * costs one rewrite in every {@link #CAPACITY} fills, and it does the first
+	 * time -- but the queue does not go back under the cap afterwards, so from
+	 * then on <em>every</em> fill rewrote ten thousand rows. That is the state
+	 * a client is in precisely when sending has been failing for hours, and it
+	 * turned each new trade into several megabytes of writing.
+	 *
+	 * <p>So the evicted row is left in the file and the new one appended after
+	 * it, and the file is compacted every hundredth eviction instead. The file
+	 * runs at most this far past the cap, and the rows it holds over are real
+	 * trades that were dropped -- so a client killed in between restores a few
+	 * more than it strictly had, which is the harmless direction.
+	 */
+	private final int evictionsPerRewrite;
+
+	private int evictionsSinceRewrite;
+
 	/**
 	 * Where refused fills go. Beside the queue, named {@code dropped-} in place
 	 * of {@code queue-}, so a user who is told a trade could not be recorded
@@ -72,8 +96,16 @@ public class TransactionQueue
 
 	public TransactionQueue(Gson gson, File file)
 	{
+		this(gson, file, CAPACITY);
+	}
+
+	/** Test seam: lets a test reach the cap without ten thousand writes. */
+	TransactionQueue(Gson gson, File file, int capacity)
+	{
 		this.gson = gson;
 		this.file = file;
+		this.capacity = capacity;
+		this.evictionsPerRewrite = Math.max(1, capacity / 100);
 		final String name = file.getName();
 		this.dropped = new File(file.getParentFile(),
 			name.startsWith("queue-") ? "dropped-" + name.substring("queue-".length()) : "dropped-" + name);
@@ -83,18 +115,37 @@ public class TransactionQueue
 
 	public synchronized void add(GeTransaction tx)
 	{
-		if (pending.size() >= CAPACITY)
+		if (pending.size() < capacity)
 		{
-			final GeTransaction dropped = pending.pollFirst();
-			log.warn("queue is full at {}; dropping the oldest pending fill: {}", CAPACITY, dropped);
 			pending.addLast(tx);
-			// A removal cannot be expressed by appending, so this one add pays
-			// for a full rewrite. It happens once every CAPACITY fills.
-			rewrite();
+			append(tx);
 			return;
 		}
+
+		// More than one only when a file was restored from over the cap, which
+		// is the compaction below running behind at the moment the client was
+		// last killed.
+		int evicted = 0;
+		while (pending.size() >= capacity)
+		{
+			final GeTransaction oldest = pending.pollFirst();
+			if (evicted == 0)
+			{
+				log.warn("queue is full at {}; dropping the oldest pending fill: {}", capacity, oldest);
+			}
+			evicted++;
+		}
 		pending.addLast(tx);
-		append(tx);
+
+		evictionsSinceRewrite += evicted;
+		if (evicted > 1 || evictionsSinceRewrite >= evictionsPerRewrite)
+		{
+			rewrite();
+		}
+		else
+		{
+			append(tx);
+		}
 	}
 
 	/**
@@ -402,6 +453,7 @@ public class TransactionQueue
 		try
 		{
 			Files.createDirectories(parent);
+			evictionsSinceRewrite = 0;
 			// Write beside the target and move it into place, so a client killed
 			// mid-rewrite leaves the previous good queue rather than half a file.
 			//

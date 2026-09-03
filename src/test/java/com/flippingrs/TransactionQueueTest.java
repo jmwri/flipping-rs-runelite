@@ -229,6 +229,82 @@ public class TransactionQueueTest
 	}
 
 	/**
+	 * A full queue must not rewrite itself on every fill.
+	 *
+	 * <p>Evicting the oldest needs the file rewritten, because an append cannot
+	 * express a removal. Doing that on the add that evicts costs one rewrite in
+	 * every CAPACITY fills the first time and every fill thereafter, because
+	 * the queue does not go back under the cap -- and a full queue is exactly
+	 * the state a client is in when sending has been failing for hours, so each
+	 * new trade turned into a rewrite of ten thousand rows.
+	 */
+	@Test
+	public void aFullQueueDoesNotRewriteItselfOnEveryFill() throws IOException
+	{
+		final File file = file();
+		// A hundredth of the cap is the compaction interval, so this one
+		// compacts every third eviction.
+		final TransactionQueue queue = new TransactionQueue(gson, file, 300);
+		for (int i = 0; i < 300; i++)
+		{
+			queue.add(fill("a" + i));
+		}
+		assertEquals(300, lines(file));
+
+		queue.add(fill("over-1"));
+		assertEquals("the evicted row is left in the file, not rewritten out of it", 301, lines(file));
+		queue.add(fill("over-2"));
+		assertEquals(302, lines(file));
+
+		queue.add(fill("over-3"));
+		assertEquals("the third eviction compacts it", 300, lines(file));
+
+		// And the queue itself never went over the cap, nor kept the oldest.
+		assertEquals(300, queue.size());
+		final List<GeTransaction> held = queue.peek(1000);
+		assertEquals("a3", held.get(0).id);
+		assertEquals("over-3", held.get(299).id);
+	}
+
+	/**
+	 * A client killed while the file was running ahead of the queue restores
+	 * more rows than the cap. The next fill has to bring it back down rather
+	 * than sit over the cap for good.
+	 */
+	@Test
+	public void aFileRestoredFromOverTheCapIsBroughtBackDown() throws IOException
+	{
+		final File file = file();
+		final TransactionQueue first = new TransactionQueue(gson, file, 300);
+		for (int i = 0; i < 302; i++)
+		{
+			first.add(fill("a" + i));
+		}
+		assertEquals("two evictions, not yet compacted", 302, lines(file));
+
+		final TransactionQueue reopened = new TransactionQueue(gson, file, 300);
+		assertEquals("the file's extra rows are all restored", 302, reopened.size());
+
+		reopened.add(fill("next"));
+
+		assertEquals("back to the cap", 300, reopened.size());
+		assertEquals("and compacted, because it had to drop more than one", 300, lines(file));
+	}
+
+	private static int lines(File file) throws IOException
+	{
+		int count = 0;
+		for (String line : new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).split("\n"))
+		{
+			if (!line.trim().isEmpty())
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
 	 * A byte that is not valid UTF-8 must cost the line it is on and no more.
 	 * The strict readers throw on one, which would abandon the read and lose
 	 * every fill after it -- and this file is appended to a line at a time by
