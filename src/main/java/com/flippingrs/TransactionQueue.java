@@ -2,8 +2,11 @@ package com.flippingrs;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -159,13 +162,15 @@ public class TransactionQueue
 			try
 			{
 				Files.createDirectories(parent);
-				final StringBuilder out = new StringBuilder();
-				for (GeTransaction tx : refused)
+				try (Writer out = Files.newBufferedWriter(dropped.toPath(), StandardCharsets.UTF_8,
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND))
 				{
-					out.append(gson.toJson(tx)).append('\n');
+					for (GeTransaction tx : refused)
+					{
+						out.write(gson.toJson(tx));
+						out.write('\n');
+					}
 				}
-				Files.write(dropped.toPath(), out.toString().getBytes(StandardCharsets.UTF_8),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 			catch (IOException e)
 			{
@@ -217,6 +222,12 @@ public class TransactionQueue
 	 * failing the file. That is the point of the line format as much as the
 	 * append is: a process killed mid-append leaves a torn final line, and this
 	 * costs that one fill instead of the entire backlog.
+	 *
+	 * <p>Read a line at a time rather than whole. Slurping the file gave a
+	 * String of the entire backlog, a trimmed second copy of it to look for
+	 * the legacy '[', and then an array of every line on top of that -- all
+	 * before the first fill was parsed, and all on the path a client takes
+	 * while it is starting up.
 	 */
 	private void load()
 	{
@@ -226,24 +237,27 @@ public class TransactionQueue
 		}
 		try
 		{
-			final String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-			if (content.trim().startsWith("["))
+			if (startsAnArray())
 			{
-				loadLegacyArray(content);
+				loadLegacyArray(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
 				// Written back in the new format so the next add can append.
 				rewrite();
 				return;
 			}
 			int damaged = 0;
-			for (String line : content.split("\n"))
+			try (BufferedReader in = reader())
 			{
-				if (line.trim().isEmpty())
+				String line;
+				while ((line = in.readLine()) != null)
 				{
-					continue;
-				}
-				if (!accept(parse(line)))
-				{
-					damaged++;
+					if (line.trim().isEmpty())
+					{
+						continue;
+					}
+					if (!accept(parse(line)))
+					{
+						damaged++;
+					}
 				}
 			}
 			if (damaged > 0)
@@ -258,6 +272,40 @@ public class TransactionQueue
 			// because then nothing is recorded from here on either.
 			log.warn("could not read the pending queue at {}, starting empty: {}", file, e.toString());
 		}
+	}
+
+	/**
+	 * Whether the file is the original whole-array format, from its first
+	 * character that is not whitespace.
+	 */
+	private boolean startsAnArray() throws IOException
+	{
+		try (BufferedReader in = reader())
+		{
+			int c;
+			while ((c = in.read()) != -1)
+			{
+				if (!Character.isWhitespace(c))
+				{
+					return c == '[';
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The file as characters.
+	 *
+	 * <p>Built by hand rather than through {@code Files.newBufferedReader},
+	 * which reports a malformed byte as an IOException. That would lose the
+	 * whole backlog to one corrupt byte, where this substitutes it and costs
+	 * only the line it is on -- the same tolerance the rest of this method has.
+	 */
+	private BufferedReader reader() throws IOException
+	{
+		return new BufferedReader(
+			new InputStreamReader(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8));
 	}
 
 	private void loadLegacyArray(String content)
@@ -354,15 +402,23 @@ public class TransactionQueue
 		try
 		{
 			Files.createDirectories(parent);
-			final StringBuilder out = new StringBuilder();
-			for (GeTransaction tx : pending)
-			{
-				out.append(gson.toJson(tx)).append('\n');
-			}
 			// Write beside the target and move it into place, so a client killed
 			// mid-rewrite leaves the previous good queue rather than half a file.
+			//
+			// Straight out to the file, a line at a time. Building the whole
+			// thing as a String first meant a full backlog existed three times
+			// over at once -- the builder, the String it copies to, and the
+			// bytes that copies to -- on a client whose heap is 768M and which
+			// is drawing a game at the same time.
 			final Path temp = staging.toPath();
-			Files.write(temp, out.toString().getBytes(StandardCharsets.UTF_8));
+			try (Writer out = Files.newBufferedWriter(temp, StandardCharsets.UTF_8))
+			{
+				for (GeTransaction tx : pending)
+				{
+					out.write(gson.toJson(tx));
+					out.write('\n');
+				}
+			}
 			try
 			{
 				Files.move(temp, file.toPath(),

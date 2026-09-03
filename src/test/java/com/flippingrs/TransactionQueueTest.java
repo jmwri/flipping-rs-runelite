@@ -227,4 +227,32 @@ public class TransactionQueueTest
 	assertEquals("a", reopened.peek(10).get(0).id);
 	assertEquals("b", reopened.peek(10).get(1).id);
 	}
+
+	/**
+	 * A byte that is not valid UTF-8 must cost the line it is on and no more.
+	 * The strict readers throw on one, which would abandon the read and lose
+	 * every fill after it -- and this file is appended to a line at a time by
+	 * a process that can be killed between the two halves of a character.
+	 */
+	@Test
+	public void oneBadByteDoesNotCostTheRestOfTheFile() throws IOException
+	{
+		final File file = file();
+		try (java.io.OutputStream out = Files.newOutputStream(file.toPath()))
+		{
+			out.write("{\"id\":\"a\",\"quantity\":1}\n{\"id\":\"b\",\"itemName\":\"x"
+				.getBytes(StandardCharsets.UTF_8));
+			// 0xFF never begins a valid UTF-8 sequence.
+			out.write(new byte[]{(byte) 0xFF});
+			out.write("\"}\n{\"id\":\"c\",\"quantity\":1}\n".getBytes(StandardCharsets.UTF_8));
+		}
+
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+
+		assertEquals("the fills either side of the bad byte must survive", 3, queue.size());
+		final List<GeTransaction> restored = queue.peek(10);
+		assertEquals("a", restored.get(0).id);
+		assertEquals("b", restored.get(1).id);
+		assertEquals("c", restored.get(2).id);
+	}
 }
