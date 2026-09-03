@@ -119,18 +119,22 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
+	private static final Border SELECTED_TAB = BorderFactory.createCompoundBorder(
+		BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.BRAND_ORANGE),
+		BorderFactory.createEmptyBorder(4, 3, 3, 3));
+	private static final Border UNSELECTED_TAB = BorderFactory.createEmptyBorder(4, 3, 4, 3);
+
 	/**
 	 * A tab with less padding and the narrower font, so five fit in a
 	 * 205-pixel sidebar in two rows. RuneLite's own tab re-applies its wide
 	 * border on every select and unselect, hence the overrides.
+	 *
+	 * <p>Selecting one is also what draws it. Four of the five are off screen
+	 * at any moment and building their contents costs real time -- see
+	 * {@link #drawWhatIsShowing}.
 	 */
-	private static class Tab extends MaterialTab
+	private class Tab extends MaterialTab
 	{
-		private static final Border SELECTED = BorderFactory.createCompoundBorder(
-			BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.BRAND_ORANGE),
-			BorderFactory.createEmptyBorder(4, 3, 3, 3));
-		private static final Border UNSELECTED = BorderFactory.createEmptyBorder(4, 3, 4, 3);
-
 		Tab(String name, MaterialTabGroup group, JComponent content)
 		{
 			super(name, group, content);
@@ -143,7 +147,9 @@ public class FlippingRsPanel extends PluginPanel
 		public boolean select()
 		{
 			final boolean selected = super.select();
-			setBorder(SELECTED);
+			setBorder(SELECTED_TAB);
+			showing = this;
+			drawWhatIsShowing();
 			return selected;
 		}
 
@@ -151,7 +157,7 @@ public class FlippingRsPanel extends PluginPanel
 		public void unselect()
 		{
 			super.unselect();
-			setBorder(UNSELECTED);
+			setBorder(UNSELECTED_TAB);
 		}
 	}
 
@@ -218,6 +224,23 @@ public class FlippingRsPanel extends PluginPanel
 	private final MaterialTab journalTab;
 	private final MaterialTab watchlistTab;
 	private final MaterialTab accountTab;
+
+	/**
+	 * The tab whose contents are on screen. Four of the five never are, and
+	 * the lists on them are the expensive part of this panel: every line is a
+	 * wrapped HTML label, which Swing parses into a document of its own, and
+	 * a hundred open positions measured at close to half a second to build.
+	 * That was being paid every time the journal was re-read, whichever tab
+	 * the user was actually looking at.
+	 */
+	@Nullable
+	private MaterialTab showing;
+
+	/** Lists whose tab was off screen when their data changed. */
+	private boolean pendingStale;
+	private boolean recentStale;
+	private boolean journalStale;
+	private boolean watchlistStale;
 
 	/** Set by the plugin; fires when the user picks a different game account. */
 	private Runnable onAccountChosen = () -> {
@@ -432,6 +455,38 @@ public class FlippingRsPanel extends PluginPanel
 		final JPanel body = new JPanel();
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 		return body;
+	}
+
+	/**
+	 * Draws the list on the tab that has just come on screen, if its data
+	 * moved while it was off.
+	 *
+	 * <p>Each of these skips itself when its own tab is not the one showing,
+	 * so calling all four is how the one that is gets drawn. The labels above
+	 * each list are set as the data arrives and cost nothing; it is the lists
+	 * that are dear, because every line in them is a wrapped HTML label and
+	 * Swing parses each into a document of its own. A hundred open positions
+	 * measured at close to half a second to build, and that was being paid on
+	 * every journal read whichever tab the user was looking at.
+	 */
+	private void drawWhatIsShowing()
+	{
+		if (pendingStale)
+		{
+			redrawPending();
+		}
+		if (recentStale)
+		{
+			redrawRecent();
+		}
+		if (journalStale)
+		{
+			redrawJournal();
+		}
+		if (watchlistStale)
+		{
+			redrawWatchlist();
+		}
 	}
 
 	void onSyncNow(Runnable action)
@@ -688,6 +743,12 @@ public class FlippingRsPanel extends PluginPanel
 
 	private void redrawPending()
 	{
+		if (showing != activityTab)
+		{
+			pendingStale = true;
+			return;
+		}
+		pendingStale = false;
 		pendingList.removeAll();
 		if (pending.isEmpty())
 		{
@@ -739,6 +800,12 @@ public class FlippingRsPanel extends PluginPanel
 
 	private void redrawRecent()
 	{
+		if (showing != tradesTab)
+		{
+			recentStale = true;
+			return;
+		}
+		recentStale = false;
 		recentList.removeAll();
 		if (paused != null)
 		{
@@ -958,7 +1025,8 @@ public class FlippingRsPanel extends PluginPanel
 
 	private void redrawJournal()
 	{
-		positionList.removeAll();
+		// The two summary lines are two labels and cost nothing next to the
+		// cards, so they are kept current whether or not this tab is showing.
 		if (paused != null)
 		{
 			journalSummary.setText(wrap(paused));
@@ -977,6 +1045,14 @@ public class FlippingRsPanel extends PluginPanel
 			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 			journalOpen.setText("");
 		}
+
+		if (showing != journalTab)
+		{
+			journalStale = true;
+			return;
+		}
+		journalStale = false;
+		positionList.removeAll();
 		for (FlippingRsApi.Position position : positions)
 		{
 			positionList.add(positionRow(position));
@@ -1235,6 +1311,12 @@ public class FlippingRsPanel extends PluginPanel
 
 	private void redrawWatchlist()
 	{
+		if (showing != watchlistTab)
+		{
+			watchlistStale = true;
+			return;
+		}
+		watchlistStale = false;
 		watchlistItems.removeAll();
 		offerLines.clear();
 		if (paused != null)
@@ -1605,6 +1687,22 @@ public class FlippingRsPanel extends PluginPanel
 	String activityProblemForTest()
 	{
 		return recentProblem;
+	}
+
+	/** How many rows a tab's list has actually built. */
+	int drawnRowsForTest(String tab)
+	{
+		switch (tab)
+		{
+			case "Trades":
+				return recentList.getComponentCount();
+			case "Journal":
+				return positionList.getComponentCount();
+			case "Watchlists":
+				return watchlistItems.getComponentCount();
+			default:
+				return pendingList.getComponentCount();
+		}
 	}
 
 	/** The tab strip's preferred width, to check it fits the sidebar. */

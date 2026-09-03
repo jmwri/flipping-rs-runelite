@@ -98,7 +98,9 @@ things fill the gap:
 - Your open offers are sent when you log in, when you open the exchange, and
   after your trades go out, so the site can spot anything it missed.
 - Your Grand Exchange history is sent when you open it, so trades that
-  completed while the plugin was off can be added.
+  completed while the plugin was off can be added. Opening it again with the
+  same screen on it sends nothing; the screen changes when an offer completes
+  and is collected, which is when there is something to add.
 
 In all three cases the site checks what it already has, so nothing is added
 twice, and recovered trades are saved without a time rather than pretending

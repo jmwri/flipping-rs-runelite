@@ -406,6 +406,48 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * A tab that is off screen does not build its list, and building it is the
+	 * expensive part of this panel: every line is a wrapped HTML label that
+	 * Swing parses into a document of its own, and a hundred open positions
+	 * measured at close to half a second. Selecting the tab builds what it
+	 * missed, so nothing is lost by waiting.
+	 */
+	@Test
+	public void aTabOffScreenDoesNotBuildItsListUntilItIsShown() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			assertEquals("Activity", panel.selectedTabForTest());
+
+			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+			final FlippingRsApi.Position whip = new FlippingRsApi.Position();
+			whip.itemId = 4151;
+			whip.itemName = "Abyssal whip";
+			whip.remainingQty = 10;
+			open.positions = Arrays.asList(whip);
+			open.summary = new FlippingRsApi.Positions.Summary();
+
+			panel.setJournal(new FlippingRsApi.Analytics(), open);
+
+			assertEquals("the position is held, so the tab has it when it is shown",
+				Arrays.asList(4151), panel.positionsForTest());
+			assertEquals("but nothing is built for a tab nobody is looking at",
+				0, panel.drawnRowsForTest("Journal"));
+
+			panel.selectTabForTest("Journal");
+
+			assertTrue("selecting it builds what it missed",
+				panel.drawnRowsForTest("Journal") > 0);
+
+			// And a later change while it is showing is drawn straight away.
+			open.positions = new ArrayList<>();
+			panel.setJournal(new FlippingRsApi.Analytics(), open);
+			assertEquals(0, panel.drawnRowsForTest("Journal"));
+		});
+	}
+
 	/** Gp typed by a person: separators, and the k/m/b the game uses. */
 	@Test
 	public void typedGpIsReadTheWayPeopleWriteIt()
