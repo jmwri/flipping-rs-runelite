@@ -342,6 +342,31 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("the fill must be kept, not dropped", 1, support.queue().size());
 	}
 
+	/**
+	 * Both of these run as fixed-delay tasks, and an exception escaping one of
+	 * those cancels it for good: the plugin goes quiet for the rest of the
+	 * session with nothing in the log to say why. Reading a setting goes
+	 * through a config proxy, and in both cases that read sat outside the
+	 * guard that was supposed to make this impossible.
+	 */
+	@Test
+	public void theScheduledTasksSurviveAConfigReadThatThrows() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.connect();
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+
+		when(support.config.enabled()).thenThrow(new IllegalStateException("the config proxy fell over"));
+		when(support.configManager.getConfiguration(eq(FlippingRsConfig.GROUP), anyString()))
+			.thenThrow(new IllegalStateException("the config proxy fell over"));
+
+		// Neither may propagate. A failure here is the exception escaping.
+		support.drain();
+		support.quotesTick();
+	}
+
 	@Test
 	public void aSuccessfulSendClearsTheBatch() throws Exception
 	{

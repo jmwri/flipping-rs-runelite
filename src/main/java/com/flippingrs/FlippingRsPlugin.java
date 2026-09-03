@@ -966,22 +966,27 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private void drain()
 	{
-		// Checked before anything else, and before connect's equivalent check,
-		// because "Record trades" being off is a promise that the plugin is not
-		// talking to flippingrs.com at all -- not merely that it has stopped
-		// capturing. Anything already queued stays on disk and goes out when
-		// recording is turned back on; it was captured while the user wanted it
-		// recorded, so discarding it would be its own kind of surprise.
-		if (!config.enabled())
-		{
-			return;
-		}
+		// The claim above that this never throws has to hold for every line of
+		// it, so the only thing outside the try is the one statement that
+		// cannot throw. Reading a setting goes through a config proxy, and an
+		// exception from that used to escape and cancel the schedule.
 		if (!sending.compareAndSet(false, true))
 		{
 			return;
 		}
 		try
 		{
+			// Checked before anything else, and before connect's equivalent
+			// check, because "Record trades" being off is a promise that the
+			// plugin is not talking to flippingrs.com at all -- not merely that
+			// it has stopped capturing. Anything already queued stays on disk
+			// and goes out when recording is turned back on; it was captured
+			// while the user wanted it recorded, so discarding it would be its
+			// own kind of surprise.
+			if (!config.enabled())
+			{
+				return;
+			}
 			final long accountHash = client.getAccountHash();
 			if (accountHash == NO_ACCOUNT)
 			{
@@ -1594,12 +1599,27 @@ public class FlippingRsPlugin extends Plugin
 		}
 	}
 
-	/** The tick that keeps quotes current, while there is something to quote and somewhere it is shown. */
+	/**
+	 * The tick that keeps quotes current, while there is something to quote
+	 * and somewhere it is shown.
+	 *
+	 * <p>Guarded for the same reason {@link #drain} is: this runs as a
+	 * fixed-delay task, and an exception escaping one cancels it for good.
+	 * Deciding whether there is anything to quote reads a setting through a
+	 * config proxy, which is outside refresh's own guard.
+	 */
 	private void quotesTick()
 	{
-		if (watchlists.wantsQuotes())
+		try
 		{
-			refresh(PanelTab.WATCHLISTS);
+			if (watchlists.wantsQuotes())
+			{
+				refresh(PanelTab.WATCHLISTS);
+			}
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure deciding whether to refresh the quotes", e);
 		}
 	}
 
