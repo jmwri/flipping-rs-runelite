@@ -452,6 +452,40 @@ public class OfferTrackerTest
 	}
 
 	/**
+	 * The collect between two identical offers was never seen -- the client was
+	 * killed holding a finished purchase, or the event did not arrive -- so the
+	 * slot goes straight from a completed offer to an identical new one. The
+	 * item, the price and the size all match; the only thing saying this is a
+	 * different purchase is that the progress went backwards.
+	 *
+	 * <p>Without that check the new offer keeps the finished one's reference,
+	 * and the server groups fills into one purchase by exactly that field: two
+	 * purchases would arrive as one, with the second one's cost folded into the
+	 * first.
+	 */
+	@Test
+	public void anIdenticalOfferAfterAMissedCollectIsANewPurchase()
+	{
+		final SavedOffer finished = SavedOffer.of(
+			new Offer(BOUGHT, WHIP, 1000, 10, 10, 10_000), "ref-old", false);
+
+		final OfferTracker.Observation placed =
+			observe(finished, new Offer(BUYING, WHIP, 1000, 10, 0, 0));
+
+		assertNull("placing it is not a trade", placed.transaction);
+		assertNotNull(placed.saved);
+		assertEquals("a second purchase needs a reference of its own", "ref-1", placed.saved.offerRef);
+
+		final OfferTracker.Observation filled =
+			observe(placed.saved, new Offer(BUYING, WHIP, 1000, 10, 4, 3_900));
+
+		assertNotNull(filled.transaction);
+		assertEquals(4, filled.transaction.quantity);
+		assertEquals("its fills must not join the purchase that had already finished",
+			"ref-1", filled.transaction.offerRef);
+	}
+
+	/**
 	 * Over a randomised life of one slot -- offers placed, partly filled at
 	 * mixed prices, completed or cancelled, collected, and the slot reused --
 	 * every item the exchange filled is reported exactly once, and the gp
