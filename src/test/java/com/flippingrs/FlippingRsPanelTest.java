@@ -448,6 +448,40 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** The same for the other two lists, since each gates itself. */
+	@Test
+	public void everyListIsBuiltWhenItsTabIsShown() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+
+			final GeTransaction tx = new GeTransaction();
+			tx.side = "buy";
+			tx.quantity = 4;
+			tx.itemName = "Abyssal whip";
+			tx.grossValue = 3_800_000;
+			panel.setActivity(Arrays.asList(tx));
+			panel.setPending(Arrays.asList(tx));
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 0, null, quote(4151))));
+
+			// Activity is the tab on show, so its buffer list is already built.
+			assertTrue(panel.drawnRowsForTest("Activity") > 0);
+			assertEquals(0, panel.drawnRowsForTest("Trades"));
+			assertEquals(0, panel.drawnRowsForTest("Watchlists"));
+
+			panel.selectTabForTest("Trades");
+			assertTrue("the recorded trade appears when its tab does",
+				panel.drawnRowsForTest("Trades") > 0);
+
+			panel.selectTabForTest("Watchlists");
+			assertTrue("and so does the watched item",
+				panel.drawnRowsForTest("Watchlists") > 0);
+		});
+	}
+
 	/** Gp typed by a person: separators, and the k/m/b the game uses. */
 	@Test
 	public void typedGpIsReadTheWayPeopleWriteIt()
