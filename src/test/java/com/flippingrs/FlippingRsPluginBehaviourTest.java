@@ -757,6 +757,24 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * An empty list of journals is not evidence that the one this character
+	 * files under has been deleted. Forgetting it on that would stop the
+	 * recording and make the user pick again, over a reply that may simply
+	 * have come back without them.
+	 */
+	@Test
+	public void anEmptyJournalListDoesNotForgetTheOneInUse() throws Exception
+	{
+		serverPanel().accounts = Collections.emptyList();
+		support.profileConfig.put("gameAccountId", "acct-1");
+
+		support.connect();
+
+		assertEquals("a reply with no journals in it is not a deletion",
+			"acct-1", support.profileConfig.get("gameAccountId"));
+	}
+
+	/**
 	 * A journal deleted on the site. Sending to it would be refused every
 	 * tick, and the picker used to show whichever entry sorted first while
 	 * that happened. Forget it, show nothing, hold the trades.
@@ -1458,6 +1476,56 @@ public class FlippingRsPluginBehaviourTest
 		support.settleSwing();
 
 		verify(support.api, never()).submitOffers(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * A slot the client still reports after it was collected is not an open
+	 * offer, and sending it would have the site reconcile against an offer of
+	 * nothing.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	public void emptySlotsAreNotSentAsOpenOffers() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		slots[5] = offer(GrandExchangeOfferState.EMPTY, 0, 0);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		final ArgumentCaptor<List<FlippingRsApi.OfferState>> sent = ArgumentCaptor.forClass(List.class);
+		verify(support.api).submitOffers(anyString(), anyString(), sent.capture());
+		assertEquals("only the slot with an offer in it", 1, sent.getValue().size());
+		assertEquals(3, sent.getValue().get(0).slot);
+	}
+
+	/**
+	 * A malformed row from the server must not take the tab down with it. The
+	 * account picker already drops rows without an id; the watchlists are read
+	 * from the same reply and walked before the picker ever sees them.
+	 */
+	@Test
+	public void aWatchlistWithoutAnIdDoesNotBreakTheTab() throws Exception
+	{
+		final FlippingRsApi.Watchlist broken = new FlippingRsApi.Watchlist();
+		broken.name = "No id";
+		serverPanel().watchlists = Arrays.asList(broken, watchlist("wl_1", "Plan", 4151));
+		support.pluginConfig.put("watchlistId", "wl_1");
+		support.showSidebar();
+
+		support.connect();
+
+		assertEquals("wl_1", support.panel.selectedWatchlistId());
+		assertEquals(Collections.singletonList(4151), support.panel.watchlistForTest());
 	}
 
 	@Test

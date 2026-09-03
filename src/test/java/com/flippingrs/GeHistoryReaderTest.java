@@ -229,6 +229,28 @@ public class GeHistoryReaderTest
 	}
 
 	/**
+	 * A row scrolled out of view is still in the widget list, and reads
+	 * perfectly well. Reading it would send the site a trade the screen was
+	 * not showing.
+	 */
+	@Test
+	public void aRowScrolledOutOfViewIsNotRead()
+	{
+		hidden(item(0, 4151, 10));
+		hidden(text(0, "Bought"));
+		hidden(text(0, "15,000,000 coins"));
+
+		assertTrue("a row nobody can see is not on the screen",
+			GeHistoryReader.read(list(), GeHistoryReaderTest::name).isEmpty());
+	}
+
+	private static Widget hidden(Widget w)
+	{
+		when(w.isSelfHidden()).thenReturn(true);
+		return w;
+	}
+
+	/**
 	 * Without a side there is no trade, whatever else the row says. The case
 	 * below skips its bad row for want of a price; this one has a price and a
 	 * count and still cannot say whether the gp came in or went out.
