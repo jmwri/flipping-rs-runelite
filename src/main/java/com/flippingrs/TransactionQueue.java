@@ -176,6 +176,9 @@ public class TransactionQueue
 	 * <p>Matched on id rather than on object identity. The two are the same
 	 * within one session, but the id is what actually identifies a fill, and
 	 * relying on identity would break the moment anything copied a row.
+	 *
+	 * <p>Only rewritten if something actually left, so a confirmation of rows
+	 * that have already gone does not cost a write of the whole backlog.
 	 */
 	public synchronized void confirm(Collection<GeTransaction> sent)
 	{
@@ -188,8 +191,10 @@ public class TransactionQueue
 		{
 			ids.add(tx.id);
 		}
-		pending.removeIf(tx -> ids.contains(tx.id));
-		rewrite();
+		if (pending.removeIf(tx -> ids.contains(tx.id)))
+		{
+			rewrite();
+		}
 	}
 
 	/**
