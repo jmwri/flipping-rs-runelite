@@ -229,6 +229,44 @@ public class TransactionQueueTest
 	}
 
 	/**
+	 * A fresh install has no folder yet, and the first write is what says so.
+	 * Confirming it exists before every fill cost as much as the fill's own
+	 * write, to establish something true since startup.
+	 */
+	@Test
+	public void theFolderIsMadeWhenTheFirstWriteFindsItMissing() throws IOException
+	{
+		final File dir = new File(folder.getRoot(), "not-there-yet");
+		assertFalse(dir.exists());
+		final File file = new File(dir, "queue-1.json");
+
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+		queue.add(fill("a"));
+
+		assertTrue("the folder must be made when a fill needs it", dir.isDirectory());
+		assertEquals("and the fill must be on disk", 1, new TransactionQueue(gson, file).size());
+	}
+
+	/** And one tidied away under a running client is made again. */
+	@Test
+	public void aFolderRemovedUnderARunningClientIsMadeAgain() throws IOException
+	{
+		final File dir = folder.newFolder("flippingrs");
+		final File file = new File(dir, "queue-1.json");
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+		queue.add(fill("a"));
+
+		assertTrue(file.delete());
+		assertTrue(dir.delete());
+
+		queue.add(fill("b"));
+
+		assertTrue("the folder must be made again", dir.isDirectory());
+		assertTrue("and the fill written since must be on disk", file.isFile());
+		assertEquals("nothing leaves the queue itself over a missing folder", 2, queue.size());
+	}
+
+	/**
 	 * A refusal that cannot be filed must still leave the queue. Holding it
 	 * would wedge every later trade behind it forever, which is the whole
 	 * reason refused rows are set aside rather than retried -- and the panel
