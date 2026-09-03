@@ -182,8 +182,10 @@ public class FlippingRsPlugin extends Plugin
 
 	/**
 	 * Queue and disk work. Everything that touches {@link TransactionQueue}
-	 * runs here and nowhere else, which keeps file writes off the game thread
-	 * and means the queue's monitor is essentially uncontended.
+	 * runs here, which keeps file writes off the game thread and means the
+	 * queue's monitor is essentially uncontended. The one exception is a fill
+	 * captured after this executor has stopped, which the game thread writes
+	 * through itself rather than drop.
 	 */
 	private ScheduledExecutorService diskExecutor;
 
@@ -244,7 +246,17 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private volatile boolean shuttingDown;
 
-	private volatile long accountTabsRefreshedAt;
+	/**
+	 * When the account tabs were last re-read, on the nanoTime clock, or
+	 * {@link #NEVER}. That clock's origin is arbitrary and it may well be
+	 * negative, so "not yet" needs a marker of its own rather than a zero,
+	 * and every comparison against it is a subtraction rather than a sum, so
+	 * that a wrap comes out right instead of deferring a refresh for the
+	 * next three hundred years.
+	 */
+	private static final long NEVER = Long.MIN_VALUE;
+
+	private volatile long accountTabsRefreshedAt = NEVER;
 	private final AtomicBoolean accountTabsRefreshPending = new AtomicBoolean();
 
 	/**
@@ -283,6 +295,13 @@ public class FlippingRsPlugin extends Plugin
 		lastSyncAt = null;
 		knownAccounts = null;
 		shuttingDown = false;
+		loggedInTick = -1;
+		// The deferred re-read these two coalesce was scheduled on the executor
+		// the last shutDown stopped, so it will never run and never clear the
+		// flag. Left set, it swallows the first coalesced re-read of the new
+		// session.
+		accountTabsRefreshedAt = NEVER;
+		accountTabsRefreshPending.set(false);
 
 		api = newApi();
 		wire();
@@ -665,7 +684,7 @@ public class FlippingRsPlugin extends Plugin
 		// queueFor is on this side of the handoff too: constructing a queue
 		// reads its file back, so the first fill after login would otherwise
 		// be a disk read on the game thread as well.
-		submit(diskExecutor, () ->
+		final boolean handedOver = submit(diskExecutor, () ->
 		{
 			final TransactionQueue queue = queueFor(accountHash);
 			queue.add(tx);
@@ -680,6 +699,21 @@ public class FlippingRsPlugin extends Plugin
 				p.setPending(buffered);
 			});
 		});
+
+		if (!handedOver)
+		{
+			// The io thread is gone: the plugin is being disabled and an offer
+			// event was already in flight on the game thread. Everywhere else
+			// that loses this race has nothing to lose -- a panel update, a
+			// re-read -- but this is a trade that happened, and dropping it
+			// breaks the one promise the queue exists to keep. Write it through
+			// here instead. It is a disk write on the game thread, which is
+			// exactly what the handoff above avoids, but it happens only while
+			// the plugin is stopping: a stall nobody is playing through beats a
+			// trade nobody recorded. It goes out on the next login.
+			log.debug("the io thread is gone; writing {} through from the game thread", tx);
+			queueFor(accountHash).add(tx);
+		}
 	}
 
 	/** Whether the world the client is on trades in gp that is not the journal's gp. */
@@ -1345,8 +1379,9 @@ public class FlippingRsPlugin extends Plugin
 	private void refreshAccountTabsAfterSend()
 	{
 		final long now = System.nanoTime();
-		final long wait = accountTabsRefreshedAt + TimeUnit.SECONDS.toNanos(ACCOUNT_TABS_REFRESH_SECONDS) - now;
-		if (accountTabsRefreshedAt == 0 || wait <= 0)
+		final long since = now - accountTabsRefreshedAt;
+		final long window = TimeUnit.SECONDS.toNanos(ACCOUNT_TABS_REFRESH_SECONDS);
+		if (accountTabsRefreshedAt == NEVER || since >= window)
 		{
 			accountTabsRefreshedAt = now;
 			clientThread.invoke(catchUp::snapshotAfterSend);
@@ -1354,6 +1389,7 @@ public class FlippingRsPlugin extends Plugin
 			refresh(PanelTab.JOURNAL);
 			return;
 		}
+		final long wait = window - since;
 		if (!accountTabsRefreshPending.compareAndSet(false, true))
 		{
 			// One is already on its way, and it will see this send's rows too.

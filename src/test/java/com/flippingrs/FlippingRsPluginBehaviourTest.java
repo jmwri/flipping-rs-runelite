@@ -207,6 +207,29 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("Abyssal whip", queued.get(0).itemName);
 	}
 
+	/**
+	 * Disabling the plugin stops the io thread, but an offer event already in
+	 * flight on the game thread still arrives. Everything else that loses that
+	 * race has nothing to lose; this is a trade that happened, so the game
+	 * thread writes it through itself rather than drop it.
+	 */
+	@Test
+	public void aFillCapturedAfterTheIoThreadStopsIsStillWrittenThrough() throws Exception
+	{
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		support.stopDiskThread();
+
+		final GrandExchangeOfferChanged event = new GrandExchangeOfferChanged();
+		event.setSlot(3);
+		event.setOffer(offer(GrandExchangeOfferState.BUYING, 4, 3_800_000));
+		support.plugin.onGrandExchangeOfferChanged(event);
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals("the fill must not be dropped with the io thread", 1, queued.size());
+		assertEquals(4, queued.get(0).quantity);
+		assertEquals(3_800_000, queued.get(0).grossValue);
+	}
+
 	@Test
 	public void placingAnOfferIsNotATrade() throws Exception
 	{

@@ -256,6 +256,12 @@ final class FlippingRsPluginTestSupport
 		}).get(10, TimeUnit.SECONDS);
 	}
 
+	/** Stops the io thread on its own, the way disabling the plugin does. */
+	void stopDiskThread()
+	{
+		diskExecutor.shutdown();
+	}
+
 	void close()
 	{
 		diskExecutor.shutdownNow();
