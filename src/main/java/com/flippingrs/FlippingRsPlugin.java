@@ -137,6 +137,15 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private static final long ACCOUNT_TABS_REFRESH_SECONDS = 15;
 
+	/**
+	 * "Not read yet", on the nanoTime clock. That clock's origin is arbitrary
+	 * and it may well be negative, so zero is a time it is allowed to return
+	 * and cannot stand in for "never". Every comparison against it is a
+	 * subtraction rather than a sum, so a wrap comes out right instead of
+	 * deferring a refresh for the next three hundred years.
+	 */
+	private static final long NEVER = Long.MIN_VALUE;
+
 	/** The tabs that are re-read on their own; Account is only read by connect. */
 	private enum PanelTab
 	{
@@ -253,16 +262,6 @@ public class FlippingRsPlugin extends Plugin
 	 * of it.
 	 */
 	private volatile boolean shuttingDown;
-
-	/**
-	 * When the account tabs were last re-read, on the nanoTime clock, or
-	 * {@link #NEVER}. That clock's origin is arbitrary and it may well be
-	 * negative, so "not yet" needs a marker of its own rather than a zero,
-	 * and every comparison against it is a subtraction rather than a sum, so
-	 * that a wrap comes out right instead of deferring a refresh for the
-	 * next three hundred years.
-	 */
-	private static final long NEVER = Long.MIN_VALUE;
 
 	/**
 	 * Whether the sidebar is currently showing this panel. Set from the
@@ -1464,7 +1463,10 @@ public class FlippingRsPlugin extends Plugin
 		});
 	}
 
-	/** Re-reads Trades and Journal after a send, no more often than the limit allows. Net thread. */
+	/**
+	 * What a successful send sets going: the open-slot snapshot always, and a
+	 * re-read of the two account tabs if anyone can see them. Net thread.
+	 */
 	private void refreshAccountTabsAfterSend()
 	{
 		// Not a panel read, and so not conditional on anyone looking: this is
