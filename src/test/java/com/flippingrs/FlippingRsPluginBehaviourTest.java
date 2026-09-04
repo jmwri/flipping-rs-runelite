@@ -3402,6 +3402,30 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).account(anyString());
 	}
 
+	/**
+	 * A refused watchlist read is shown on the watchlist tab.
+	 *
+	 * <p>Each of the three tabs says why it could not load, and two of them
+	 * were checked. The watchlists were not, and a watchlist tab that says
+	 * nothing looks like a watchlist with nothing on it -- which is a
+	 * reasonable thing to see and entirely the wrong conclusion.
+	 */
+	@Test
+	public void aRefusedWatchlistReadIsShownOnItsTab() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+		when(support.api.watchlists(anyString(), any()))
+			.thenThrow(new java.io.IOException("flippingrs.com is having a moment."));
+
+		support.quotesTick();
+		support.settleSwing();
+
+		assertEquals("flippingrs.com is having a moment.",
+			support.panel.watchlistProblemForTest());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{

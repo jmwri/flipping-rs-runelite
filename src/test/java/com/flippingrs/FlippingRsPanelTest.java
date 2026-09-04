@@ -1261,6 +1261,41 @@ public class FlippingRsPanelTest
 	// ------------------------------------------------------- what is drawn
 
 	/**
+	 * A tab that could not load says so on the tab.
+	 *
+	 * <p>Each of the three keeps the reason its last read failed, and the
+	 * reason is only worth keeping if it reaches the screen. A tab that says
+	 * nothing looks like a tab with nothing on it -- no trades yet, no
+	 * positions open, an empty watchlist -- every one of which is a
+	 * reasonable thing to see and entirely the wrong conclusion.
+	 */
+	@Test
+	public void aTabThatCouldNotLoadSaysSoOnTheTab() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+
+			panel.selectTabForTest("Trades");
+			panel.setActivityProblem("the site is having a moment");
+			assertTrue("the Trades tab: " + drawnText(panel),
+				drawnText(panel).contains("the site is having a moment"));
+
+			panel.selectTabForTest("Journal");
+			panel.setJournalProblem("the site is having a moment");
+			assertTrue("the Journal tab: " + drawnText(panel),
+				drawnText(panel).contains("the site is having a moment"));
+
+			panel.selectTabForTest("Watchlists");
+			panel.setWatchlistProblem("the site is having a moment");
+			assertTrue("the Watchlists tab: " + drawnText(panel),
+				drawnText(panel).contains("the site is having a moment"));
+		});
+	}
+
+	// ------------------------------------------------------- what is drawn
+
+	/**
 	 * A fill's live-offer line lands on that item's card and no other.
 	 *
 	 * <p>One fill changes one line, so the line is updated where it stands
