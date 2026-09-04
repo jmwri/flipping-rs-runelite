@@ -186,6 +186,10 @@ final class FlippingRsPluginTestSupport
 		// What startUp does after the fields are in place: build the
 		// collaborators that hold them. startUp itself is still not called.
 		plugin.wire();
+		// The sidebar's buttons and dropdowns, wired to the plugin the way
+		// startUp does it, so a test that drives the panel goes the way a user
+		// does rather than reaching past it.
+		SwingUtilities.invokeAndWait(plugin::wirePanel);
 	}
 
 	private void set(String name, Object value) throws Exception
@@ -293,10 +297,27 @@ final class FlippingRsPluginTestSupport
 
 	private void sidebar(boolean shown) throws Exception
 	{
-		final java.lang.reflect.Method m = FlippingRsPlugin.class
-			.getDeclaredMethod("sidebarShown", boolean.class);
-		m.setAccessible(true);
-		m.invoke(plugin, shown);
+		// Through the panel's own hooks, which is what RuneLite calls when the
+		// sidebar opens and closes, so the wiring between them is exercised too.
+		SwingUtilities.invokeAndWait(() ->
+		{
+			if (shown)
+			{
+				panel.onActivate();
+			}
+			else
+			{
+				panel.onDeactivate();
+			}
+		});
+		settleNet();
+		settleSwing();
+	}
+
+	/** The user pressing "Send now" on the Activity tab. */
+	void pressSendNow() throws Exception
+	{
+		SwingUtilities.invokeAndWait(panel::pressSendNowForTest);
 		settleNet();
 		settleSwing();
 	}
@@ -355,30 +376,19 @@ final class FlippingRsPluginTestSupport
 	}
 
 	/** The user picking a journal in the Account tab, listener and all. */
+	/** The user picking a journal in the dropdown, listener, wiring and all. */
 	void chooseAccount(String id) throws Exception
 	{
-		SwingUtilities.invokeAndWait(() ->
-		{
-			panel.setSelectedForTest(id);
-			try
-			{
-				invoke("rememberChosenAccount");
-			}
-			catch (Exception e)
-			{
-				throw new IllegalStateException(e);
-			}
-		});
+		SwingUtilities.invokeAndWait(() -> panel.setSelectedForTest(id));
 		settleNet();
 		settleSwing();
 	}
 
 	/** The user picking a different watchlist in the sidebar. */
+	/** The user picking a watchlist in the dropdown, the same way. */
 	void chooseWatchlist(String id) throws Exception
 	{
-		final Field f = FlippingRsPlugin.class.getDeclaredField("watchlists");
-		f.setAccessible(true);
-		((Watchlists) f.get(plugin)).chosen(id);
+		SwingUtilities.invokeAndWait(() -> panel.setSelectedWatchlistForTest(id));
 		settleNet();
 		settleSwing();
 	}

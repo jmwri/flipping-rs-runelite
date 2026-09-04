@@ -1942,6 +1942,12 @@ public class FlippingRsPanel extends PluginPanel
 		throw new IllegalArgumentException("no such account in the list: " + id);
 	}
 
+	/** The user pressing "Send now", listener and all. */
+	void pressSendNowForTest()
+	{
+		syncNow.doClick();
+	}
+
 	/** The user picking a watchlist from the dropdown, listener and all. */
 	void setSelectedWatchlistForTest(String id)
 	{

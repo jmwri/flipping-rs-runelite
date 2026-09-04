@@ -328,17 +328,7 @@ public class FlippingRsPlugin extends Plugin
 		overlayManager.add(quoteOverlay);
 
 		panel = new FlippingRsPanel();
-		panel.onSyncNow(() -> submit(sendExecutor, this::drain));
-		panel.onReconnect(() -> submit(sendExecutor, this::connect));
-		panel.onAccountChosen(this::rememberChosenAccount);
-		panel.onWatchlistChosen(this::rememberChosenWatchlist);
-		panel.onOpenItem(this::openItem);
-		panel.onRemoveItem(itemId -> submit(sendExecutor, () -> removeFromWatchlist(itemId)));
-		panel.onFindFlips(() -> LinkBrowser.browse(api.finderUrl()));
-		panel.onClosePosition((id, price, qty) -> submit(sendExecutor, () -> closePosition(id, price, qty)));
-		panel.onDeletePosition(id -> submit(sendExecutor, () -> deletePosition(id)));
-		panel.onShown(() -> sidebarShown(true));
-		panel.onHidden(() -> sidebarShown(false));
+		wirePanel();
 
 		navButton = NavigationButton.builder()
 			.tooltip("FlippingRS")
@@ -362,6 +352,29 @@ public class FlippingRsPlugin extends Plugin
 	 * client. Each collaborator reads {@link #api} through a supplier rather
 	 * than holding it, because a developer-mode server change replaces it.
 	 */
+	/**
+	 * Hands the sidebar the things it can ask the plugin to do.
+	 *
+	 * <p>Separate from building the panel so that it is reachable without
+	 * starting the whole plugin up: every one of these is a button or a
+	 * dropdown, and wiring one to the wrong thing is not something the panel
+	 * or the plugin can notice on its own.
+	 */
+	void wirePanel()
+	{
+		panel.onSyncNow(() -> submit(sendExecutor, this::drain));
+		panel.onReconnect(() -> submit(sendExecutor, this::connect));
+		panel.onAccountChosen(this::rememberChosenAccount);
+		panel.onWatchlistChosen(this::rememberChosenWatchlist);
+		panel.onOpenItem(this::openItem);
+		panel.onRemoveItem(itemId -> submit(sendExecutor, () -> removeFromWatchlist(itemId)));
+		panel.onFindFlips(() -> LinkBrowser.browse(api.finderUrl()));
+		panel.onClosePosition((id, price, qty) -> submit(sendExecutor, () -> closePosition(id, price, qty)));
+		panel.onDeletePosition(id -> submit(sendExecutor, () -> deletePosition(id)));
+		panel.onShown(() -> sidebarShown(true));
+		panel.onHidden(() -> sidebarShown(false));
+	}
+
 	void wire()
 	{
 		store = new ProfileStore(configManager, gson);

@@ -1332,6 +1332,9 @@ public class FlippingRsPluginBehaviourTest
 		final FlippingRsApi.Quote bond = new FlippingRsApi.Quote();
 		bond.id = 13190;
 		server.quotes = Arrays.asList(whip, bond);
+		// Open, because the picker is only filled in while it is, which is also
+		// the only time anyone can pick from it.
+		support.showSidebar();
 		support.connect();
 
 		assertNotNull("the first list is the shown one", support.watchedQuote(4151));
@@ -2469,6 +2472,9 @@ public class FlippingRsPluginBehaviourTest
 	{
 		serverPanel().watchlists = Arrays.asList(
 			watchlist("wl_1", "Plan", 4151), watchlist("wl_2", "Other", 13190));
+		// The picker is only filled in while the sidebar is open, which is also
+		// the only time anyone can pick from it.
+		support.showSidebar();
 		support.connect();
 
 		support.chooseWatchlist("wl_2");
@@ -2857,6 +2863,31 @@ public class FlippingRsPluginBehaviourTest
 			assertTrue(states[i] + " should read as \"" + words[i] + "\", got: " + line,
 				line != null && line.startsWith(words[i] + " "));
 		}
+	}
+
+	/**
+	 * "Send now" sends now.
+	 *
+	 * <p>It is the button someone presses when they do not want to wait out
+	 * the interval -- checking that a trade landed before closing the client,
+	 * usually. There is nothing else on the sidebar that says whether it did
+	 * anything, so a button wired to nothing would look exactly like a button
+	 * wired to a send that had nothing to do.
+	 */
+	@Test
+	public void sendNowSendsWhatIsWaiting() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		assertEquals("a fill is waiting", 1, support.queue().size());
+		clearInvocations(support.api);
+
+		support.pressSendNow();
+
+		verify(support.api).submit(anyString(), anyString(), anyList());
+		assertTrue("and it went out", support.queue().isEmpty());
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
