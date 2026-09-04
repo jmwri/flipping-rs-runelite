@@ -13,6 +13,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.WorldType;
+import java.util.concurrent.atomic.AtomicLong;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -2183,5 +2184,157 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 		support.settleSwing();
 		verify(support.api, times(2)).submitOffers(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * The same screenful goes again when it would be filed somewhere else.
+	 *
+	 * <p>A screen already sent is not sent twice, which is what keeps a user
+	 * flicking between their offers and their history from spending a request
+	 * on every click. But "already sent" has to mean sent to this journal, for
+	 * this character. Pick a different journal and the rows have not been
+	 * anywhere near it, and the second send is the one that puts them there.
+	 */
+	@Test
+	public void theSameHistoryScreenIsSentAgainToADifferentJournal() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		historyScreen("15,000,000 coins");
+		when(support.api.submitHistory(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.Reconciliation());
+
+		openHistory(5);
+		verify(support.api).submitHistory(eq("frs_key"), eq("acct-1"), anyList());
+
+		support.profileConfig.put("gameAccountId", "acct-2");
+		openHistory(10);
+
+		verify(support.api).submitHistory(eq("frs_key"), eq("acct-2"), anyList());
+	}
+
+	/**
+	 * And again on a different character, whose journal has not seen it
+	 * either. Two characters can easily show a history that reads the same --
+	 * an alt that has only ever bought the one thing, most obviously.
+	 */
+	@Test
+	public void theSameHistoryScreenIsSentAgainOnAnotherCharacter() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final AtomicLong account = new AtomicLong(1111L);
+		when(support.client.getAccountHash()).thenAnswer(inv -> account.get());
+		historyScreen("15,000,000 coins");
+		when(support.api.submitHistory(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.Reconciliation());
+
+		openHistory(5);
+		verify(support.api, times(1)).submitHistory(anyString(), anyString(), anyList());
+
+		account.set(2222L);
+		openHistory(10);
+
+		verify(support.api, times(2)).submitHistory(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * A history screen read on one character is not sent for another.
+	 *
+	 * <p>The rows come off the client thread and the journal they would go
+	 * into is read on the net thread, with a drain in between that can block
+	 * for a whole call timeout. The server's answer to a shortfall is to take
+	 * it on as a recovered trade, so pairing a mismatched two would write one
+	 * character's trades into another's journal, untimed. The open slots are
+	 * guarded this way already; the history screen is the same hazard.
+	 */
+	@Test
+	public void aHistoryScreenIsNotSentForACharacterWhoDidNotShowIt() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		historyScreen("15,000,000 coins");
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_HISTORY);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+
+		// Between the screen being read and the rows being sent, the client is
+		// on another character.
+		when(support.client.getAccountHash()).thenReturn(9999L);
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * A history send the server took nothing from says nothing. Opening the
+	 * history is a click, and almost every screenful is one the server already
+	 * has.
+	 */
+	@Test
+	public void aHistorySendThatRecoveredNothingSaysNothing() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		historyScreen("15,000,000 coins");
+		when(support.api.submitHistory(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.Reconciliation());
+
+		openHistory(5);
+
+		verify(support.api).submitHistory(anyString(), anyString(), anyList());
+		assertTrue("nothing was recovered, so there is nothing to say",
+			!support.panel.activityNoticeShowingForTest());
+	}
+
+	/**
+	 * "Record trades" off is a promise not to contact the server, and the
+	 * history screen is the sharpest test of it.
+	 *
+	 * <p>Opening it is a click, not a trade, and what it shows is a record of
+	 * what this character has already bought and sold. Sending that while the
+	 * user believes reporting is off would hand over the very thing they
+	 * turned it off to keep back.
+	 */
+	@Test
+	public void recordingOffSendsNoHistory() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		historyScreen("15,000,000 coins");
+		when(support.config.enabled()).thenReturn(false);
+
+		openHistory(5);
+
+		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
+	}
+
+	/** One bought row on the Grand Exchange history screen. */
+	private void historyScreen(String priceText)
+	{
+		final Widget icon = mock(Widget.class);
+		when(icon.getItemId()).thenReturn(4151);
+		when(icon.getItemQuantity()).thenReturn(10);
+		when(icon.getText()).thenReturn("");
+		final Widget side = mock(Widget.class);
+		when(side.getItemId()).thenReturn(-1);
+		when(side.getText()).thenReturn("Bought");
+		final Widget price = mock(Widget.class);
+		when(price.getItemId()).thenReturn(-1);
+		when(price.getText()).thenReturn(priceText);
+		final Widget list = mock(Widget.class);
+		when(list.getDynamicChildren()).thenReturn(new Widget[]{icon, side, price});
+		when(support.client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(list);
+	}
+
+	/** Opens the history screen and lets the read and the send run. */
+	private void openHistory(int tick) throws Exception
+	{
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_HISTORY);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(tick);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
 	}
 }
