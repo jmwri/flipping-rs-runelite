@@ -2994,6 +2994,139 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("whether its history was adopted", saved.adopted, back.adopted);
 	}
 
+	/**
+	 * A plugin turned off and on again keeps coalescing its tab reads.
+	 *
+	 * <p>Two reads close together are coalesced into one deferred read, and
+	 * the flag saying "one is already on its way" is cleared by that deferred
+	 * read when it runs. Disabling the plugin stops the thread it was queued
+	 * on, so it never runs and never clears the flag -- and every later pair
+	 * of reads is then swallowed, for the rest of the client's life, because
+	 * nothing else ever clears it.
+	 */
+	@Test
+	public void aPluginTurnedOffAndOnAgainStillCoalescesItsTabReads() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		support.showSidebar();
+		// Two reads inside the window: the second is deferred, and the flag is
+		// left set because the deferred read is on a thread about to stop.
+		support.tabsLastReadLongAgo();
+		support.refreshAccountTabs();
+		support.refreshAccountTabs();
+
+		support.reEnable();
+
+		support.showSidebar();
+		support.tabsLastReadLongAgo();
+		support.refreshAccountTabs();
+		final int before = support.deferredReadsForTest();
+		support.refreshAccountTabs();
+
+		assertTrue("the second read of the new session must still be deferred, not dropped",
+			support.deferredReadsForTest() > before);
+	}
+
+	/**
+	 * And it forgets what belonged to the last one.
+	 *
+	 * <p>It does not fail loudly: the sidebar goes on showing a count of
+	 * trades from a session that has ended, under a heading that says this
+	 * session.
+	 */
+	@Test
+	public void aPluginTurnedOffAndOnAgainForgetsTheLastSession() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		support.showSidebar();
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+		assertTrue("a trade was recorded in the old session",
+			support.panel.recordedTextForTest().contains("1"));
+
+		support.reEnable();
+		support.settleSwing();
+
+		// The count reaches the sidebar with the next thing that pushes it.
+		support.refreshPending();
+
+		assertTrue("the new session has recorded nothing: "
+				+ support.panel.recordedTextForTest(),
+			support.panel.recordedTextForTest().contains("0"));
+	}
+
+	/**
+	 * A re-enabled plugin still catches up its open offers after a send, and
+	 * still leaves the two tabs alone while the sidebar is shut.
+	 *
+	 * <p>Two flags decide those, and both belong to the run that ended. Left
+	 * as they were, a plugin that was shutting down when it was disabled never
+	 * snapshots its open offers again -- which is how the site learns about
+	 * fills the plugin never saw -- and one that had the sidebar open reads
+	 * two tabs after every send for a sidebar that is shut.
+	 */
+	@Test
+	public void aReEnabledPluginSnapshotsAgainAndLeavesTheShutTabsAlone() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
+		// The state the last run ended in: sidebar open, client closing.
+		support.showSidebar();
+		support.markShuttingDown();
+
+		support.reEnable();
+
+		support.tabsLastReadLongAgo();
+		clearInvocations(support.api);
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+	}
+
+	/**
+	 * And the next login after a re-enable is still a login.
+	 *
+	 * <p>The client replays every open offer in the first ticks after one, and
+	 * those replays go out untimed because they did not happen just now. What
+	 * says a login is a login is a flag set when the client leaves the world,
+	 * and it belongs to the run that ended: left as it was, the next login is
+	 * not noticed, the replayed fills are stamped with the time the client
+	 * started, and a sale can land ahead of the purchase it came from.
+	 */
+	@Test
+	public void aReEnabledPluginStillNoticesTheNextLogin() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		// A login in the run that ended, which is what leaves the flag down.
+		when(support.client.getTickCount()).thenReturn(10);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+
+		support.reEnable();
+
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.settle();
+
+		final List<GeTransaction> waiting = support.queue().peek(10);
+		assertEquals(1, waiting.size());
+		assertNull("a fill replayed just after a login has no time on it",
+			waiting.get(0).occurredAt);
+		assertEquals(GeTransaction.SOURCE_ADOPTED, waiting.get(0).source);
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{

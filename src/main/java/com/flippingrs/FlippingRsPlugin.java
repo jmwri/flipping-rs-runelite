@@ -303,21 +303,7 @@ public class FlippingRsPlugin extends Plugin
 		diskExecutor = Executors.newSingleThreadScheduledExecutor(thread("flippingrs-io"));
 		sendExecutor = Executors.newSingleThreadScheduledExecutor(thread("flippingrs-net"));
 
-		// RuneLite reuses the plugin instance across disable and enable, so
-		// "this session" has to be reset by hand or it carries over.
-		recordedThisSession.set(0);
-		lastSyncAt = null;
-		knownAccounts = null;
-		shuttingDown = false;
-		loggedInTick = -1;
-		arrivingInWorld = true;
-		// The deferred re-read these two coalesce was scheduled on the executor
-		// the last shutDown stopped, so it will never run and never clear the
-		// flag. Left set, it swallows the first coalesced re-read of the new
-		// session.
-		accountTabsRefreshedAt = NEVER;
-		accountTabsRefreshPending.set(false);
-		sidebarShown = false;
+		newSession();
 
 		api = newApi();
 		wire();
@@ -352,6 +338,35 @@ public class FlippingRsPlugin extends Plugin
 	 * client. Each collaborator reads {@link #api} through a supplier rather
 	 * than holding it, because a developer-mode server change replaces it.
 	 */
+	/**
+	 * Forgets everything that belonged to the last time the plugin ran.
+	 *
+	 * <p>RuneLite reuses the plugin instance across disable and enable, so
+	 * "this session" has to be reset by hand or it carries over: a count of
+	 * trades recorded, a time something was last sent, a sidebar the plugin
+	 * still thinks is open, a login it still thinks it is arriving from.
+	 *
+	 * <p>Separate from startUp so that it is reachable without building a nav
+	 * button and a real HTTP client. Nothing here fails loudly when it is
+	 * missed -- the plugin runs on with the last session's answers.
+	 */
+	void newSession()
+	{
+		recordedThisSession.set(0);
+		lastSyncAt = null;
+		knownAccounts = null;
+		shuttingDown = false;
+		loggedInTick = -1;
+		arrivingInWorld = true;
+		// The deferred re-read these two coalesce was scheduled on the executor
+		// the last shutDown stopped, so it will never run and never clear the
+		// flag. Left set, it swallows the first coalesced re-read of the new
+		// session.
+		accountTabsRefreshedAt = NEVER;
+		accountTabsRefreshPending.set(false);
+		sidebarShown = false;
+	}
+
 	/**
 	 * Hands the sidebar the things it can ask the plugin to do.
 	 *

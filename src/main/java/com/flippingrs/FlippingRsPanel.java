@@ -1762,6 +1762,12 @@ public class FlippingRsPanel extends PluginPanel
 		return journalProblem;
 	}
 
+	/** The "Recorded this session" line, which a new session starts over. */
+	String recordedTextForTest()
+	{
+		return recorded.getText();
+	}
+
 	String lastSyncTextForTest()
 	{
 		return lastSync.getText();

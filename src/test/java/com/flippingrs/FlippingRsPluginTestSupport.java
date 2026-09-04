@@ -328,6 +328,41 @@ final class FlippingRsPluginTestSupport
 		set("developerMode", on);
 	}
 
+	/**
+	 * As if the client had begun closing. Set directly, because doing it the
+	 * real way stops the threads this harness runs everything on.
+	 */
+	void markShuttingDown() throws Exception
+	{
+		set("shuttingDown", true);
+	}
+
+	/** Pushes the session counts and the waiting buffer to the sidebar. */
+	void refreshPending() throws Exception
+	{
+		invoke("refreshPending");
+		settle();
+		settleSwing();
+	}
+
+	/** One read of the two account tabs, throttling and coalescing and all. */
+	void refreshAccountTabs() throws Exception
+	{
+		invoke("refreshAccountTabs");
+		settleNet();
+		settleSwing();
+	}
+
+	/**
+	 * The plugin being disabled and enabled again, which RuneLite does on the
+	 * same instance. Only the part of startUp that forgets the last session;
+	 * the rest of it builds a nav button and a real HTTP client.
+	 */
+	void reEnable() throws Exception
+	{
+		plugin.newSession();
+	}
+
 	/** The user pressing "Send now" on the Activity tab. */
 	void pressSendNow() throws Exception
 	{
