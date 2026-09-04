@@ -50,6 +50,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -2632,6 +2633,54 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
 		verify(support.api, never()).watchlists(anyString(), any());
+	}
+
+	/**
+	 * Closing the client does not wait on a send that can never run.
+	 *
+	 * <p>The plugin asks RuneLite to hold the shutdown until the last trades
+	 * have gone out, which means promising to say when that is. If the net
+	 * thread is already stopped the send never happens, and a promise nobody
+	 * keeps leaves the client unable to close at all -- a worse outcome by far
+	 * than the few trades, which are on disk either way and go out next time.
+	 */
+	@Test
+	public void closingTheClientDoesNotHangWhenTheSenderIsAlreadyStopped() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.stopSendThread();
+
+		final ClientShutdown exit = new ClientShutdown();
+		final long start = System.nanoTime();
+		support.plugin.onClientShutdown(exit);
+		exit.waitForAllConsumers(Duration.ofSeconds(5));
+		final long waitedMs = (System.nanoTime() - start) / 1_000_000L;
+
+		assertTrue("closing the client waited " + waitedMs + "ms on a send that cannot run",
+			waitedMs < 2000);
+	}
+
+	/**
+	 * Disabling the plugin mid-session still tries one last send.
+	 *
+	 * <p>Otherwise the evening's last few trades sit on disk until the plugin
+	 * is next enabled, which for someone turning it off at the end of a
+	 * session means until the next one.
+	 */
+	@Test
+	public void disablingThePluginTriesOneLastSend() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.settleNet();
+		clearInvocations(support.api);
+
+		support.plugin.shutDown();
+
+		verify(support.api, timeout(5000)).submit(anyString(), anyString(), anyList());
 	}
 
 	/** One bought row on the Grand Exchange history screen. */

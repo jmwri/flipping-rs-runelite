@@ -416,6 +416,12 @@ final class FlippingRsPluginTestSupport
 		diskExecutor.shutdown();
 	}
 
+	/** Stops the net thread on its own, so a hand-off to it is refused. */
+	void stopSendThread()
+	{
+		sendExecutor.shutdown();
+	}
+
 	void close()
 	{
 		diskExecutor.shutdownNow();
