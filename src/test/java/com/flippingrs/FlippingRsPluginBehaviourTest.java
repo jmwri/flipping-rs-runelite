@@ -50,6 +50,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -3176,6 +3177,63 @@ public class FlippingRsPluginBehaviourTest
 			assertEquals("slot " + tx.slot + " holds its own item", items[at], tx.itemId);
 			assertEquals("and reports only its own progress", at + 1, tx.quantity);
 		}
+	}
+
+	/**
+	 * A quote refresh that falls over does not stop the quote refreshes.
+	 *
+	 * <p>The quote tick is scheduled to repeat, and a scheduled repeat that
+	 * throws is cancelled -- not retried, not logged as fatal, just never run
+	 * again. The watchlist prices would stop moving for the rest of the
+	 * session with nothing on screen saying so, and the offer screen would go
+	 * on showing whatever it had.
+	 *
+	 * <p>Reading a setting goes through a config proxy, which is the piece
+	 * most likely to throw something nobody expected.
+	 */
+	@Test
+	public void aQuoteTickThatFallsOverDoesNotStopTheQuotes() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+		when(support.config.enabled()).thenThrow(new IllegalStateException("the config proxy fell over"));
+
+		support.quotesTick();
+
+		// Nothing escaped, so the schedule is still alive: with the setting
+		// readable again, the next tick reads the watchlists as usual. Stubbed
+		// the other way round, because asking the mock for the old answer is
+		// itself a call that throws.
+		doReturn(true).when(support.config).enabled();
+		clearInvocations(support.api);
+		support.quotesTick();
+
+		verify(support.api).watchlists(anyString(), any());
+	}
+
+	/**
+	 * A fill is recorded even when the client will not name the item.
+	 *
+	 * <p>The name is looked up from the item manager on the game thread, for
+	 * the sidebar to read. The site works the real name out from the id, so a
+	 * lookup that throws costs a less readable line -- and letting it escape
+	 * costs the trade, out of an event handler, on every fill.
+	 */
+	@Test
+	public void aFillIsRecordedEvenWhenTheClientWillNotNameTheItem() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.itemManager.getItemComposition(anyInt()))
+			.thenThrow(new IllegalStateException("no such item"));
+
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals("the trade is worth more than its name", 1, queued.size());
+		assertEquals(4151, queued.get(0).itemId);
+		assertEquals("", queued.get(0).itemName);
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
