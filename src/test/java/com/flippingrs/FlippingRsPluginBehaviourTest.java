@@ -43,6 +43,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -2306,6 +2307,121 @@ public class FlippingRsPluginBehaviourTest
 		openHistory(5);
 
 		verify(support.api, never()).submitHistory(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * A blank journal id is no journal, not a journal named "".
+	 *
+	 * <p>The setting is absent when nothing has been picked, but a config can
+	 * come back holding an empty string just as easily -- unset and written
+	 * back, or edited by hand. Treating that as a choice sends the trades with
+	 * nothing to file them under, and the answer comes back as trades the site
+	 * could not record. Held is the right answer: the fills keep, and the panel
+	 * asks for a journal.
+	 */
+	@Test
+	public void anEmptyStoredJournalIdIsTreatedAsNoJournal() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "");
+		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
+		assertEquals("the fill is kept until there is a journal to file it under",
+			1, support.queue().size());
+	}
+
+	/**
+	 * Editing the journal without a key says so, rather than asking the server.
+	 *
+	 * <p>Recording a sale and deleting a lot both go straight to the site, so
+	 * without a key they can only fail. Failing at the server turns a missing
+	 * setting into "Couldn't record the sale: HTTP 401", which tells the user
+	 * nothing they can act on. A key of nothing but spaces is the same case:
+	 * that is what a paste with a stray newline leaves behind, and it has to
+	 * be read as no key rather than sent as one.
+	 */
+	@Test
+	public void aJournalEditWithoutAKeyAsksForOneInsteadOfAskingTheServer() throws Exception
+	{
+		for (String key : new String[]{"", "   "})
+		{
+			when(support.config.apiKey()).thenReturn(key);
+			support.closePosition("p1", 1_500_000, 5L);
+			support.settleNet();
+			support.settleSwing();
+
+			assertTrue("a key of [" + key + "] must be treated as no key at all: "
+					+ support.panel.journalNoticeForTest(),
+				support.panel.journalNoticeForTest().contains("Add your API key"));
+		}
+		verify(support.api, never()).closePosition(anyString(), anyString(),
+			org.mockito.ArgumentMatchers.anyLong(), any());
+	}
+
+	/**
+	 * Picking the watchlist that is already picked costs nothing.
+	 *
+	 * <p>A combo box fires its action on any pick, including re-picking what
+	 * was already showing. Treating that as a change writes the setting again,
+	 * rebuilds every card and spends one of thirty requests a minute to arrive
+	 * back where it started.
+	 */
+	@Test
+	public void pickingTheWatchlistAlreadyShowingDoesNothing() throws Exception
+	{
+		serverPanel().watchlists = Arrays.asList(
+			watchlist("wl_1", "Plan", 4151), watchlist("wl_2", "Other", 13190));
+		support.connect();
+
+		support.chooseWatchlist("wl_2");
+		clearInvocations(support.api);
+
+		support.chooseWatchlist("wl_2");
+
+		verify(support.api, never()).watchlists(anyString(), any());
+	}
+
+	/**
+	 * The quote timer does not run for an empty watchlist.
+	 *
+	 * <p>It runs while the sidebar or an offer screen is showing quotes, every
+	 * thirty seconds, for as long as that lasts. With nothing on the list
+	 * there is nothing to quote, and the request would be spent to be handed
+	 * back the same empty answer.
+	 */
+	@Test
+	public void theQuoteTimerDoesNotRunForAnEmptyWatchlist() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan"));
+		support.connect();
+		support.showSidebar();
+		clearInvocations(support.api);
+
+		support.quotesTick();
+
+		verify(support.api, never()).watchlists(anyString(), any());
+	}
+
+	/**
+	 * Taking an item off a watchlist that does not exist does not make one.
+	 *
+	 * <p>The first add creates the owner's first watchlist, which is the right
+	 * thing for an add and exactly the wrong thing for a remove: it would
+	 * answer "take this off my list" by creating a list with that item on it.
+	 */
+	@Test
+	public void removingAnItemWithNoWatchlistCreatesNothing() throws Exception
+	{
+		serverPanel().watchlists = Collections.emptyList();
+		support.connect();
+
+		support.removeFromWatchlist(4151);
+
+		verify(support.api, never()).createWatchlist(anyString(), anyString(), anyList());
+		verify(support.api, never()).updateWatchlist(anyString(), anyString(), anyList());
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
