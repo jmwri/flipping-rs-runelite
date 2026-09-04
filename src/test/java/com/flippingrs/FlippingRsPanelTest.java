@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.List;
+import java.util.Random;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JLabel;
@@ -1042,6 +1043,92 @@ public class FlippingRsPanelTest
 			assertEquals("the activity notice cleared", "", panel.activityNoticeForTest());
 			assertEquals("the watchlist notice cleared", "", panel.watchlistNoticeForTest());
 			assertEquals("the journal notice cleared", "", panel.journalNoticeForTest());
+		});
+	}
+
+	// ---------------------------------------------------------- awkward data
+
+	/**
+	 * Whatever the server sends, the sidebar draws it without falling over.
+	 *
+	 * <p>Everything on these tabs came off the network: names, times, prices,
+	 * ids. A field the server leaves out arrives as null or zero, and a field
+	 * it fills in badly arrives as whatever it said. The panel draws on the
+	 * Swing thread, so anything thrown there takes the sidebar down and leaves
+	 * it half-drawn for the rest of the session, with the trades still going
+	 * out and no way to see them.
+	 *
+	 * <p>Two hundred shapes: missing names, missing times, missing ids, prices
+	 * at zero and at the far end of what a long holds, quantities negative,
+	 * quotes absent, and text that would be read as markup if it were not
+	 * escaped.
+	 */
+	@Test
+	public void awkwardServerDataDoesNotBreakTheSidebar() throws Exception
+	{
+		onEdt(() ->
+		{
+			final Random random = new Random(20260905L);
+			final String[] names = {null, "", "Abyssal whip", "<html><b>whip</b>", "A & B <script>",
+				"Ancient ceremonial legs of a very long and unhelpful name indeed"};
+			final long[] numbers = {0, -1, 1, 1000, Long.MAX_VALUE, Long.MIN_VALUE, 2_147_483_647L};
+
+			for (int run = 0; run < 200; run++)
+			{
+				final FlippingRsPanel panel = new FlippingRsPanel();
+
+				final GeTransaction tx = new GeTransaction();
+				tx.id = random.nextBoolean() ? null : "t" + run;
+				tx.side = new String[]{null, "", "buy", "sell", "sideways"}[random.nextInt(5)];
+				tx.itemName = names[random.nextInt(names.length)];
+				tx.itemId = (int) numbers[random.nextInt(numbers.length)];
+				tx.quantity = numbers[random.nextInt(numbers.length)];
+				tx.grossValue = numbers[random.nextInt(numbers.length)];
+				tx.occurredAt = new String[]{null, "", "not a time", "2026-08-31T16:10:12.482Z"}[random.nextInt(4)];
+				panel.setActivity(Collections.singletonList(tx));
+				panel.setPending(Collections.singletonList(tx));
+
+				final FlippingRsApi.Position p = new FlippingRsApi.Position();
+				p.id = random.nextBoolean() ? null : "p" + run;
+				p.itemName = names[random.nextInt(names.length)];
+				p.itemId = (int) numbers[random.nextInt(numbers.length)];
+				p.remainingQty = numbers[random.nextInt(numbers.length)];
+				p.buyPrice = numbers[random.nextInt(numbers.length)];
+				p.currentBuy = numbers[random.nextInt(numbers.length)];
+				p.currentSell = numbers[random.nextInt(numbers.length)];
+				p.unrealisedPnl = numbers[random.nextInt(numbers.length)];
+				p.breakEvenSell = numbers[random.nextInt(numbers.length)];
+				p.unrealisedRoi = random.nextBoolean() ? Double.NaN : random.nextDouble() * 10 - 5;
+				p.hoursHeld = random.nextBoolean() ? Double.NaN : random.nextDouble() * 5000;
+				p.stale = random.nextBoolean();
+				final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+				open.positions = Collections.singletonList(p);
+				if (random.nextBoolean())
+				{
+					open.summary = new FlippingRsApi.Positions.Summary();
+				}
+				panel.setJournal(new FlippingRsApi.Analytics(), open);
+
+				final FlippingRsApi.Quote quote = random.nextBoolean() ? null : quote(4151);
+				panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
+					(int) numbers[random.nextInt(numbers.length)],
+					names[random.nextInt(names.length)], null,
+					(int) numbers[random.nextInt(numbers.length)],
+					(int) numbers[random.nextInt(numbers.length)],
+					(int) numbers[random.nextInt(numbers.length)],
+					names[random.nextInt(names.length)], quote)));
+				panel.setStatus(names[random.nextInt(names.length)], Color.WHITE);
+				panel.setActivityNotice(names[random.nextInt(names.length)], Color.WHITE);
+
+				for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+				{
+					panel.selectTabForTest(tab);
+					final Container wrapped = panel.getWrappedPanel();
+					wrapped.setSize(PluginPanel.PANEL_WIDTH, 4000);
+					layOut(wrapped);
+					assertNoTagOpensALabel("run " + run + ", " + tab, wrapped);
+				}
+			}
 		});
 	}
 
