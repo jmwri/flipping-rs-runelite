@@ -3462,6 +3462,42 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).updateWatchlist(anyString(), eq("wl_1"), anyList());
 	}
 
+	/**
+	 * Nothing is recorded, sent or shown while nobody is logged in.
+	 *
+	 * <p>A trade belongs to a character, and the per-character baseline that
+	 * says what has already been reported is kept under that character too.
+	 * The client hands out offer events either side of a login, when it has no
+	 * character to give -- and a fill taken then has nowhere to be filed from
+	 * or written to.
+	 *
+	 * <p>Recording it anyway is not a harmless mistake. It goes into a queue
+	 * belonging to no account, which the sender then refuses to send for the
+	 * same reason, so the trade sits in a file nothing will ever drain: a real
+	 * trade, lost quietly, while the sidebar counts it as waiting.
+	 */
+	@Test
+	public void nothingIsRecordedWhileNobodyIsLoggedIn() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.client.getAccountHash()).thenReturn(-1L);
+
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		assertTrue("no fill belongs to no-one", support.queue().isEmpty());
+
+		support.drain();
+		support.settleNet();
+		verify(support.api, never()).submit(anyString(), anyString(), anyList());
+
+		support.refreshPending();
+		assertTrue("and the sidebar has nothing waiting",
+			support.panel.pendingForTest().isEmpty());
+		assertTrue("shown as none: " + support.panel.recordedTextForTest(),
+			support.panel.recordedTextForTest().contains("0"));
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
