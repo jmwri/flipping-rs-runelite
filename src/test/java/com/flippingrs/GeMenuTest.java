@@ -317,6 +317,34 @@ public class GeMenuTest
 		assertEquals("Armadyl godsword", view.target);
 	}
 
+	/**
+	 * Above the first row is not on the first row.
+	 *
+	 * <p>The list is taller than the rows in it, so there is space inside it
+	 * with no row under the mouse -- above the first one, and in the gaps
+	 * between them. A row is found by the mouse being inside its own band,
+	 * and only checking the bottom of that band makes every one of those
+	 * spaces the first row: right-click the empty top of the list and the
+	 * menu offers to watch an item the mouse was nowhere near.
+	 */
+	@Test
+	public void theSpaceAboveTheFirstHistoryRowIsNotTheFirstRow()
+	{
+		final Widget list = mock(Widget.class);
+		when(list.getBounds()).thenReturn(new Rectangle(100, 100, 400, 300));
+		// Built first: stubbing inside a thenReturn leaves Mockito mid-stub.
+		final Widget whipIcon = historyIcon(WHIP, 120);
+		final Widget agsIcon = historyIcon(AGS, 160);
+		when(list.getDynamicChildren()).thenReturn(new Widget[]{whipIcon, agsIcon});
+		when(client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(list);
+		// Inside the list, above the first row's band.
+		when(client.getMouseCanvasPosition()).thenReturn(new Point(400, 105));
+
+		geMenu.onMenuOpened(openedOverNothing());
+
+		assertTrue("nothing is under the mouse there", created.isEmpty());
+	}
+
 	@Test
 	public void theHistoryListIsIgnoredWhenTheMouseIsOutsideIt()
 	{
