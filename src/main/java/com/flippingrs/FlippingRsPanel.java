@@ -1878,6 +1878,12 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
+	/** The watchlist cards as drawn, so a test can read what is on one. */
+	Component[] watchlistCardsForTest()
+	{
+		return watchlistItems.getComponents();
+	}
+
 	/** The position cards as drawn, so a test can tell a rebuild from a redraw. */
 	Component[] positionCardsForTest()
 	{

@@ -1185,7 +1185,61 @@ public class FlippingRsPanelTest
 		});
 	}
 
-	// ------------------------------------------------------------------ tabs
+	// ------------------------------------------------------- what is drawn
+
+	/**
+	 * A fill's live-offer line lands on that item's card and no other.
+	 *
+	 * <p>One fill changes one line, so the line is updated where it stands
+	 * rather than by rebuilding every card. That means finding the right label
+	 * among them -- and the seams the other tests read go to the list the
+	 * panel holds, which is correct whichever label was written to. Only what
+	 * is on the card says the update landed where it should.
+	 */
+	@Test
+	public void aFillsOfferLineLandsOnThatItemsCard() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Watchlists");
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 72_000,
+					"Buying 1/10 at 1.00M", quote(4151)),
+				new FlippingRsPanel.WatchedItem(13190, "Old school bond", null, 5_000_000, 10, 0,
+					"Selling 2/10 at 5.00M", quote(13190))));
+
+			panel.updateWatchedOffer(4151, "Buying 7/10 at 1.00M");
+
+			assertTrue("the whip's card shows its own new line: " + cardText(panel, "Abyssal whip"),
+				cardText(panel, "Abyssal whip").contains("Buying 7/10"));
+			assertFalse("and the bond's card is untouched: " + cardText(panel, "Old school bond"),
+				cardText(panel, "Old school bond").contains("Buying 7/10"));
+			assertTrue("which still shows its own",
+				cardText(panel, "Old school bond").contains("Selling 2/10"));
+		});
+	}
+
+	/** Everything written on the watchlist card whose title names this item. */
+	private static String cardText(FlippingRsPanel panel, String itemName)
+	{
+		for (Component card : panel.watchlistCardsForTest())
+		{
+			final List<JLabel> labels = new ArrayList<>();
+			collectLabels(card, labels);
+			final StringBuilder out = new StringBuilder();
+			for (JLabel label : labels)
+			{
+				out.append(plain(label)).append((char) 10);
+			}
+			if (out.indexOf(itemName) >= 0)
+			{
+				return out.toString();
+			}
+		}
+		throw new AssertionError("no card for " + itemName);
+	}
+
 
 	/**
 	 * The waiting-to-send list catches up when its tab comes back on screen.
