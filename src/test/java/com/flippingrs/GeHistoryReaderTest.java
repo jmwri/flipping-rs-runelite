@@ -2,6 +2,8 @@ package com.flippingrs;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import net.runelite.api.widgets.Widget;
 import org.junit.Test;
 
@@ -38,6 +40,13 @@ public class GeHistoryReaderTest
 		when(w.getItemId()).thenReturn(-1);
 		when(w.getText()).thenReturn(text);
 		children.add(w);
+		return w;
+	}
+
+	/** The same widget, but hidden, which is how the client retires a row. */
+	private static Widget hide(Widget w)
+	{
+		when(w.isSelfHidden()).thenReturn(true);
 		return w;
 	}
 
@@ -94,6 +103,86 @@ public class GeHistoryReaderTest
 			assertEquals(order + ": the row's own sprite, not the loose one",
 				5297, rows.get(0).itemId);
 			assertEquals(order, 8L, rows.get(0).quantity);
+		}
+	}
+
+	/**
+	 * A damaged screen yields rows that are right or rows that are missing,
+	 * never rows that are a mixture.
+	 *
+	 * <p>The other property test builds screens the client would really draw
+	 * and requires every row back exactly. This one breaks them on purpose --
+	 * a row with its texts hidden, a row with no sprite, a row missing one of
+	 * its three texts -- because that is where the reader has to choose, and a
+	 * wrong choice does not look like a failure. A row read with another row's
+	 * item has an item, a side, a quantity and a price, every one of them
+	 * read, and goes to the server as a trade that never happened.
+	 *
+	 * <p>So rows are allowed to go missing and are not allowed to be invented:
+	 * whatever comes back has to match one of the rows actually on the screen,
+	 * every field at once. Item ids are unique per run so that a row wearing
+	 * another's cannot pass as itself.
+	 */
+	@Test
+	public void aDamagedScreenNeverYieldsARowThatIsAMixtureOfTwo()
+	{
+		final java.util.Random random = new java.util.Random(20260905L);
+		for (int run = 0; run < 500; run++)
+		{
+			children.clear();
+			final Set<String> onScreen = new HashSet<>();
+
+			final int rows = 2 + random.nextInt(6);
+			for (int row = 0; row < rows; row++)
+			{
+				final int y = row * 40;
+				// Unique within the run, so a row cannot wear another's id and
+				// still look like itself.
+				final int itemId = 4151 + row;
+				final boolean buy = random.nextBoolean();
+				final long quantity = 2 + random.nextInt(500);
+				final long each = 1 + random.nextInt(100_000);
+				final long gross = quantity * each;
+				final String itemName = ITEM_NAMES[random.nextInt(ITEM_NAMES.length)];
+
+				// Every row on a real screen has its sprite, so every row here
+				// keeps one. What varies is the texts: 0 whole, 1 all of them
+				// hidden -- which leaves the sprite with no line of its own and
+				// looking for the next row's -- and 2 one of them hidden, which
+				// is a row the reader has to give up on.
+				final int damage = random.nextInt(3);
+
+				item(y + random.nextInt(16), itemId, 1);
+
+				final Widget side = text(y, buy ? "Bought:" : "Sold:");
+				final Widget named = text(y, itemName + "x " + group(quantity, random));
+				final Widget price = text(y, group(gross, random) + " coins");
+				if (damage == 1)
+				{
+					hide(side);
+					hide(named);
+					hide(price);
+				}
+				else if (damage == 2)
+				{
+					hide(random.nextBoolean() ? side : price);
+				}
+
+				onScreen.add(itemId + "/" + (buy ? "buy" : "sell") + "/" + quantity + "/" + gross);
+			}
+
+			final List<FlippingRsApi.HistoryRow> read =
+				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+			assertTrue("run " + run + ": more rows than the screen had", read.size() <= rows);
+			for (int i = 0; i < read.size(); i++)
+			{
+				final FlippingRsApi.HistoryRow got = read.get(i);
+				final String actual = got.itemId + "/" + got.side + "/" + got.quantity + "/" + got.grossValue;
+				assertTrue("run " + run + ": this row is on no line of the screen: " + actual,
+					onScreen.contains(actual));
+				assertEquals("run " + run + ": positions run in order", i, got.position);
+			}
 		}
 	}
 
