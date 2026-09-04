@@ -200,8 +200,14 @@ public class FlippingRsPluginBehaviourTest
 
 	private void fire(GrandExchangeOffer offer) throws Exception
 	{
+		fire(3, offer);
+	}
+
+	/** The same, on a named slot: the exchange has eight of them. */
+	private void fire(int slot, GrandExchangeOffer offer) throws Exception
+	{
 		final GrandExchangeOfferChanged event = new GrandExchangeOfferChanged();
-		event.setSlot(3);
+		event.setSlot(slot);
 		event.setOffer(offer);
 		support.plugin.onGrandExchangeOfferChanged(event);
 		support.settle();
@@ -3125,6 +3131,51 @@ public class FlippingRsPluginBehaviourTest
 		assertNull("a fill replayed just after a login has no time on it",
 			waiting.get(0).occurredAt);
 		assertEquals(GeTransaction.SOURCE_ADOPTED, waiting.get(0).source);
+	}
+
+	/**
+	 * Eight slots run at once, and each one is its own offer.
+	 *
+	 * <p>A flipper keeps all eight going. Everything about a slot is kept
+	 * under its number -- the baseline that says what has already been
+	 * reported, and the slot written on each fill for the audit trail -- and
+	 * every other test here drives one slot, so a number that went astray
+	 * would look exactly right.
+	 */
+	@Test
+	public void everySlotIsItsOwnOffer() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final int[] slots = {0, 1, 7};
+		final int[] items = {4151, 11802, 13190};
+
+		// Placed on three slots at once, each a different item at its own price.
+		for (int i = 0; i < slots.length; i++)
+		{
+			fire(slots[i], offerFor(items[i], GrandExchangeOfferState.BUYING, 0, 0));
+		}
+		// Then each fills a different amount.
+		for (int i = 0; i < slots.length; i++)
+		{
+			fire(slots[i], offerFor(items[i], GrandExchangeOfferState.BUYING, i + 1, (i + 1) * 1_000_000));
+		}
+
+		final List<GeTransaction> queued = support.queue().peek(20);
+		assertEquals("one fill from each slot", 3, queued.size());
+		for (GeTransaction tx : queued)
+		{
+			int at = -1;
+			for (int i = 0; i < slots.length; i++)
+			{
+				if (slots[i] == tx.slot)
+				{
+					at = i;
+				}
+			}
+			assertTrue("a fill from a slot nothing was fired on: " + tx.slot, at >= 0);
+			assertEquals("slot " + tx.slot + " holds its own item", items[at], tx.itemId);
+			assertEquals("and reports only its own progress", at + 1, tx.quantity);
+		}
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
