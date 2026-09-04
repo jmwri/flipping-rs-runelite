@@ -76,6 +76,14 @@ public class FlippingRsPanel extends PluginPanel
 
 	static final int RECENT_SHOWN = 8;
 
+	/** This panel's own border, on each side. */
+	private static final int PANEL_PADDING = 10;
+	/** A card's padding, on each side. */
+	private static final int CARD_PADDING = 6;
+	/** The sprite at the head of a card, and the gap between it and the title. */
+	private static final int ICON_WIDTH = 36;
+	private static final int ICON_GAP = 6;
+
 	/**
 	 * How long a notice stays up. A notice is news -- a recovered trade, an
 	 * item added, a refused batch -- and news that never leaves stops being
@@ -269,7 +277,7 @@ public class FlippingRsPanel extends PluginPanel
 	public FlippingRsPanel()
 	{
 		setLayout(new BorderLayout());
-		setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+		setBorder(BorderFactory.createEmptyBorder(PANEL_PADDING, PANEL_PADDING, PANEL_PADDING, PANEL_PADDING));
 
 		final JPanel top = column();
 		top.add(header("FlippingRS"));
@@ -842,18 +850,18 @@ public class FlippingRsPanel extends PluginPanel
 		final JPanel card = card();
 		final String name = nameOf(tx);
 
-		final JPanel head = new JPanel(new BorderLayout(6, 0));
+		final JPanel head = new JPanel(new BorderLayout(ICON_GAP, 0));
 		head.setOpaque(false);
 		head.setAlignmentX(Component.LEFT_ALIGNMENT);
 		final JLabel icon = new JLabel();
-		icon.setPreferredSize(new Dimension(36, 32));
+		icon.setPreferredSize(new Dimension(ICON_WIDTH, 32));
 		icon.setHorizontalAlignment(SwingConstants.CENTER);
 		if (image != null)
 		{
 			image.addTo(icon);
 		}
 		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel(wrap(name));
+		final JLabel title = new JLabel(wrapBesideIcon(name));
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setForeground(Color.WHITE);
 		head.add(title, BorderLayout.CENTER);
@@ -1357,11 +1365,11 @@ public class FlippingRsPanel extends PluginPanel
 		final JPanel card = card();
 		final String name = item.name == null || item.name.isEmpty() ? "Item " + item.itemId : item.name;
 
-		final JPanel head = new JPanel(new BorderLayout(6, 0));
+		final JPanel head = new JPanel(new BorderLayout(ICON_GAP, 0));
 		head.setOpaque(false);
 		head.setAlignmentX(Component.LEFT_ALIGNMENT);
 		final JLabel icon = new JLabel();
-		icon.setPreferredSize(new Dimension(36, 32));
+		icon.setPreferredSize(new Dimension(ICON_WIDTH, 32));
 		icon.setHorizontalAlignment(SwingConstants.CENTER);
 		icon.setToolTipText(name);
 		if (item.image != null)
@@ -1369,7 +1377,7 @@ public class FlippingRsPanel extends PluginPanel
 			item.image.addTo(icon);
 		}
 		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel(wrap(name));
+		final JLabel title = new JLabel(wrapBesideIcon(name));
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setForeground(Color.WHITE);
 		head.add(title, BorderLayout.CENTER);
@@ -1517,7 +1525,7 @@ public class FlippingRsPanel extends PluginPanel
 		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 		card.setAlignmentX(Component.LEFT_ALIGNMENT);
 		card.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		card.setBorder(BorderFactory.createEmptyBorder(5, 6, 5, 6));
+		card.setBorder(BorderFactory.createEmptyBorder(5, CARD_PADDING, 5, CARD_PADDING));
 		return card;
 	}
 
@@ -1530,10 +1538,56 @@ public class FlippingRsPanel extends PluginPanel
 		return label;
 	}
 
+	/**
+	 * What Swing multiplies a CSS pixel by when it lays out an HTML label.
+	 *
+	 * <p>It is not one. A label told to wrap at 150 lays itself out 195 wide,
+	 * and 1.3 exactly, at every width, on a 96 dpi screen. So a width written
+	 * into the HTML is not a width on the screen, and the two have to be kept
+	 * apart or the sums come out a third too wide.
+	 */
+	private static final double CSS_PIXEL = 1.3;
+
+	/**
+	 * How much room a line of text has, in real pixels, worked out from the
+	 * width RuneLite gives a side panel rather than guessed.
+	 *
+	 * <p>A label only wraps if it is told a width; left to itself it asks for
+	 * the width of its longest line and is painted cut off at the edge of its
+	 * row instead. So the figure matters in both directions, and neither shows
+	 * up in a test that reads the text back, because a cut-off line and a whole
+	 * one hold the same string.
+	 *
+	 * <p>The narrower of the two rows is the safe one to use for both, since a
+	 * line that could have run wider only costs a wrap, while one that runs
+	 * wider than its row loses its end -- and these lines end in a price.
+	 */
+	private static final int TEXT_WIDTH =
+		PluginPanel.PANEL_WIDTH - 2 * PANEL_PADDING - 2 * CARD_PADDING;
+
+	/** And beside a card's sprite, which takes its width off the front. */
+	private static final int TITLE_WIDTH = TEXT_WIDTH - ICON_WIDTH - ICON_GAP;
+
 	/** Wraps text as HTML so a label can break lines, escaping it first. */
 	private static String wrap(String text)
 	{
-		return "<html><body style='width:150px'>" + escape(text) + "</body></html>";
+		return wrap(text, TEXT_WIDTH);
+	}
+
+	/** The same, for the title that sits beside a card's sprite. */
+	private static String wrapBesideIcon(String text)
+	{
+		return wrap(text, TITLE_WIDTH);
+	}
+
+	/**
+	 * @param pixels how much room the line has on screen, not the figure to
+	 *               write into the HTML -- see {@link #CSS_PIXEL}
+	 */
+	private static String wrap(String text, int pixels)
+	{
+		final int css = (int) (pixels / CSS_PIXEL);
+		return "<html><body style='width:" + css + "px'>" + escape(text) + "</body></html>";
 	}
 
 	// ---------------------------------------------------------- test seams

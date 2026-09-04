@@ -1,5 +1,8 @@
 package com.flippingrs;
 
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.lang.reflect.InvocationTargetException;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -10,7 +13,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
+import net.runelite.client.ui.PluginPanel;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -943,5 +948,196 @@ public class FlippingRsPanelTest
 
 			assertEquals(Arrays.asList("shown", "hidden", "shown"), seen);
 		});
+	}
+
+	// ----------------------------------------------------------------- width
+
+	/**
+	 * Every wrapped line has to fit the width it is given.
+	 *
+	 * <p>A label that wraps is told how wide to wrap at, in pixels, and the
+	 * figure is not one Swing works out -- it is written into the HTML. Get it
+	 * too small and every line breaks early and every card is taller than it
+	 * needs to be; get it too big and the end of the line is simply cut off,
+	 * and these are lines that end in a price. Neither shows up in a test that
+	 * only reads the text back, because both render the same string.
+	 *
+	 * <p>So this lays the panel out at the width RuneLite gives a side panel
+	 * and checks the one thing that is silently wrong: a line asking for more
+	 * room than it has. It covers every tab, with content wide enough to wrap.
+	 */
+	@Test
+	public void nothingTheSidebarDrawsIsCutOffAtTheWidthItIsGiven() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			fillWithWideContent(panel);
+
+			final List<String> clipped = new ArrayList<>();
+			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			{
+				panel.selectTabForTest(tab);
+				final Container wrapped = panel.getWrappedPanel();
+				wrapped.setSize(PluginPanel.PANEL_WIDTH, 4000);
+				layOut(wrapped);
+				collectClipped(tab, wrapped, clipped);
+			}
+
+			assertTrue("these lines are wider than the room they are drawn in:\n"
+				+ String.join("\n", clipped), clipped.isEmpty());
+		});
+	}
+
+	/**
+	 * And a wrapped line uses most of the room it is given.
+	 *
+	 * <p>The check above passes just as well if every line wraps at one pixel,
+	 * so it cannot be the only one. A card's lines get 193 pixels of the 225
+	 * the panel has, and the figure they wrapped at was a flat 150 for every
+	 * line on every tab -- which, once Swing has scaled it, was 44 pixels wider
+	 * than the title beside a card's sprite and ten short of a full-width line.
+	 * One number could not be right for both. This is the other half of the
+	 * bound: each line runs nearly the width of its own row.
+	 */
+	@Test
+	public void aWrappedLineUsesMostOfTheRoomItIsGiven() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			fillWithWideContent(panel);
+
+			final List<String> wasteful = new ArrayList<>();
+			int checked = 0;
+			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			{
+				panel.selectTabForTest(tab);
+				final Container wrapped = panel.getWrappedPanel();
+				wrapped.setSize(PluginPanel.PANEL_WIDTH, 4000);
+				layOut(wrapped);
+
+				final List<JLabel> wrapping = new ArrayList<>();
+				collectWrapping(wrapped, wrapping);
+				checked += wrapping.size();
+				for (JLabel label : wrapping)
+				{
+					// A card's lines and a full-width line share one width, and
+					// the card is the narrower, so a full-width line is allowed
+					// to fall short of its row by that difference.
+					final int spare = label.getWidth() - label.getPreferredSize().width;
+					if (spare > 20)
+					{
+						wasteful.add(tab + ": has " + label.getWidth() + " uses only "
+							+ label.getPreferredSize().width + "  " + plain(label));
+					}
+				}
+			}
+
+			assertTrue("expected wrapped lines to check, found " + checked, checked > 10);
+			assertTrue("these lines wrap well short of the room they have:\n"
+				+ String.join("\n", wasteful), wasteful.isEmpty());
+		});
+	}
+
+	/** Content wide enough that every kind of line has to wrap. */
+	private static void fillWithWideContent(FlippingRsPanel panel)
+	{
+		final GeTransaction tx = new GeTransaction();
+		tx.side = "buy";
+		tx.quantity = 25;
+		tx.itemName = "Ancient ceremonial legs";
+		tx.grossValue = 30_864_175;
+		tx.occurredAt = "2026-08-31T16:10:12.482Z";
+		panel.setActivity(Collections.singletonList(tx));
+		panel.setPending(Collections.singletonList(tx));
+
+		final FlippingRsApi.Quote q = quote(4151);
+		panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
+			4151, "Ancient ceremonial legs", null, 1_500_000, 70, 72_000,
+			"Buying 4/10 at 1.50M", q)));
+
+		final FlippingRsApi.Position pos = new FlippingRsApi.Position();
+		pos.id = "p1";
+		pos.itemId = 4151;
+		pos.itemName = "Ancient ceremonial legs";
+		pos.buyPrice = 1_480_000;
+		pos.remainingQty = 10;
+		pos.currentBuy = 1_520_000;
+		pos.currentSell = 1_500_000;
+		pos.unrealisedPnl = 96_000;
+		pos.breakEvenSell = 1_510_204;
+		pos.hoursHeld = 5.5;
+		pos.stale = true;
+		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+		open.positions = Collections.singletonList(pos);
+		open.summary = new FlippingRsApi.Positions.Summary();
+		panel.setJournal(new FlippingRsApi.Analytics(), open);
+
+		panel.setStatus("Could not connect to flippingrs.com: the request timed out.", Color.WHITE);
+		panel.setActivityNotice(
+			"flippingrs.com couldn't accept 3 trade(s). They have been set aside.", Color.WHITE);
+	}
+
+	/** Lays a tree out the way a panel on screen would be. */
+	private static void layOut(Component c)
+	{
+		if (c instanceof Container)
+		{
+			final Container container = (Container) c;
+			container.doLayout();
+			for (Component child : container.getComponents())
+			{
+				layOut(child);
+			}
+		}
+	}
+
+	private static void collectClipped(String tab, Component c, List<String> out)
+	{
+		if (c instanceof JLabel && c.getWidth() > 0)
+		{
+			final JLabel label = (JLabel) c;
+			final int wanted = label.getPreferredSize().width;
+			if (wanted > label.getWidth())
+			{
+				out.add(tab + ": wants " + wanted + " has " + label.getWidth()
+					+ "  " + plain(label));
+			}
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectClipped(tab, child, out);
+			}
+		}
+	}
+
+	/** The labels that were told a width to wrap at, as opposed to plain ones. */
+	private static void collectWrapping(Component c, List<JLabel> out)
+	{
+		if (c instanceof JLabel)
+		{
+			final JLabel label = (JLabel) c;
+			final String text = label.getText();
+			if (text != null && text.contains("width:") && label.getWidth() > 0)
+			{
+				out.add(label);
+			}
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectWrapping(child, out);
+			}
+		}
+	}
+
+	private static String plain(JLabel label)
+	{
+		final String text = label.getText();
+		return text == null ? "" : text.replaceAll("<[^>]*>", "").trim();
 	}
 }
