@@ -20,9 +20,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -1182,6 +1185,109 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	// ------------------------------------------------------------------ tabs
+
+	/**
+	 * The waiting-to-send list catches up when its tab comes back on screen.
+	 *
+	 * <p>Only the tab being looked at is drawn, and the other four are marked
+	 * to be drawn when they are next picked. Three of the four lists were
+	 * checked for that; the buffer was not, and it is the one that changes
+	 * most -- every fill adds to it. Missing the catch-up shows a list of what
+	 * was waiting when the user last looked, with no sign that it is old.
+	 */
+	@Test
+	public void theWaitingListCatchesUpWhenItsTabComesBack() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Activity");
+			panel.setPending(Collections.emptyList());
+			assertTrue(panel.pendingForTest().isEmpty());
+
+			// Fills arrive while the user is looking at another tab.
+			panel.selectTabForTest("Journal");
+			final GeTransaction tx = new GeTransaction();
+			tx.side = "buy";
+			tx.quantity = 25;
+			tx.itemName = "Abyssal whip";
+			tx.grossValue = 30_864_175L;
+			tx.occurredAt = "2026-08-31T16:10:12.482Z";
+			panel.setPending(Collections.singletonList(tx));
+
+			assertFalse("nothing is drawn for it while another tab is up",
+				drawnText(panel).contains("Abyssal whip"));
+
+			panel.selectTabForTest("Activity");
+
+			assertTrue("the buffer drawn is what is waiting now, not what was: " + drawnText(panel),
+				drawnText(panel).contains("Abyssal whip"));
+		});
+	}
+
+	/**
+	 * The tab being looked at is the one that looks selected.
+	 *
+	 * <p>RuneLite's tabs reset their own border every time one is picked or
+	 * dropped, so the panel sets its own back afterwards. Without that every
+	 * tab looks the same and there is nothing on screen saying which of the
+	 * five is being shown.
+	 */
+	@Test
+	public void theTabBeingLookedAtIsTheOneThatLooksSelected() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			for (String name : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			{
+				panel.selectTabForTest(name);
+
+				final List<MaterialTab> tabs = new ArrayList<>();
+				collectTabs(panel.getWrappedPanel(), tabs);
+				assertEquals("all five tabs", 5, tabs.size());
+
+				final List<MaterialTab> others = new ArrayList<>();
+				MaterialTab chosen = null;
+				for (MaterialTab tab : tabs)
+				{
+					if (tab.getText().equals(name))
+					{
+						chosen = tab;
+					}
+					else
+					{
+						others.add(tab);
+					}
+				}
+				assertNotNull("the tab just picked", chosen);
+				for (MaterialTab other : others)
+				{
+					assertFalse(name + " must not look the same as " + other.getText(),
+						chosen.getBorder().equals(other.getBorder()));
+					assertTrue("and the unpicked ones all look alike",
+						other.getBorder().equals(others.get(0).getBorder()));
+				}
+			}
+		});
+	}
+
+	private static void collectTabs(Component c, List<MaterialTab> out)
+	{
+		if (c instanceof MaterialTab)
+		{
+			out.add((MaterialTab) c);
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectTabs(child, out);
+			}
+		}
+	}
+
 	// ------------------------------------------------------------- redrawing
 
 	/**
@@ -1246,8 +1352,8 @@ public class FlippingRsPanelTest
 				panel.setJournal(new FlippingRsApi.Analytics(), holding(changed));
 
 				assertTrue("changing this did not reach the card: " + change.getKey()
-						+ "\n" + journalText(panel),
-					journalText(panel).contains(change.getKey()));
+						+ "\n" + drawnText(panel),
+					drawnText(panel).contains(change.getKey()));
 			}
 		});
 	}
@@ -1307,8 +1413,8 @@ public class FlippingRsPanelTest
 		return open;
 	}
 
-	/** Everything written on the Journal tab, as one string. */
-	private static String journalText(FlippingRsPanel panel)
+	/** Everything the panel has drawn, as one string. */
+	private static String drawnText(FlippingRsPanel panel)
 	{
 		final List<JLabel> labels = new ArrayList<>();
 		collectLabels(panel.getWrappedPanel(), labels);
