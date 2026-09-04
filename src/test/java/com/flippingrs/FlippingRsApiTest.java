@@ -293,6 +293,88 @@ public class FlippingRsApiTest
 		assertEquals(Collections.singletonList("row 4: bad side"), result.getProblems());
 	}
 
+	/**
+	 * The plugin sends these fields and no others.
+	 *
+	 * <p>The README makes a promise about this: the character name is never
+	 * sent, and neither is anything about other players, the inventory, the
+	 * bank, where the player is, or their chat. Every test around this one
+	 * checks that a field it does send carries the right value; none of them
+	 * would notice a field appearing that should not be there at all.
+	 *
+	 * <p>That is the failure worth guarding. A field added for debugging, or
+	 * picked up from an object that grew one, goes out to a third-party
+	 * service on every send and nothing in the plugin looks any different. So
+	 * the whole set is written down here, and anything added to it has to be
+	 * added here too -- which is the point at which somebody has to decide
+	 * whether it belongs.
+	 */
+	@Test
+	public void nothingIsSentBeyondTheFieldsTheReadmeNames() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody("{\"accepted\":1}"));
+		final GeTransaction tx = oneFill().get(0);
+		// Every field set, so none is left out of the JSON for being null.
+		tx.offerRef = "offer-1";
+		tx.itemName = "Abyssal whip";
+		tx.offerPrice = 1000;
+		tx.offerTotal = 10;
+		tx.completed = true;
+		tx.cancelled = true;
+		tx.estimated = true;
+		tx.slot = 3;
+		tx.world = 302;
+		tx.source = GeTransaction.SOURCE_ADOPTED;
+		api.submit("k", "a", Collections.singletonList(tx));
+
+		final JsonObject batch = new JsonParser().parse(server.takeRequest().getBody().readUtf8())
+			.getAsJsonObject();
+		assertEquals(new java.util.TreeSet<>(Arrays.asList("accountId", "transactions")),
+			new java.util.TreeSet<>(batch.keySet()));
+		assertEquals("the fields of a trade",
+			new java.util.TreeSet<>(Arrays.asList(
+				"id", "offerRef", "itemId", "itemName", "side", "quantity", "grossValue",
+				"offerPrice", "offerTotal", "completed", "cancelled", "estimated",
+				"slot", "world", "occurredAt", "source")),
+			new java.util.TreeSet<>(batch.getAsJsonArray("transactions").get(0)
+				.getAsJsonObject().keySet()));
+
+		server.enqueue(new MockResponse().setBody("{}"));
+		final FlippingRsApi.OfferState state = new FlippingRsApi.OfferState();
+		state.offerRef = "ref-1";
+		state.itemName = "Abyssal whip";
+		state.side = "buy";
+		state.state = "BUYING";
+		api.submitOffers("k", "a", Collections.singletonList(state));
+
+		final JsonObject offers = new JsonParser().parse(server.takeRequest().getBody().readUtf8())
+			.getAsJsonObject();
+		assertEquals(new java.util.TreeSet<>(Arrays.asList("accountId", "offers")),
+			new java.util.TreeSet<>(offers.keySet()));
+		assertEquals("the fields of an open offer",
+			new java.util.TreeSet<>(Arrays.asList(
+				"slot", "offerRef", "itemId", "itemName", "side", "price", "totalQuantity",
+				"quantitySold", "spent", "spentEstimated", "state")),
+			new java.util.TreeSet<>(offers.getAsJsonArray("offers").get(0)
+				.getAsJsonObject().keySet()));
+
+		server.enqueue(new MockResponse().setBody("{}"));
+		final FlippingRsApi.HistoryRow row = new FlippingRsApi.HistoryRow();
+		row.itemName = "Abyssal whip";
+		row.side = "sell";
+		api.submitHistory("k", "a", Collections.singletonList(row));
+
+		final JsonObject history = new JsonParser().parse(server.takeRequest().getBody().readUtf8())
+			.getAsJsonObject();
+		assertEquals(new java.util.TreeSet<>(Arrays.asList("accountId", "rows")),
+			new java.util.TreeSet<>(history.keySet()));
+		assertEquals("the fields of a history row",
+			new java.util.TreeSet<>(Arrays.asList(
+				"position", "itemId", "itemName", "side", "quantity", "grossValue")),
+			new java.util.TreeSet<>(history.getAsJsonArray("rows").get(0)
+				.getAsJsonObject().keySet()));
+	}
+
 	// ------------------------------------- retry or drop: the decision that matters
 
 	/**

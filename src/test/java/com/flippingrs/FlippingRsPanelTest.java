@@ -1335,6 +1335,15 @@ public class FlippingRsPanelTest
 	 * <p>So this lays the panel out at the width RuneLite gives a side panel
 	 * and checks the one thing that is silently wrong: a line asking for more
 	 * room than it has. It covers every tab, with content wide enough to wrap.
+	 *
+	 * <p>PANEL_WIDTH is the right width to lay out at, and it is worth saying
+	 * why, because the number RuneLite reserves for a side panel is that plus
+	 * the scrollbar. The panel goes inside a scroll pane inside a wrapper of
+	 * PANEL_WIDTH + SCROLLBAR_WIDTH, so with a scrollbar showing -- which it
+	 * is, for a sidebar with anything on it -- the panel itself gets exactly
+	 * PANEL_WIDTH. Without one it gets more, so this is the narrow case, which
+	 * is the one that can clip. PluginPanel's own six-pixel border does not
+	 * come into it: the panel replaces it with its own in the constructor.
 	 */
 	@Test
 	public void nothingTheSidebarDrawsIsCutOffAtTheWidthItIsGiven() throws Exception
