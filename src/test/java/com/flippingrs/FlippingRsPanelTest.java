@@ -556,6 +556,13 @@ public class FlippingRsPanelTest
 		assertEquals(2_000_000_000L, FlippingRsPanel.parseGp("2b"));
 		assertEquals(0L, FlippingRsPanel.parseGp("lots"));
 		assertEquals(0L, FlippingRsPanel.parseGp(""));
+
+		// A shorthand is read as a decimal and multiplied, and not every
+		// decimal lands on a whole number of coins: 8.2 times a million comes
+		// out a fraction under. Cutting the fraction off would record the sale
+		// a coin light of what was typed.
+		assertEquals(8_200_000L, FlippingRsPanel.parseGp("8.2m"));
+		assertEquals(8_200L, FlippingRsPanel.parseGp("8.2k"));
 	}
 
 	/** The card's Close and Delete reach the plugin with the position's id. */
