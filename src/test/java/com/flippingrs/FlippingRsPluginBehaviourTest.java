@@ -3521,6 +3521,105 @@ public class FlippingRsPluginBehaviourTest
 			support.panel.recordedTextForTest().contains("0"));
 	}
 
+	/**
+	 * Fills arriving while a send is in flight are neither lost nor sent
+	 * twice.
+	 *
+	 * <p>Four threads share this plugin. The client's thread turns offer
+	 * events into fills, the io thread writes them down, the net thread sends
+	 * them and confirms what the site took, and Swing draws the result. Every
+	 * other test here settles one before starting the next, which is what
+	 * makes them readable and also means none of them has ever had two of
+	 * those running at once.
+	 *
+	 * <p>The promise underneath is that a trade is recorded once and only
+	 * once. So this fires fills from one thread while another sends and
+	 * confirms, and then asks the only question that matters: every fill is
+	 * either sitting in the queue or has gone to the site, exactly one of the
+	 * two, and no id was sent twice.
+	 */
+	@Test
+	public void fillsArrivingDuringASendAreNeitherLostNorSentTwice() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final List<String> sentIds = Collections.synchronizedList(new ArrayList<>());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenAnswer(inv ->
+		{
+			final List<GeTransaction> batch = inv.getArgument(2);
+			for (GeTransaction tx : batch)
+			{
+				sentIds.add(tx.id);
+			}
+			return new FlippingRsApi.IngestResult();
+		});
+
+		final int slots = 4;
+		final int fillsPerSlot = 30;
+		final java.util.concurrent.atomic.AtomicBoolean sending =
+			new java.util.concurrent.atomic.AtomicBoolean(true);
+		// Two of them, because one cannot overlap with itself: what keeps a
+		// batch from going twice is that only one send runs at a time, and a
+		// single sender never asks that question.
+		final List<Thread> senders = new ArrayList<>();
+		for (int i = 0; i < 2; i++)
+		{
+			final Thread sender = new Thread(() ->
+			{
+				while (sending.get())
+				{
+					try
+					{
+						support.drain();
+					}
+					catch (Exception e)
+					{
+						throw new IllegalStateException(e);
+					}
+				}
+			}, "test-sender-" + i);
+			senders.add(sender);
+			sender.start();
+		}
+
+		// The client thread, meanwhile, keeps turning offer events into fills.
+		for (int slot = 0; slot < slots; slot++)
+		{
+			fire(slot, offerFor(4151 + slot, GrandExchangeOfferState.BUYING, 0, 0));
+		}
+		for (int i = 1; i <= fillsPerSlot; i++)
+		{
+			for (int slot = 0; slot < slots; slot++)
+			{
+				fire(slot, offerFor(4151 + slot, GrandExchangeOfferState.BUYING, i, i * 1000));
+			}
+		}
+
+		sending.set(false);
+		for (Thread sender : senders)
+		{
+			sender.join(30_000);
+			assertFalse("a sending thread did not stop", sender.isAlive());
+		}
+		support.settle();
+		support.settleNet();
+		support.drain();
+		support.settleNet();
+
+		final List<String> waiting = new ArrayList<>();
+		for (GeTransaction tx : support.queue().peek(10_000))
+		{
+			waiting.add(tx.id);
+		}
+		final Set<String> everywhere = new HashSet<>(sentIds);
+		assertEquals("no id was sent twice", sentIds.size(), everywhere.size());
+		for (String id : waiting)
+		{
+			assertTrue("a fill both sent and still waiting: " + id, everywhere.add(id));
+		}
+		assertEquals("every fill is in exactly one of the two places",
+			slots * fillsPerSlot, everywhere.size());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
