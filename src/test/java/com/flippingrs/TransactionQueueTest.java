@@ -274,14 +274,22 @@ public class TransactionQueueTest
 	{
 		final File file = file();
 		final File staging = new File(file.getParentFile(), file.getName() + ".tmp");
+		// What a rewrite killed part way through leaves behind: a line that
+		// stops in the middle, with no newline after it.
 		Files.write(staging.toPath(), "half a rewrite".getBytes(StandardCharsets.UTF_8));
 
 		final TransactionQueue queue = new TransactionQueue(gson, file);
 		queue.add(fill("a"));
+		queue.add(fill("b"));
+		// One fill left over the rewrite, so the next thing written lands
+		// where the stale bytes are. Written after them instead of over them,
+		// it joins onto the end of that half line and the fill is unreadable.
 		queue.confirm(queue.peek(1));
 
 		assertFalse("the staging file must have been moved into place", staging.exists());
-		assertTrue(new TransactionQueue(gson, file).isEmpty());
+		final List<GeTransaction> back = new TransactionQueue(gson, file).peek(10);
+		assertEquals("the fill that had not been sent is still there", 1, back.size());
+		assertEquals("b", back.get(0).id);
 	}
 
 	@Test
