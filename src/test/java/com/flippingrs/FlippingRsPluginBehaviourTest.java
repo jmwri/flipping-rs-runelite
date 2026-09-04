@@ -319,18 +319,41 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void tradesOnAWorldWithItsOwnEconomyAreNotRecorded() throws Exception
 	{
-		when(support.client.getWorldType()).thenReturn(EnumSet.of(WorldType.MEMBERS, WorldType.DEADMAN));
-		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		// Every world type with its own economy, not just the first one. A
+		// Leagues season is played by a great many people for a month at a
+		// time, and its gp in the main journal is wrong money in exactly the
+		// way an invented trade is.
+		final WorldType[] economies = {
+			WorldType.DEADMAN, WorldType.SEASONAL, WorldType.BETA_WORLD, WorldType.NOSAVE_MODE,
+			WorldType.TOURNAMENT_WORLD, WorldType.QUEST_SPEEDRUNNING, WorldType.PVP_ARENA,
+			WorldType.FRESH_START_WORLD};
 
-		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		for (WorldType economy : economies)
+		{
+			when(support.client.getWorldType()).thenReturn(EnumSet.of(WorldType.MEMBERS, economy));
+			fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 
-		assertTrue(support.queue().isEmpty());
+			fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
-		// The baseline still advanced, so the same progress is not reported
-		// later as if it had happened on a normal world.
+			assertTrue(economy + ": nothing may be recorded", support.queue().isEmpty());
+
+			// The baseline still advanced, so the same progress is not reported
+			// later as if it had happened on a normal world.
+			when(support.client.getWorldType()).thenReturn(EnumSet.of(WorldType.MEMBERS));
+			fire(offer(GrandExchangeOfferState.BOUGHT, 4, 4_000_000));
+			assertTrue(economy + ": and not re-reported back on a normal world",
+				support.queue().isEmpty());
+
+			// Collected, so the next world type starts from an empty slot.
+			fire(offer(GrandExchangeOfferState.EMPTY, 0, 0));
+		}
+
+		// And the same fill on an ordinary world is recorded, so none of the
+		// above passed on nothing ever being recorded at all.
 		when(support.client.getWorldType()).thenReturn(EnumSet.of(WorldType.MEMBERS));
-		fire(offer(GrandExchangeOfferState.BOUGHT, 4, 4_000_000));
-		assertTrue(support.queue().isEmpty());
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		assertEquals("an ordinary world still records", 1, support.queue().size());
 	}
 
 	/**
