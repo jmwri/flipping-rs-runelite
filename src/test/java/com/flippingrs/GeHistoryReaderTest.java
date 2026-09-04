@@ -54,6 +54,50 @@ public class GeHistoryReaderTest
 	}
 
 	/**
+	 * A row keeps its own sprite when another row's has come loose.
+	 *
+	 * <p>A row whose texts are all hidden leaves its sprite with no line of
+	 * its own, and the nearest line it can find is the next row's. That row's
+	 * own sprite is nearer still, and is the one it must keep -- taking the
+	 * loose one instead reports a trade against an item the player never
+	 * touched, which is worse than the row being skipped.
+	 */
+	@Test
+	public void aRowKeepsItsOwnSpriteWhenAnotherHasComeLoose()
+	{
+		// Whichever order the two sprites arrive in: the widget list is the
+		// client's, and which of them comes first is not something to rely on.
+		for (boolean looseFirst : new boolean[]{true, false})
+		{
+			children.clear();
+			if (looseFirst)
+			{
+				// This row's texts are all hidden, so there is no line at 0 for
+				// its sprite to belong to.
+				item(10, 5280, 1);
+			}
+			// And this row is whole, sprite and all.
+			text(40, "Bought:");
+			text(40, "Toadflax seedx 8");
+			text(40, "8,760 coins= 1,095 each");
+			item(50, 5297, 1);
+			if (!looseFirst)
+			{
+				item(10, 5280, 1);
+			}
+
+			final List<FlippingRsApi.HistoryRow> rows =
+				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+			final String order = looseFirst ? "loose sprite first" : "loose sprite last";
+			assertEquals(order, 1, rows.size());
+			assertEquals(order + ": the row's own sprite, not the loose one",
+				5297, rows.get(0).itemId);
+			assertEquals(order, 8L, rows.get(0).quantity);
+		}
+	}
+
+	/**
 	 * The screen as a live client actually lays it out: the icon on its own
 	 * line, then "Sold:", the name with "x N" glued on, and a price with the
 	 * tax breakdown. The gp sent is the figure before tax.

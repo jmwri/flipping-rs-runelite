@@ -95,11 +95,24 @@ class GeHistoryReader
 		// Each icon joins the line nearest to it by height. The icon is not on
 		// the texts' line, but it is far closer to its own row than to the
 		// next.
+		//
+		// Two icons can still land on one line: a row whose texts are all
+		// hidden has no line of its own, so its icon goes looking and settles
+		// on the next row's. That row's own icon is nearer, and is the one to
+		// keep -- taking whichever was seen first would report the row against
+		// an item the player never touched, which is a good deal worse than
+		// the loose row being skipped.
 		final Map<Integer, Widget> iconByLine = new TreeMap<>();
 		for (Widget icon : icons)
 		{
 			final Integer line = nearestLine(lines, icon.getRelativeY());
-			if (line != null && !iconByLine.containsKey(line))
+			if (line == null)
+			{
+				continue;
+			}
+			final Widget held = iconByLine.get(line);
+			if (held == null
+				|| Math.abs(line - icon.getRelativeY()) < Math.abs(line - held.getRelativeY()))
 			{
 				iconByLine.put(line, icon);
 			}
