@@ -3362,6 +3362,46 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).watchlists(anyString(), any());
 	}
 
+	/**
+	 * A key or a switch changed here reconnects; one changed elsewhere does
+	 * not.
+	 *
+	 * <p>Pasting a key that works, or turning recording back on, has to
+	 * re-check the key and reload the journals, because nothing was contacted
+	 * while it was wrong or off. Without that the sidebar goes on saying it
+	 * cannot connect until something else happens to ask.
+	 *
+	 * <p>And the settings of every other plugin come through the same handler.
+	 * "enabled" is about as common a setting name as there is, so without the
+	 * check on which plugin the change belongs to, somebody else toggling
+	 * theirs spends this plugin's requests -- against a limit of thirty a
+	 * minute that its own sends draw on.
+	 */
+	@Test
+	public void aSettingChangedHereReconnectsAndOneChangedElsewhereDoesNot() throws Exception
+	{
+		support.plugin.onConfigChanged(configChanged("apiKey"));
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api).account(anyString());
+
+		clearInvocations(support.api);
+		support.plugin.onConfigChanged(configChanged("enabled"));
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api).account(anyString());
+
+		clearInvocations(support.api);
+		final ConfigChanged somebodyElse = new ConfigChanged();
+		somebodyElse.setGroup("someotherplugin");
+		somebodyElse.setKey("enabled");
+		support.plugin.onConfigChanged(somebodyElse);
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api, never()).account(anyString());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
