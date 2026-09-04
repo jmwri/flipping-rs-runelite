@@ -9,6 +9,9 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Random;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
@@ -588,6 +591,88 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue("the search is a handful of requests, got " + batchSizes, batchSizes.size() <= 6);
 		assertTrue(support.panel.activityNoticeForTest().contains("1 trade(s)"));
 		assertTrue("the good rows count as a send", support.panel.statusTextForTest().contains("Connected"));
+	}
+
+	/**
+	 * Whatever the search does with a refused batch, every row is accounted
+	 * for exactly once.
+	 *
+	 * <p>How much the search saves depends on where the bad rows fall, and
+	 * narrow says why. What must hold whatever it decides is narrower and more
+	 * important: nothing is left queued to wedge the rows behind it, no bad
+	 * row is confirmed as sent, and no row is both confirmed and set aside --
+	 * the halves are views onto the batch, so a row counted twice would be a
+	 * trade in the journal that is also in the set-aside file, or one dropped
+	 * from the queue without being either.
+	 *
+	 * <p>Forty random shapes, because a search that halves and recurses is not
+	 * described by one or two worked examples.
+	 */
+	@Test
+	public void everyRowOfARefusedBatchIsAccountedForExactlyOnce() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final File dropped = new File(queueDir, "dropped-1234.json");
+		final Random random = new Random(20260904L);
+		final Set<String> confirmed = new HashSet<>();
+		final int[] calls = {0};
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenAnswer(inv ->
+			{
+				calls[0]++;
+				final List<GeTransaction> batch = inv.getArgument(2);
+				for (GeTransaction tx : batch)
+				{
+					if (tx.id.startsWith("b"))
+					{
+						throw new FlippingRsApi.PermanentException("transactions[0].quantity must be positive");
+					}
+				}
+				for (GeTransaction tx : batch)
+				{
+					confirmed.add(tx.id);
+				}
+				return accepted(batch.size());
+			});
+
+		for (int trial = 0; trial < 40; trial++)
+		{
+			Files.deleteIfExists(dropped.toPath());
+			confirmed.clear();
+			final int size = 2 + random.nextInt(11);
+			final int bad = 1 + random.nextInt(size);
+			final List<String> ids = new ArrayList<>();
+			for (int i = 0; i < size; i++)
+			{
+				ids.add((i < bad ? "b" : "g") + trial + "_" + i);
+			}
+			Collections.shuffle(ids, random);
+			for (String id : ids)
+			{
+				support.queue().add(fill(id));
+			}
+
+			calls[0] = 0;
+			support.drain();
+			support.settleSwing();
+
+			final String aside = dropped.exists()
+				? new String(Files.readAllBytes(dropped.toPath()), StandardCharsets.UTF_8) : "";
+			final String shape = "trial " + trial + ", " + bad + " bad of " + size + ": " + ids;
+			assertTrue("nothing may be left queued, " + shape, support.queue().isEmpty());
+			for (String id : ids)
+			{
+				final boolean setAside = aside.contains("\"" + id + "\"");
+				final boolean sent = confirmed.contains(id);
+				assertTrue("every row is confirmed or set aside: " + id + ", " + shape, setAside || sent);
+				assertFalse("no row is both: " + id + ", " + shape, setAside && sent);
+				if (id.startsWith("b"))
+				{
+					assertFalse("a bad row must never count as sent: " + id + ", " + shape, sent);
+				}
+			}
+			assertTrue("the search took " + calls[0] + " requests for " + shape, calls[0] <= 4 * size);
+		}
 	}
 
 	/**

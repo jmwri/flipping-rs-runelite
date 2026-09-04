@@ -1037,8 +1037,8 @@ public class FlippingRsPlugin extends Plugin
 			{
 				// Retrying cannot help, and leaving this at the head of the
 				// queue would wedge every later trade behind it forever. Find
-				// the rows at fault, set exactly those aside, and let the rest
-				// through.
+				// the rows at fault, set those aside, and let the rest through.
+				// See narrow for what "the rows at fault" can widen to.
 				narrow(queue, key, accountId, batch, sent);
 			}
 
@@ -1219,6 +1219,26 @@ public class FlippingRsPlugin extends Plugin
 	 * never been sent.
 	 *
 	 * @param batch a batch the server has just refused as a whole
+	 */
+	/**
+	 * Halves a refused batch until the rows at fault are on their own.
+	 *
+	 * <p>What it does not do is keep halving when both halves are refused. At
+	 * that point the batch either has a bad row in each half, where halving
+	 * further would save the good ones, or is a batch nothing will take -- a
+	 * journal id that is not this owner's, a lapsed plan -- where halving
+	 * further asks about every row to be told the same thing each time. The
+	 * two cannot be told apart without spending requests: a single row sent on
+	 * its own answers only if it happens to be a good one.
+	 *
+	 * <p>So the second reading is assumed and the batch is set aside whole.
+	 * That is the wrong guess when several rows are bad, and it costs the good
+	 * rows beside them -- they go to the set-aside file rather than the
+	 * journal, and the user is told the count. It is the right guess for a
+	 * misconfiguration, which is both the likelier cause and the one that
+	 * repeats: every batch after it is refused the same way, so a search that
+	 * asks about every row would spend the whole rate limit, every sync, for
+	 * as long as the setting stays wrong.
 	 */
 	private void narrow(TransactionQueue queue, String key, String accountId, List<GeTransaction> batch, Sent sent)
 		throws IOException
