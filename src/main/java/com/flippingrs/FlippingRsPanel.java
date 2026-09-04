@@ -235,11 +235,11 @@ public class FlippingRsPanel extends PluginPanel
 
 	/**
 	 * The tab whose contents are on screen. Four of the five never are, and
-	 * the lists on them are the expensive part of this panel: every line is a
-	 * wrapped HTML label, which Swing parses into a document of its own, and
-	 * a hundred open positions measured at close to half a second to build.
-	 * That was being paid every time the journal was re-read, whichever tab
-	 * the user was actually looking at.
+	 * the lists on them are the expensive part of this panel: a row is a card
+	 * of several labels and, on two of the tabs, a pair of buttons, and two
+	 * hundred open positions measure at around 98ms to build. That was being
+	 * paid every time the journal was re-read, whichever tab the user was
+	 * actually looking at.
 	 */
 	@Nullable
 	private MaterialTab showing;
@@ -478,10 +478,10 @@ public class FlippingRsPanel extends PluginPanel
 	 * <p>Each of these skips itself when its own tab is not the one showing,
 	 * so calling all four is how the one that is gets drawn. The labels above
 	 * each list are set as the data arrives and cost nothing; it is the lists
-	 * that are dear, because every line in them is a wrapped HTML label and
-	 * Swing parses each into a document of its own. A hundred open positions
-	 * measured at close to half a second to build, and that was being paid on
-	 * every journal read whichever tab the user was looking at.
+	 * that are dear, because each row is a card built out of several labels
+	 * and, on two of the tabs, a pair of buttons. Two hundred open positions
+	 * measure at around 98ms to build, and that was being paid on every
+	 * journal read whichever tab the user was looking at.
 	 */
 	private void drawWhatIsShowing()
 	{

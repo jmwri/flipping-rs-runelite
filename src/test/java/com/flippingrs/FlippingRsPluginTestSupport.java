@@ -33,9 +33,15 @@ import static org.mockito.Mockito.when;
  * <p>The fields are set by reflection rather than through Guice. The plugin's
  * dependencies are @Inject fields, and standing up an injector for them would
  * add a test-only dependency and a layer of indirection to hide behind; setting
- * them directly keeps the wiring visible in one place. startUp() is
- * deliberately not called -- it builds a nav button and a real HTTP client,
- * neither of which the behaviour under test needs.
+ * them directly keeps the wiring visible in one place.
+ *
+ * <p>startUp() is not called: it builds a nav button and a real HTTP client
+ * that the behaviour under test does not need, and it replaces the executors
+ * everything here runs on. The two pieces of it the tests do need are split
+ * out of it and called from here -- wiring the sidebar's buttons and
+ * dropdowns to the plugin, so a test can drive them the way a user does, and
+ * forgetting the last session, which reEnable() drives. What is left
+ * unreached is that startUp calls either of them.
  */
 final class FlippingRsPluginTestSupport
 {
