@@ -176,7 +176,7 @@ public class OfferTracker
 		tx.world = world;
 		tx.occurredAt = occurredAt;
 		tx.source = source;
-		tx.completed = isTerminal(state);
+		tx.completed = SavedOffer.isFinished(state);
 		tx.cancelled = state == GrandExchangeOfferState.CANCELLED_BUY
 			|| state == GrandExchangeOfferState.CANCELLED_SELL;
 
@@ -233,11 +233,4 @@ public class OfferTracker
 		return plausible ? new long[]{spent, 0} : fallback;
 	}
 
-	private static boolean isTerminal(GrandExchangeOfferState state)
-	{
-		return state == GrandExchangeOfferState.BOUGHT
-			|| state == GrandExchangeOfferState.SOLD
-			|| state == GrandExchangeOfferState.CANCELLED_BUY
-			|| state == GrandExchangeOfferState.CANCELLED_SELL;
-	}
 }

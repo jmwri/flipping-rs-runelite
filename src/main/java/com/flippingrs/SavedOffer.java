@@ -72,6 +72,16 @@ public class SavedOffer
 	 * cancelled untouched, then a sell of the same item at the same price and
 	 * size, with the collect in between never observed. Both sit at zero, and
 	 * without this they would share one offer reference.
+	 *
+	 * <p>And the finished check covers another that progress cannot: a buy
+	 * cancelled part way, collected, and placed again -- the same item at the
+	 * same price for the same number, which is what flipping is. The new offer
+	 * carries on from where the old one stopped rather than going backwards, so
+	 * it passes the quantity check; but an offer that has finished cannot be
+	 * running again, and that is enough to tell them apart. Without it the new
+	 * purchase's fills are counted as the difference from the old one's, so
+	 * most of them are never reported and the rest go out under the finished
+	 * purchase's reference.
 	 */
 	boolean isSameOfferAs(GrandExchangeOffer offer)
 	{
@@ -79,7 +89,8 @@ public class SavedOffer
 			&& price == offer.getPrice()
 			&& totalQuantity == offer.getTotalQuantity()
 			&& offer.getQuantitySold() >= quantitySold
-			&& (state == null || isBuy(state) == isBuy(offer.getState()));
+			&& (state == null || isBuy(state) == isBuy(offer.getState()))
+			&& !(isFinished(state) && isRunning(offer.getState()));
 	}
 
 	static boolean isBuy(GrandExchangeOfferState state)
@@ -87,5 +98,21 @@ public class SavedOffer
 		return state == GrandExchangeOfferState.BUYING
 			|| state == GrandExchangeOfferState.BOUGHT
 			|| state == GrandExchangeOfferState.CANCELLED_BUY;
+	}
+
+	/** Bought, sold or cancelled: the offer is over and the slot is waiting to be collected. */
+	static boolean isFinished(GrandExchangeOfferState state)
+	{
+		return state == GrandExchangeOfferState.BOUGHT
+			|| state == GrandExchangeOfferState.SOLD
+			|| state == GrandExchangeOfferState.CANCELLED_BUY
+			|| state == GrandExchangeOfferState.CANCELLED_SELL;
+	}
+
+	/** Still matching: the offer is on the exchange and can still fill. */
+	static boolean isRunning(GrandExchangeOfferState state)
+	{
+		return state == GrandExchangeOfferState.BUYING
+			|| state == GrandExchangeOfferState.SELLING;
 	}
 }

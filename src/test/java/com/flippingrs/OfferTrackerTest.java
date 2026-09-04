@@ -474,6 +474,150 @@ public class OfferTrackerTest
 	}
 
 	/**
+	 * A collect that was never seen costs nothing, as long as the two offers
+	 * can be told apart at all.
+	 *
+	 * <p>The other property test collects between every offer, so the slot is
+	 * always empty before the next one and the tracker never has to decide.
+	 * The interesting case is the collect going unseen -- the event not
+	 * arriving, or the plugin not running for it -- which leaves the previous
+	 * offer's baseline sitting in the slot when a new offer arrives.
+	 *
+	 * <p>Two identical finished offers cannot be told apart and never will be.
+	 * Everything else can: a different price, a different size, the other side
+	 * of the book, or an offer that had finished being followed by one that is
+	 * running. So every offer here differs from the one before it in exactly
+	 * one of those ways, and the count still has to come out exact.
+	 *
+	 * <p>The first look at an offer is sometimes mid-flight rather than at
+	 * placement, which is what a login burst looks like.
+	 */
+	@Test
+	public void aMissedCollectCostsNothingWhenTheOffersDiffer()
+	{
+		final java.util.Random random = new java.util.Random(20260906L);
+		for (int run = 0; run < 3000; run++)
+		{
+			SavedOffer saved = null;
+			long reported = 0;
+			long actual = 0;
+			int price = 2 + random.nextInt(1000);
+			int total = 2 + random.nextInt(20);
+			boolean buy = random.nextBoolean();
+
+			final int offers = 2 + random.nextInt(3);
+			for (int o = 0; o < offers; o++)
+			{
+				// How this offer differs from the one before it. The first
+				// offer has nothing to differ from.
+				if (o > 0)
+				{
+					switch (random.nextInt(4))
+					{
+						case 0:
+							price = price + 1 + random.nextInt(100);
+							break;
+						case 1:
+							total = total + 1 + random.nextInt(10);
+							break;
+						case 2:
+							buy = !buy;
+							break;
+						default:
+							// Nothing changes: the previous offer having
+							// finished and this one running is the whole of
+							// what separates them.
+							break;
+					}
+				}
+
+				final GrandExchangeOfferState running = buy ? BUYING : SELLING;
+				final int looks = 2 + random.nextInt(6);
+				// Skipping the placement is a login burst: the first sight of
+				// the offer already has fills on it.
+				if (random.nextBoolean())
+				{
+					final OfferTracker.Observation placed =
+						observe(saved, new Offer(running, WHIP, price, total, 0, 0));
+					saved = placed.saved;
+					if (placed.transaction != null)
+					{
+						reported += placed.transaction.quantity;
+					}
+				}
+
+				int sold = 0;
+				int spent = 0;
+				for (int look = 1; look <= looks; look++)
+				{
+					final int more = random.nextInt(Math.max(1, total - sold + 1));
+					sold += more;
+					spent += more * price;
+					final GrandExchangeOfferState state = look < looks
+						? running
+						: (random.nextBoolean()
+							? (buy ? BOUGHT : SOLD)
+							: (buy ? CANCELLED_BUY : CANCELLED_SELL));
+
+					final OfferTracker.Observation seen =
+						observe(saved, new Offer(state, WHIP, price, total, sold, spent));
+					saved = seen.saved;
+					if (seen.transaction != null)
+					{
+						reported += seen.transaction.quantity;
+					}
+				}
+				actual += sold;
+
+				// The collect, half the time. When it is missed the next offer
+				// meets this one's baseline still in the slot.
+				if (random.nextBoolean())
+				{
+					saved = observe(saved, new Offer(EMPTY, 0, 0, 0, 0, 0)).saved;
+				}
+			}
+
+			assertEquals("run " + run + ": every item filled reported exactly once",
+				actual, reported);
+		}
+	}
+
+	/**
+	 * An offer that was finished cannot be running again.
+	 *
+	 * <p>Cancel a buy that is part filled, collect it, and place the same buy
+	 * over again -- the same item at the same price for the same number, which
+	 * is what flipping is. If the collect between them is missed, the only
+	 * things saying these are two purchases are that the first one had
+	 * finished and the second is under way. The progress does not say it: the
+	 * new offer picks up where the old one left off and passes straight
+	 * through the check that the count has not gone backwards.
+	 *
+	 * <p>Read as one offer, the fills the new one already has are counted as
+	 * the difference from the old one's, so most of them are never reported at
+	 * all, and the ones that are go out under the finished purchase's
+	 * reference.
+	 */
+	@Test
+	public void aFinishedOfferIsNotTheSameAsOneThatIsRunning()
+	{
+		// Cancelled with three of ten bought, and those three already sent.
+		final SavedOffer cancelled = SavedOffer.of(
+			new Offer(CANCELLED_BUY, WHIP, 1000, 10, 3, 3000), "ref-old", false);
+
+		// The same buy placed again, and five of ten filled before we look.
+		final OfferTracker.Observation seen =
+			observe(cancelled, new Offer(BUYING, WHIP, 1000, 10, 5, 5000));
+
+		assertNotNull("a purchase that is under way is not the cancelled one", seen.transaction);
+		assertEquals("all five of the new offer's fills, not two",
+			5, seen.transaction.quantity);
+		assertEquals(GeTransaction.SOURCE_ADOPTED, seen.transaction.source);
+		assertNotNull(seen.saved);
+		assertEquals("and a reference of its own", "ref-1", seen.saved.offerRef);
+	}
+
+	/**
 	 * The collect between two identical offers was never seen -- the client was
 	 * killed holding a finished purchase, or the event did not arrive -- so the
 	 * slot goes straight from a completed offer to an identical new one. The
