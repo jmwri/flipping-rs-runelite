@@ -347,6 +347,45 @@ public class FlippingRsApiTest
 	}
 
 	/**
+	 * A batch the server rejected every row of has still been answered.
+	 *
+	 * <p>A reply that accounts for none of the rows is not the server's and is
+	 * retried, which is what stops a proxy's empty answer from deleting a
+	 * batch. But rejected rows are accounted for: the server read them, said
+	 * no, and will say no again in five minutes. Counting only the ones it
+	 * liked would leave the batch queued for ever with every later trade stuck
+	 * behind it -- the same wedge the permanent-failure split exists to
+	 * prevent, reached by another road.
+	 */
+	@Test
+	public void aBatchTheServerRejectedEveryRowOfIsNotRetried() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody(
+			"{\"accepted\":0,\"duplicate\":0,\"rejected\":3,\"problems\":[\"row 1: bad side\"]}"));
+
+		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
+
+		assertEquals("the rows were read and refused, not lost in transit", 3, result.getRejected());
+	}
+
+	/**
+	 * An exception with nothing to say is named rather than shown as blank.
+	 *
+	 * <p>What comes back from here goes straight into the sidebar after
+	 * "Could not connect: ", and not every failure carries a message -- so a
+	 * sentence that stops at the colon tells the user nothing at all.
+	 */
+	@Test
+	public void aFailureWithNoMessageIsNamedByItsKind()
+	{
+		assertEquals("SocketTimeoutException",
+			FlippingRsApi.describe(new java.net.SocketTimeoutException()));
+		assertEquals("SocketTimeoutException",
+			FlippingRsApi.describe(new java.net.SocketTimeoutException("")));
+		assertEquals("timed out", FlippingRsApi.describe(new java.io.IOException("timed out")));
+	}
+
+	/**
 	 * A reply too big to hold is not held.
 	 *
 	 * <p>Reading a body puts all of it in memory, and the client runs in 768
