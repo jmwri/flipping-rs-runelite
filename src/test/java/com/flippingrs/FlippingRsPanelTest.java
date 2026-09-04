@@ -719,7 +719,68 @@ public class FlippingRsPanelTest
 			assertTrue(rendered.contains("&lt;b&gt;"));
 			assertTrue(rendered.contains("&amp;"));
 			assertTrue("the raw tag must not survive", !rendered.contains("<script>"));
+
+			// A short line is handed to the label as it stands, rather than
+			// being made into a document it does not need, so the guard has to
+			// hold for a message too short to wrap as well.
+			panel.setStatus("<html><b>x</b>", java.awt.Color.WHITE);
+			final String short0 = panel.statusTextForTest();
+			assertTrue("a short line must not become markup either: " + short0,
+				short0.contains("&lt;html&gt;"));
 		});
+	}
+
+	/**
+	 * And a label is only handed the text as it stands when Swing will read it
+	 * as text. Swing reads a label's text as markup if it opens with a tag, so
+	 * the one thing the short path must never produce is a string that starts
+	 * one.
+	 */
+	@Test
+	public void noLineTheSidebarDrawsCanOpenWithATag() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final GeTransaction tx = new GeTransaction();
+			tx.side = "buy";
+			tx.quantity = 1;
+			tx.itemName = "<html><b>whip</b>";
+			tx.grossValue = 5;
+			tx.occurredAt = "2026-08-31T16:10:12.482Z";
+			panel.setActivity(Collections.singletonList(tx));
+			panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
+				4151, "<html><b>whip</b>", null, 10, 70, 5, "<html>buying", quote(4151))));
+			panel.setActivityNotice("<html><i>notice</i>", Color.WHITE);
+
+			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			{
+				panel.selectTabForTest(tab);
+				final Container wrapped = panel.getWrappedPanel();
+				wrapped.setSize(PluginPanel.PANEL_WIDTH, 4000);
+				layOut(wrapped);
+				assertNoTagOpensALabel(tab, wrapped);
+			}
+		});
+	}
+
+	private static void assertNoTagOpensALabel(String tab, Component c)
+	{
+		if (c instanceof JLabel)
+		{
+			final String text = ((JLabel) c).getText();
+			if (text != null && text.startsWith("<") && !text.startsWith("<html><body style="))
+			{
+				throw new AssertionError(tab + ": this line opens with a tag: " + text);
+			}
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				assertNoTagOpensALabel(tab, child);
+			}
+		}
 	}
 
 	/**
@@ -1038,6 +1099,72 @@ public class FlippingRsPanelTest
 			assertTrue("these lines wrap well short of the room they have:\n"
 				+ String.join("\n", wasteful), wasteful.isEmpty());
 		});
+	}
+
+	/**
+	 * An ordinary watchlist is drawn out of plain labels, not documents.
+	 *
+	 * <p>Wrapping a label means handing Swing HTML, and Swing builds a document
+	 * to hold it -- about half a millisecond each against twenty microseconds
+	 * for a plain label. A watchlist card is five or six lines, so drawing one
+	 * every thirty seconds out of documents is what made a list of sixty cost a
+	 * sixth of a second of the Swing thread.
+	 *
+	 * <p>Nothing here can time a redraw without being flaky, but it can count
+	 * what the redraw is made of, which is the thing that decides the cost. An
+	 * ordinary item name and an ordinary price line both fit their row.
+	 */
+	@Test
+	public void anOrdinaryWatchlistIsDrawnWithoutBuildingADocumentPerLine() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final List<FlippingRsPanel.WatchedItem> items = new ArrayList<>();
+			for (String name : new String[]{"Abyssal whip", "Dragon bones", "Magic logs", "Rune platebody"})
+			{
+				items.add(new FlippingRsPanel.WatchedItem(4151, name, null, 1_500_000, 70, 72_000,
+					"Buying 4/10 at 1.50M", quote(4151)));
+			}
+			panel.setWatchlistItems(items);
+			panel.selectTabForTest("Watchlists");
+			final Container wrapped = panel.getWrappedPanel();
+			wrapped.setSize(PluginPanel.PANEL_WIDTH, 4000);
+			layOut(wrapped);
+
+			final List<JLabel> all = new ArrayList<>();
+			collectLabels(wrapped, all);
+			final List<String> documents = new ArrayList<>();
+			for (JLabel label : all)
+			{
+				final String text = label.getText();
+				if (text != null && !text.isEmpty() && text.startsWith("<html>"))
+				{
+					documents.add(plain(label));
+				}
+			}
+
+			// A few still have to wrap and should: the tab's hint, and the
+			// line of limits, which really is a shade wider than a card.
+			assertTrue("expected a drawn watchlist, found " + all.size() + " labels", all.size() > 20);
+			assertTrue("most of these lines were built as a document:\n"
+				+ String.join("\n", documents), documents.size() * 3 <= all.size());
+		});
+	}
+
+	private static void collectLabels(Component c, List<JLabel> out)
+	{
+		if (c instanceof JLabel)
+		{
+			out.add((JLabel) c);
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectLabels(child, out);
+			}
+		}
 	}
 
 	/** Content wide enough that every kind of line has to wrap. */

@@ -594,14 +594,14 @@ public class FlippingRsPanel extends PluginPanel
 	/** The connection status, on the Account tab. */
 	void setStatus(String text, Color colour)
 	{
-		status.setText(wrap(text));
+		setWrappedText(status, text);
 		status.setForeground(colour);
 	}
 
 	/** The plan the key's owner is on, in the server's words, or null if not known. */
 	void setSubscription(@Nullable String text)
 	{
-		subscription.setText(wrap(text == null ? "Plan: not checked yet" : text));
+		setWrappedText(subscription, text == null ? "Plan: not checked yet" : text);
 	}
 
 	/**
@@ -709,7 +709,7 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		if (problem != null)
 		{
-			lastSync.setText(wrap("Last send failed: " + problem));
+			setWrappedText(lastSync, "Last send failed: " + problem);
 			lastSync.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			return;
 		}
@@ -723,7 +723,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setActivityNotice(@Nullable String text, Color colour)
 	{
-		activityNotice.setText(text == null ? "" : wrap(text));
+		setWrappedText(activityNotice, text);
 		activityNotice.setForeground(colour);
 		activityNotice.setVisible(text != null);
 		activityNoticeTimer.setRepeats(false);
@@ -861,9 +861,10 @@ public class FlippingRsPanel extends PluginPanel
 			image.addTo(icon);
 		}
 		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel(wrapBesideIcon(name));
+		final JLabel title = new JLabel();
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setForeground(Color.WHITE);
+		setWrappedTextBesideIcon(title, name);
 		head.add(title, BorderLayout.CENTER);
 		card.add(head);
 		card.add(Box.createVerticalStrut(4));
@@ -978,16 +979,16 @@ public class FlippingRsPanel extends PluginPanel
 		paused = null;
 		journalProblem = null;
 		journalLoaded = true;
-		journalSummary.setText(wrap(summarise(week)));
+		setWrappedText(journalSummary, summarise(week));
 		journalSummary.setForeground(week.getRealisedProfit() < 0
 			? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.LIGHT_GRAY_COLOR);
 		final FlippingRsApi.Positions.Summary totals = open.getSummary();
 		positions = open.getPositions();
-		journalOpen.setText(wrap(positions.isEmpty()
+		setWrappedText(journalOpen, positions.isEmpty()
 			? "No open positions."
 			: totals.openPositions + " open · cost " + gp(totals.costBasis) + " · value " + gp(totals.marketValue)
 			+ " · P&L " + signed(totals.unrealisedPnl)
-			+ (totals.marketDataAvailable ? "" : " (no market data)")));
+			+ (totals.marketDataAvailable ? "" : " (no market data)"));
 		redrawJournal();
 	}
 
@@ -998,7 +999,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setJournalNotice(@Nullable String text, Color colour)
 	{
-		journalNotice.setText(text == null ? "" : wrap(text));
+		setWrappedText(journalNotice, text);
 		journalNotice.setForeground(colour);
 		journalNotice.setVisible(text != null);
 		journalNoticeTimer.setRepeats(false);
@@ -1037,19 +1038,19 @@ public class FlippingRsPanel extends PluginPanel
 		// cards, so they are kept current whether or not this tab is showing.
 		if (paused != null)
 		{
-			journalSummary.setText(wrap(paused));
+			setWrappedText(journalSummary, paused);
 			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 			journalOpen.setText("");
 		}
 		else if (journalProblem != null)
 		{
-			journalSummary.setText(wrap("Couldn't load your journal: " + journalProblem));
+			setWrappedText(journalSummary, "Couldn't load your journal: " + journalProblem);
 			journalSummary.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
 			journalOpen.setText("");
 		}
 		else if (!journalLoaded)
 		{
-			journalSummary.setText(wrap("Not loaded yet."));
+			setWrappedText(journalSummary, "Not loaded yet.");
 			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 			journalOpen.setText("");
 		}
@@ -1074,10 +1075,11 @@ public class FlippingRsPanel extends PluginPanel
 	private JPanel positionRow(FlippingRsApi.Position p)
 	{
 		final JPanel card = card();
-		final JLabel title = new JLabel(wrap(p.getItemName().isEmpty() ? "Item " + p.getItemId() : p.getItemName()));
+		final JLabel title = new JLabel();
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setForeground(Color.WHITE);
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
+		setWrappedText(title, p.getItemName().isEmpty() ? "Item " + p.getItemId() : p.getItemName());
 		card.add(title);
 		card.add(small(p.getRemainingQty() + " left · held " + hours(p.getHoursHeld())));
 		card.add(small(positionPrices(p)));
@@ -1284,7 +1286,7 @@ public class FlippingRsPanel extends PluginPanel
 			final JLabel line = offerLines.get(itemId);
 			if (line != null && offer != null && item.offer != null)
 			{
-				line.setText(wrap(offer));
+				setWrappedText(line, offer);
 				return;
 			}
 			redrawWatchlist();
@@ -1306,7 +1308,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setWatchlistNotice(@Nullable String text, Color colour)
 	{
-		watchlistNotice.setText(text == null ? "" : wrap(text));
+		setWrappedText(watchlistNotice, text);
 		watchlistNotice.setForeground(colour);
 		watchlistNotice.setVisible(text != null);
 		watchlistNoticeTimer.setRepeats(false);
@@ -1377,9 +1379,10 @@ public class FlippingRsPanel extends PluginPanel
 			item.image.addTo(icon);
 		}
 		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel(wrapBesideIcon(name));
+		final JLabel title = new JLabel();
 		title.setFont(FontManager.getRunescapeBoldFont());
 		title.setForeground(Color.WHITE);
+		setWrappedTextBesideIcon(title, name);
 		head.add(title, BorderLayout.CENTER);
 		card.add(head);
 		card.add(Box.createVerticalStrut(4));
@@ -1531,10 +1534,11 @@ public class FlippingRsPanel extends PluginPanel
 
 	private static JLabel small(String text)
 	{
-		final JLabel label = new JLabel(wrap(text));
+		final JLabel label = new JLabel();
 		label.setFont(FontManager.getRunescapeSmallFont());
 		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		setWrappedText(label, text);
 		return label;
 	}
 
@@ -1568,16 +1572,42 @@ public class FlippingRsPanel extends PluginPanel
 	/** And beside a card's sprite, which takes its width off the front. */
 	private static final int TITLE_WIDTH = TEXT_WIDTH - ICON_WIDTH - ICON_GAP;
 
-	/** Wraps text as HTML so a label can break lines, escaping it first. */
-	private static String wrap(String text)
+	/** Sets a label's text, wrapping it only if it will not fit its row. */
+	private static void setWrappedText(JLabel label, String text)
 	{
-		return wrap(text, TEXT_WIDTH);
+		setWrappedText(label, text, TEXT_WIDTH);
 	}
 
 	/** The same, for the title that sits beside a card's sprite. */
-	private static String wrapBesideIcon(String text)
+	private static void setWrappedTextBesideIcon(JLabel label, String text)
 	{
-		return wrap(text, TITLE_WIDTH);
+		setWrappedText(label, text, TITLE_WIDTH);
+	}
+
+	/**
+	 * Sets a label's text, and only asks for wrapping if the text needs it.
+	 *
+	 * <p>Wrapping means HTML, and an HTML label is not a cheap thing: the text
+	 * becomes a document that has to be parsed and laid out, which measures at
+	 * about half a millisecond against twenty microseconds for a plain label.
+	 * Twenty-six times the work, and nearly every line here is one line anyway
+	 * -- a price, a time, a margin, a name. Asking for a document to hold them
+	 * put a sixth of a second on the Swing thread each time a watchlist of
+	 * sixty redrew, and that is every thirty seconds the sidebar is open.
+	 *
+	 * <p>So the text is measured first, and only the lines that really run past
+	 * their row pay for it. The label's font must already be set, since that is
+	 * what the text is measured in.
+	 */
+	private static void setWrappedText(JLabel label, String text, int pixels)
+	{
+		final String plain = text == null ? "" : text;
+		final boolean fits = label.getFontMetrics(label.getFont()).stringWidth(plain) <= pixels;
+		// Swing reads a label's text as markup if, and only if, it opens with
+		// a tag. Server messages and item names are not ours to trust, so
+		// anything that opens with a bracket goes the long way round and is
+		// escaped, whether or not it would have fitted.
+		label.setText(fits && !plain.startsWith("<") ? plain : wrap(plain, pixels));
 	}
 
 	/**
