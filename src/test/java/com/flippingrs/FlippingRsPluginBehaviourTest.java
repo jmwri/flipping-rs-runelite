@@ -24,6 +24,7 @@ import net.runelite.api.events.MenuOpened;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
@@ -3316,6 +3317,49 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(1, second.getValue().size());
 		assertEquals("carrying on where it left off", "q500", second.getValue().get(0).id);
 		assertTrue("and the queue is clear", support.queue().isEmpty());
+	}
+
+	/**
+	 * Closing the Grand Exchange stops the quote refreshes.
+	 *
+	 * <p>The quotes are refreshed every thirty seconds while something is
+	 * showing them: the sidebar, or the offer screen's overlay. With the
+	 * sidebar shut, the exchange being open is the whole of what keeps them
+	 * running, and nothing was telling the plugin it had closed -- that
+	 * handler was called by nothing at all.
+	 *
+	 * <p>Left running, it is a request every thirty seconds for the rest of
+	 * the session, against a limit of thirty a minute, for an offer screen
+	 * that is not on the screen. The same thing happened once already on
+	 * logout, which is why that path closes it too.
+	 */
+	@Test
+	public void closingTheExchangeStopsTheQuoteRefreshes() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		// The sidebar stays shut, so the exchange is the only thing that can
+		// be asking for quotes.
+		support.connect();
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		clearInvocations(support.api);
+		support.quotesTick();
+		verify(support.api).watchlists(anyString(), any());
+
+		// Some other interface closing is not the exchange closing: the offer
+		// screen is still up and its overlay still wants prices.
+		support.plugin.onWidgetClosed(new WidgetClosed(InterfaceID.GE_HISTORY, 0, true));
+		clearInvocations(support.api);
+		support.quotesTick();
+		verify(support.api).watchlists(anyString(), any());
+
+		support.plugin.onWidgetClosed(new WidgetClosed(InterfaceID.GE_OFFERS, 0, true));
+		clearInvocations(support.api);
+		support.quotesTick();
+
+		verify(support.api, never()).watchlists(anyString(), any());
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
