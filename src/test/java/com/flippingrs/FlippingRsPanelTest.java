@@ -10,6 +10,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,7 +22,9 @@ import net.runelite.client.ui.PluginPanel;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -1009,6 +1014,144 @@ public class FlippingRsPanelTest
 
 			assertEquals(Arrays.asList("shown", "hidden", "shown"), seen);
 		});
+	}
+
+	// ------------------------------------------------------------- redrawing
+
+	/**
+	 * A journal redraw that would change nothing leaves the cards alone.
+	 *
+	 * <p>Every card is torn down and rebuilt, and a position card is the
+	 * dearest kind: a title, four lines and two buttons. Two hundred open lots
+	 * measured at 154ms of the Swing thread, which is the client's thread, and
+	 * the journal is redrawn on every read and every time the tab is picked --
+	 * mostly with the same lots at the same prices.
+	 */
+	@Test
+	public void aJournalRedrawThatChangesNothingLeavesTheCardsAlone() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Journal");
+			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+			final Component[] first = panel.positionCardsForTest();
+			assertTrue("expected a card", first.length > 0);
+
+			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+
+			assertSame("the same card, not a rebuilt one", first[0], panel.positionCardsForTest()[0]);
+		});
+	}
+
+	/**
+	 * But a redraw that would change something does it.
+	 *
+	 * <p>Leaving the cards alone is decided by comparing what the positions
+	 * hold, so a figure left out of that comparison is a card that quietly
+	 * stops following the server -- a price that never moves again, a lot that
+	 * stays stale after it sold. Every figure a card shows is checked here.
+	 */
+	@Test
+	public void everyFigureOnAPositionCardStillFollowsTheServer() throws Exception
+	{
+		onEdt(() ->
+		{
+			final Map<String, Consumer<FlippingRsApi.Position>> changes = new LinkedHashMap<>();
+			changes.put("Dragon claws", p -> p.itemName = "Dragon claws");
+			changes.put("7 left", p -> p.remainingQty = 7);
+			changes.put("30h", p -> p.hoursHeld = 30);
+			changes.put("1,111,111", p -> p.buyPrice = 1_111_111);
+			changes.put("1,222,222", p -> p.currentBuy = 1_222_222);
+			changes.put("1,333,333", p -> p.currentSell = 1_333_333);
+			changes.put("+444,444", p -> p.unrealisedPnl = 444_444);
+			changes.put("50.0%", p -> p.unrealisedRoi = 0.5);
+			changes.put("1,555,555", p -> p.breakEvenSell = 1_555_555);
+			changes.put("Stale", p -> p.stale = true);
+
+			for (Map.Entry<String, Consumer<FlippingRsApi.Position>> change : changes.entrySet())
+			{
+				final FlippingRsPanel panel = new FlippingRsPanel();
+				panel.selectTabForTest("Journal");
+				panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+
+				final FlippingRsApi.Position changed = position();
+				change.getValue().accept(changed);
+				panel.setJournal(new FlippingRsApi.Analytics(), holding(changed));
+
+				assertTrue("changing this did not reach the card: " + change.getKey()
+						+ "\n" + journalText(panel),
+					journalText(panel).contains(change.getKey()));
+			}
+		});
+	}
+
+	/**
+	 * A different lot gets a different card, however alike the two read.
+	 *
+	 * <p>A card's Close and Delete buttons carry the lot they were built for.
+	 * Two lots of the same item bought at the same price read identically on
+	 * screen and are not the same lot, so leaving the first card up would
+	 * leave buttons that record a sale against, or delete, a lot that is no
+	 * longer the one being shown.
+	 */
+	@Test
+	public void aDifferentLotGetsItsOwnCard() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Journal");
+			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+			final Component first = panel.positionCardsForTest()[0];
+
+			final FlippingRsApi.Position other = position();
+			other.id = "p2";
+			panel.setJournal(new FlippingRsApi.Analytics(), holding(other));
+
+			assertNotSame("a card whose buttons close the wrong lot", first,
+				panel.positionCardsForTest()[0]);
+		});
+	}
+
+	/** One open lot, with every figure a card shows set to something it is not. */
+	private static FlippingRsApi.Position position()
+	{
+		final FlippingRsApi.Position p = new FlippingRsApi.Position();
+		p.id = "p1";
+		p.itemId = 4151;
+		p.itemName = "Abyssal whip";
+		p.buyPrice = 1_480_000;
+		p.remainingQty = 10;
+		p.currentBuy = 1_520_000;
+		p.currentSell = 1_500_000;
+		p.unrealisedPnl = 96_000;
+		p.unrealisedRoi = 0.0065;
+		p.breakEvenSell = 1_510_204;
+		p.hoursHeld = 5.5;
+		p.stale = false;
+		return p;
+	}
+
+	private static FlippingRsApi.Positions holding(FlippingRsApi.Position p)
+	{
+		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+		open.positions = Collections.singletonList(p);
+		open.summary = new FlippingRsApi.Positions.Summary();
+		return open;
+	}
+
+	/** Everything written on the Journal tab, as one string. */
+	private static String journalText(FlippingRsPanel panel)
+	{
+		final List<JLabel> labels = new ArrayList<>();
+		collectLabels(panel.getWrappedPanel(), labels);
+		final StringBuilder out = new StringBuilder();
+		for (JLabel label : labels)
+		{
+			out.append(plain(label)).append((char) 10);
+		}
+		return out.toString();
 	}
 
 	// ----------------------------------------------------------------- width

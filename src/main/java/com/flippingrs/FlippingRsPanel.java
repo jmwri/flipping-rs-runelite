@@ -248,6 +248,12 @@ public class FlippingRsPanel extends PluginPanel
 	private boolean pendingStale;
 	private boolean recentStale;
 	private boolean journalStale;
+	/**
+	 * The positions currently drawn as cards, as {@link #signatureOf} sees
+	 * them. Null until the first draw; only set once the cards are up.
+	 */
+	@Nullable
+	private String drawnPositions;
 	private boolean watchlistStale;
 
 	/** Set by the plugin; fires when the user picks a different game account. */
@@ -1061,6 +1067,20 @@ public class FlippingRsPanel extends PluginPanel
 			return;
 		}
 		journalStale = false;
+
+		// Every card is torn down and built again, and a position card is the
+		// dearest kind: a title, four lines and two buttons. Two hundred open
+		// lots measured at 154ms of the Swing thread, which is the client's,
+		// and the journal is redrawn on every read and every time this tab is
+		// picked -- mostly with the same lots at the same prices. So what is
+		// already on screen is left alone when a redraw would not change it.
+		final String signature = signatureOf(positions);
+		if (signature.equals(drawnPositions))
+		{
+			return;
+		}
+		drawnPositions = signature;
+
 		positionList.removeAll();
 		for (FlippingRsApi.Position position : positions)
 		{
@@ -1069,6 +1089,34 @@ public class FlippingRsPanel extends PluginPanel
 		}
 		positionList.revalidate();
 		positionList.repaint();
+	}
+
+	/** Field and row separators for {@link #signatureOf}, kept out of any name. */
+	private static final char SEP = (char) 0;
+	private static final char ROW = (char) 10;
+
+	/**
+	 * The positions as one string, for telling a redraw that would change
+	 * something from one that would not.
+	 *
+	 * <p>Everything a card shows is in it. A figure left out is a figure that
+	 * can move on the server without the card following it -- a price that
+	 * never changes again, a lot that stays marked stale after it sold --
+	 * which is a good deal worse than a redraw that was not needed.
+	 */
+	private static String signatureOf(List<FlippingRsApi.Position> positions)
+	{
+		final StringBuilder out = new StringBuilder(positions.size() * 48);
+		for (FlippingRsApi.Position p : positions)
+		{
+			out.append(p.getId()).append(SEP).append(p.getItemId()).append(SEP)
+				.append(p.getItemName()).append(SEP).append(p.getRemainingQty()).append(SEP)
+				.append(p.getHoursHeld()).append(SEP).append(p.getBuyPrice()).append(SEP)
+				.append(p.getCurrentBuy()).append(SEP).append(p.getCurrentSell()).append(SEP)
+				.append(p.getUnrealisedPnl()).append(SEP).append(p.getUnrealisedRoi()).append(SEP)
+				.append(p.getBreakEvenSell()).append(SEP).append(p.isStale()).append(ROW);
+		}
+		return out.toString();
 	}
 
 	/** One open position: what is held, what it cost, what it is worth now. */
@@ -1798,6 +1846,12 @@ public class FlippingRsPanel extends PluginPanel
 			default:
 				return pendingList.getComponentCount();
 		}
+	}
+
+	/** The position cards as drawn, so a test can tell a rebuild from a redraw. */
+	Component[] positionCardsForTest()
+	{
+		return positionList.getComponents();
 	}
 
 	/** The tab strip's preferred width, to check it fits the sidebar. */
