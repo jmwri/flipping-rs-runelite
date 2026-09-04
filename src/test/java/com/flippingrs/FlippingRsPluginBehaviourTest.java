@@ -3426,6 +3426,42 @@ public class FlippingRsPluginBehaviourTest
 			support.panel.watchlistProblemForTest());
 	}
 
+	/**
+	 * Editing one watchlist leaves the others alone.
+	 *
+	 * <p>The site answers an edit with the whole list as it now stands, and
+	 * that answer goes back into the copy the plugin keeps -- in place of the
+	 * one it belongs to, and not in place of the others. That copy is what
+	 * says which list the next edit belongs to, so putting the answer
+	 * everywhere makes every later edit go to the list that was edited first.
+	 *
+	 * <p>An edit is normally followed by a read that replaces the whole copy,
+	 * which would cover the mistake up. The reads here do not come back, which
+	 * is when the copy is all the plugin has.
+	 */
+	@Test
+	public void editingOneWatchlistLeavesTheOthersAlone() throws Exception
+	{
+		serverPanel().watchlists = Arrays.asList(
+			watchlist("wl_1", "Plan", 4151), watchlist("wl_2", "Bonds", 13190));
+		support.showSidebar();
+		support.connect();
+		when(support.api.updateWatchlist(anyString(), eq("wl_1"), anyList()))
+			.thenReturn(watchlist("wl_1", "Plan", 4151, 11802));
+		when(support.api.updateWatchlist(anyString(), eq("wl_2"), anyList()))
+			.thenReturn(watchlist("wl_2", "Bonds", 13190, 4151));
+		when(support.api.watchlists(anyString(), any()))
+			.thenThrow(new java.io.IOException("flippingrs.com is having a moment."));
+
+		support.addToWatchlist(11802);
+		support.chooseWatchlist("wl_2");
+		clearInvocations(support.api);
+		support.addToWatchlist(4151);
+
+		verify(support.api).updateWatchlist(anyString(), eq("wl_2"), anyList());
+		verify(support.api, never()).updateWatchlist(anyString(), eq("wl_1"), anyList());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
