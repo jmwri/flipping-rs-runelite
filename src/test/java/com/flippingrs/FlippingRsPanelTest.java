@@ -1211,19 +1211,56 @@ public class FlippingRsPanelTest
 
 			panel.updateWatchedOffer(4151, "Buying 7/10 at 1.00M");
 
-			assertTrue("the whip's card shows its own new line: " + cardText(panel, "Abyssal whip"),
-				cardText(panel, "Abyssal whip").contains("Buying 7/10"));
-			assertFalse("and the bond's card is untouched: " + cardText(panel, "Old school bond"),
-				cardText(panel, "Old school bond").contains("Buying 7/10"));
+			assertTrue("the whip's card shows its own new line: " + cardText(panel, "Watchlists", "Abyssal whip"),
+				cardText(panel, "Watchlists", "Abyssal whip").contains("Buying 7/10"));
+			assertFalse("and the bond's card is untouched: " + cardText(panel, "Watchlists", "Old school bond"),
+				cardText(panel, "Watchlists", "Old school bond").contains("Buying 7/10"));
 			assertTrue("which still shows its own",
-				cardText(panel, "Old school bond").contains("Selling 2/10"));
+				cardText(panel, "Watchlists", "Old school bond").contains("Selling 2/10"));
 		});
 	}
 
-	/** Everything written on the watchlist card whose title names this item. */
-	private static String cardText(FlippingRsPanel panel, String itemName)
+	/**
+	 * A trade card carries the item, what happened, and when.
+	 *
+	 * <p>Three lines, and the seam the other tests read builds its own string
+	 * from the same trade rather than reading the card -- using the wording
+	 * the waiting-to-send list uses, which is not the wording on a card at
+	 * all. So a card that showed the time where the trade should be, or left
+	 * the time off entirely, passed everything.
+	 */
+	@Test
+	public void aTradeCardCarriesTheItemWhatHappenedAndWhen() throws Exception
 	{
-		for (Component card : panel.watchlistCardsForTest())
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Trades");
+			final GeTransaction tx = new GeTransaction();
+			tx.itemId = 4151;
+			tx.itemName = "Abyssal whip";
+			tx.side = "buy";
+			tx.quantity = 25;
+			tx.grossValue = 30_864_175L;
+			tx.occurredAt = "2026-08-31T16:10:12.482Z";
+			panel.setActivity(Collections.singletonList(tx));
+
+			final String card = cardText(panel, "Trades", "Abyssal whip");
+
+			assertTrue("what happened: " + card, card.contains("Bought 25 for 30,864,175"));
+			assertTrue("and when, in the card's own wording: " + card,
+				card.contains(FlippingRsPanel.when(tx, java.time.Instant.now())));
+			// The trade and the time are separate lines, not one written twice.
+			assertFalse("the trade line is not the time line: " + card,
+				card.contains(FlippingRsPanel.when(tx, java.time.Instant.now())
+					+ (char) 10 + FlippingRsPanel.when(tx, java.time.Instant.now())));
+		});
+	}
+
+	/** Everything written on the card of that tab whose title names this item. */
+	private static String cardText(FlippingRsPanel panel, String tab, String itemName)
+	{
+		for (Component card : panel.cardsForTest(tab))
 		{
 			final List<JLabel> labels = new ArrayList<>();
 			collectLabels(card, labels);
@@ -1237,7 +1274,7 @@ public class FlippingRsPanelTest
 				return out.toString();
 			}
 		}
-		throw new AssertionError("no card for " + itemName);
+		throw new AssertionError("no " + tab + " card for " + itemName);
 	}
 
 
@@ -1361,12 +1398,12 @@ public class FlippingRsPanelTest
 			final FlippingRsPanel panel = new FlippingRsPanel();
 			panel.selectTabForTest("Journal");
 			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
-			final Component[] first = panel.positionCardsForTest();
+			final Component[] first = panel.cardsForTest("Journal");
 			assertTrue("expected a card", first.length > 0);
 
 			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
 
-			assertSame("the same card, not a rebuilt one", first[0], panel.positionCardsForTest()[0]);
+			assertSame("the same card, not a rebuilt one", first[0], panel.cardsForTest("Journal")[0]);
 		});
 	}
 
@@ -1429,14 +1466,14 @@ public class FlippingRsPanelTest
 			final FlippingRsPanel panel = new FlippingRsPanel();
 			panel.selectTabForTest("Journal");
 			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
-			final Component first = panel.positionCardsForTest()[0];
+			final Component first = panel.cardsForTest("Journal")[0];
 
 			final FlippingRsApi.Position other = position();
 			other.id = "p2";
 			panel.setJournal(new FlippingRsApi.Analytics(), holding(other));
 
 			assertNotSame("a card whose buttons close the wrong lot", first,
-				panel.positionCardsForTest()[0]);
+				panel.cardsForTest("Journal")[0]);
 		});
 	}
 

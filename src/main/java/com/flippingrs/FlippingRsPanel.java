@@ -1878,16 +1878,21 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
-	/** The watchlist cards as drawn, so a test can read what is on one. */
-	Component[] watchlistCardsForTest()
+	/**
+	 * A tab's cards as drawn, so a test can read what is on one and tell a
+	 * rebuild from a redraw that changed nothing.
+	 */
+	Component[] cardsForTest(String tab)
 	{
-		return watchlistItems.getComponents();
-	}
-
-	/** The position cards as drawn, so a test can tell a rebuild from a redraw. */
-	Component[] positionCardsForTest()
-	{
-		return positionList.getComponents();
+		switch (tab)
+		{
+			case "Trades":
+				return recentList.getComponents();
+			case "Watchlists":
+				return watchlistItems.getComponents();
+			default:
+				return positionList.getComponents();
+		}
 	}
 
 	/** The tab strip's preferred width, to check it fits the sidebar. */
