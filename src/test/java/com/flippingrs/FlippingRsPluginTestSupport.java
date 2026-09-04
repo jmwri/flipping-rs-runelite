@@ -282,10 +282,21 @@ final class FlippingRsPluginTestSupport
 	 */
 	void showSidebar() throws Exception
 	{
+		sidebar(true);
+	}
+
+	/** The sidebar being closed again, which RuneLite reports the same way. */
+	void hideSidebar() throws Exception
+	{
+		sidebar(false);
+	}
+
+	private void sidebar(boolean shown) throws Exception
+	{
 		final java.lang.reflect.Method m = FlippingRsPlugin.class
 			.getDeclaredMethod("sidebarShown", boolean.class);
 		m.setAccessible(true);
-		m.invoke(plugin, true);
+		m.invoke(plugin, shown);
 		settleNet();
 		settleSwing();
 	}

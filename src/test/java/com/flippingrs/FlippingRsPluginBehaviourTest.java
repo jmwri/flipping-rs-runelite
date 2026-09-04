@@ -2738,6 +2738,38 @@ public class FlippingRsPluginBehaviourTest
 			status.contains("no longer exists"));
 	}
 
+	/**
+	 * Closing the sidebar stops the two tabs being read after every send.
+	 *
+	 * <p>They are only read so that someone looking at them sees the trade
+	 * arrive. A flipper keeps the exchange open and the sidebar shut, and
+	 * reading them anyway is two requests per send, out of thirty a minute
+	 * that the sends themselves draw on, to redraw a panel nobody can see.
+	 *
+	 * <p>The open case was covered and the close was not, so a flag that stuck
+	 * on after the first look would have gone unnoticed.
+	 */
+	@Test
+	public void closingTheSidebarStopsTheTabsBeingReadAfterEverySend() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		support.showSidebar();
+		support.hideSidebar();
+		support.tabsLastReadLongAgo();
+		clearInvocations(support.api);
+
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api).submit(anyString(), anyString(), anyList());
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
