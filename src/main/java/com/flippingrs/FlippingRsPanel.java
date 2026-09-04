@@ -1171,9 +1171,42 @@ public class FlippingRsPanel extends PluginPanel
 	 * lists at and everything still held, then hands the answer to the
 	 * plugin. Nothing is sent unless the user confirms.
 	 */
+	/**
+	 * What the Close box starts with in its price field: the price a patient
+	 * sale lists at, or what an instant one would get if the site has no
+	 * listing price. Zero when it has neither, which leaves the field empty
+	 * rather than suggesting a sale at nothing.
+	 */
+	static long suggestedSalePrice(FlippingRsApi.Position p)
+	{
+		return p.getCurrentBuy() > 0 ? p.getCurrentBuy() : p.getCurrentSell();
+	}
+
+	/**
+	 * What Close does with what was typed into it.
+	 *
+	 * <p>Apart from the box itself, which cannot be opened without someone to
+	 * close it. A sale recorded from the wrong field, or for none of the
+	 * position instead of all of it, is a wrong journal entry that the player
+	 * asked for by hand and would have no reason to doubt.
+	 */
+	void closeAsTyped(FlippingRsApi.Position p, String priceText, String quantityText)
+	{
+		final long sellPrice = parseGp(priceText);
+		final long sellQty = parseGp(quantityText);
+		if (sellPrice <= 0)
+		{
+			setJournalNotice("A sale price is needed to close a position.", ColorScheme.BRAND_ORANGE);
+			return;
+		}
+		// Nothing readable in the count means all of what is left, which is
+		// what the box offers and what the site takes a missing count as.
+		closePosition(p.getId(), sellPrice, sellQty > 0 ? sellQty : null);
+	}
+
 	private void promptClose(FlippingRsApi.Position p)
 	{
-		final long suggested = p.getCurrentBuy() > 0 ? p.getCurrentBuy() : p.getCurrentSell();
+		final long suggested = suggestedSalePrice(p);
 		final JTextField price = new JTextField(suggested > 0 ? exact(suggested) : "");
 		final JTextField quantity = new JTextField(Long.toString(p.getRemainingQty()));
 		final JPanel form = new JPanel(new GridLayout(0, 1, 0, 2));
@@ -1188,14 +1221,7 @@ public class FlippingRsPanel extends PluginPanel
 		{
 			return;
 		}
-		final long sellPrice = parseGp(price.getText());
-		final long sellQty = parseGp(quantity.getText());
-		if (sellPrice <= 0)
-		{
-			setJournalNotice("A sale price is needed to close a position.", ColorScheme.BRAND_ORANGE);
-			return;
-		}
-		closePosition(p.getId(), sellPrice, sellQty > 0 ? sellQty : null);
+		closeAsTyped(p, price.getText(), quantity.getText());
 	}
 
 	private void promptDelete(FlippingRsApi.Position p)

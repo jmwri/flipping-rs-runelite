@@ -545,6 +545,71 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * Recording a sale sends the price as the price and the count as the
+	 * count.
+	 *
+	 * <p>The box itself cannot be opened in a test, because nothing would
+	 * close it, so what it does with what was typed is its own method. It is
+	 * worth holding: a sale taken from the wrong field, or recorded for none
+	 * of the position instead of all of it, is a wrong journal entry the
+	 * player asked for by hand and has no reason to doubt.
+	 */
+	@Test
+	public void aSaleRecordedByHandSendsWhatWasTyped() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final List<String> sent = new ArrayList<>();
+			panel.onClosePosition((id, price, qty) -> sent.add(id + "/" + price + "/" + qty));
+			final FlippingRsApi.Position p = position();
+
+			panel.closeAsTyped(p, "1.5m", "5");
+			assertEquals("the price typed and the count typed",
+				Collections.singletonList("p1/1500000/5"), sent);
+
+			// Nothing readable in the count is all of what is left, which is
+			// what the site takes a missing count as.
+			sent.clear();
+			panel.closeAsTyped(p, "1.5m", "");
+			assertEquals(Collections.singletonList("p1/1500000/null"), sent);
+			sent.clear();
+			panel.closeAsTyped(p, "1.5m", "some");
+			assertEquals(Collections.singletonList("p1/1500000/null"), sent);
+
+			// A sale needs a price. Nothing goes out without one, and the tab
+			// says why rather than the click doing nothing at all.
+			sent.clear();
+			panel.closeAsTyped(p, "", "5");
+			assertTrue("nothing was sent", sent.isEmpty());
+			assertTrue("and the tab says why: " + panel.journalNoticeForTest(),
+				panel.journalNoticeForTest().contains("sale price is needed"));
+		});
+	}
+
+	/**
+	 * And the box opens on the price a patient sale would list at.
+	 *
+	 * <p>What an instant sale gets is the fallback, and neither being known
+	 * leaves the field empty rather than offering a sale at nothing.
+	 */
+	@Test
+	public void theCloseBoxOpensOnThePriceAPatientSaleWouldListAt()
+	{
+		final FlippingRsApi.Position p = position();
+		p.currentBuy = 1_520_000;
+		p.currentSell = 1_500_000;
+		assertEquals(1_520_000L, FlippingRsPanel.suggestedSalePrice(p));
+
+		p.currentBuy = 0;
+		assertEquals("what an instant sale gets, when there is no listing price",
+			1_500_000L, FlippingRsPanel.suggestedSalePrice(p));
+
+		p.currentSell = 0;
+		assertEquals("and nothing to suggest at all", 0L, FlippingRsPanel.suggestedSalePrice(p));
+	}
+
 	/** Gp typed by a person: separators, and the k/m/b the game uses. */
 	@Test
 	public void typedGpIsReadTheWayPeopleWriteIt()
