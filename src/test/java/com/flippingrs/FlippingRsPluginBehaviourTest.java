@@ -152,6 +152,12 @@ public class FlippingRsPluginBehaviourTest
 	/** A Grand Exchange slot as the client reports it. */
 	private static GrandExchangeOffer offer(GrandExchangeOfferState state, int sold, int spent)
 	{
+		return offerFor(4151, state, sold, spent);
+	}
+
+	/** The same, on another item, for the slots a watched item shares with. */
+	private static GrandExchangeOffer offerFor(int itemId, GrandExchangeOfferState state, int sold, int spent)
+	{
 		return new GrandExchangeOffer()
 		{
 			@Override
@@ -163,7 +169,7 @@ public class FlippingRsPluginBehaviourTest
 			@Override
 			public int getItemId()
 			{
-				return 4151;
+				return itemId;
 			}
 
 			@Override
@@ -2768,6 +2774,89 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api).submit(anyString(), anyString(), anyList());
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
+	}
+
+	/**
+	 * A fill on an item nobody is watching does not go looking for its card.
+	 *
+	 * <p>There is no card to update, so the eight-slot scan and the hop to the
+	 * Swing thread that follows it are both pure waste -- and a flipper fills
+	 * offers on unwatched items all day.
+	 */
+	@Test
+	public void aFillOnAnUnwatchedItemDoesNotScanTheSlots() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+		clearInvocations(support.client);
+
+		fire(offerFor(9999, GrandExchangeOfferState.BUYING, 4, 4_000_000));
+		support.settleSwing();
+
+		verify(support.client, never()).getGrandExchangeOffers();
+	}
+
+	/**
+	 * A card's offer line is that card's offer.
+	 *
+	 * <p>The line is found by walking the eight exchange slots, and a flipper
+	 * has eight of them going at once. Taking the first slot with anything in
+	 * it would put another item's progress on this item's card -- "Selling
+	 * 6/10" against a whip that is being bought.
+	 */
+	@Test
+	public void aCardsOfferLineIsItsOwnOfferNotAnotherSlots() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		// A different item, earlier in the slots than the watched one.
+		slots[1] = offerFor(9999, GrandExchangeOfferState.SELLING, 6, 6_000_000);
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		support.settleSwing();
+
+		assertEquals("Buying 4/10 at 1.00M", support.panel.watchlistOfferForTest(4151));
+	}
+
+	/**
+	 * And it says what the offer is actually doing.
+	 *
+	 * <p>Six states reach the card, and the word is the whole of what the line
+	 * tells a flipper at a glance. A sale reading as a purchase is worse than
+	 * no line at all.
+	 */
+	@Test
+	public void theOfferLineNamesWhatTheOfferIsDoing() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+		support.connect();
+
+		final GrandExchangeOfferState[] states = {
+			GrandExchangeOfferState.SELLING, GrandExchangeOfferState.BOUGHT,
+			GrandExchangeOfferState.SOLD, GrandExchangeOfferState.CANCELLED_BUY,
+			GrandExchangeOfferState.CANCELLED_SELL, GrandExchangeOfferState.BUYING};
+		final String[] words = {"Selling", "Bought", "Sold", "Buy cancelled", "Sell cancelled", "Buying"};
+
+		for (int i = 0; i < states.length; i++)
+		{
+			final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+			slots[3] = offerFor(4151, states[i], i + 1, (i + 1) * 1_000_000);
+			when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+			fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+			support.settleSwing();
+
+			final String line = support.panel.watchlistOfferForTest(4151);
+			assertTrue(states[i] + " should read as \"" + words[i] + "\", got: " + line,
+				line != null && line.startsWith(words[i] + " "));
+		}
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
