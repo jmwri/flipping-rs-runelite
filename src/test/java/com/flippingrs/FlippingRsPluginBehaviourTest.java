@@ -2487,6 +2487,68 @@ public class FlippingRsPluginBehaviourTest
 		return event;
 	}
 
+	/**
+	 * Opening the sidebar while recording is off reads nothing.
+	 *
+	 * <p>Opening it asks the site for all three tabs, and that is contact --
+	 * the same promise the sends keep. It is the easiest one to miss, because
+	 * nothing was traded and nothing was sent: the user simply clicked the
+	 * icon.
+	 */
+	@Test
+	public void openingTheSidebarWhileRecordingIsOffReadsNothing() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.config.enabled()).thenReturn(false);
+
+		support.showSidebar();
+
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+		verify(support.api, never()).watchlists(anyString(), any());
+	}
+
+	/**
+	 * With no journal picked, the two tabs that belong to one are not read.
+	 *
+	 * <p>Both reads take the journal to read, and the site falls back to the
+	 * owner's default when it is not told one. So asking anyway does not fail:
+	 * it quietly answers with some other journal's trades and holdings, and
+	 * the sidebar shows them as this character's while the Account tab is
+	 * still asking which journal to use.
+	 *
+	 * <p>The watchlists are a person's rather than a character's and are read
+	 * either way, which is also what says this test is asking anything at all.
+	 */
+	@Test
+	public void withNoJournalPickedTheCharactersTabsAreNotRead() throws Exception
+	{
+		support.showSidebar();
+
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+		verify(support.api).watchlists(anyString(), any());
+	}
+
+	/**
+	 * And with no key there is nothing to ask with, so nothing is asked.
+	 *
+	 * <p>Every read would come back 401. The panel already says to add a key;
+	 * spending three requests a minute to be told so again is worth skipping.
+	 */
+	@Test
+	public void withNoKeyNothingIsRead() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.config.apiKey()).thenReturn("   ");
+
+		support.showSidebar();
+
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+		verify(support.api, never()).watchlists(anyString(), any());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
