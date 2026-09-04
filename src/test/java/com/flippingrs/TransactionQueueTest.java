@@ -46,6 +46,102 @@ public class TransactionQueueTest
 		return new File(folder.newFolder("flippingrs"), "queue-1.json");
 	}
 
+	/**
+	 * A damaged queue file loses fills; it never invents one.
+	 *
+	 * <p>The file is appended to as each fill arrives, so a client killed
+	 * mid-write leaves a line half-finished, and a disk that fills up or a
+	 * sync that never happened can leave worse. The queue is meant to drop
+	 * what it cannot read and keep the rest, which is the right trade -- but
+	 * only if what it keeps is what was written. A fill restored with another
+	 * fill's id would be sent under that id, and the server groups and dedupes
+	 * by exactly that: the real trade would be taken for a duplicate and
+	 * dropped, and the invented one kept in its place.
+	 *
+	 * <p>So this writes a queue, breaks the file three hundred different ways
+	 * and asks only that every fill that comes back is one that went in, whole.
+	 *
+	 * <p>The damage is the damage a crash does: a line cut short, a line that
+	 * is not JSON, a line that is JSON and not a fill, a blank line. Not a byte
+	 * flipped inside a field name -- that is a disk going bad rather than a
+	 * client being killed, and what it leaves behind is a line that parses
+	 * cleanly into a fill with a real id and no quantity, which the queue would
+	 * keep and send as a trade of nothing. The server refuses it and the user
+	 * is told a trade could not be recorded, so it is confusing rather than
+	 * silent, and guarding it means the queue deciding what counts as a fill.
+	 */
+	@Test
+	public void aDamagedQueueFileLosesFillsRatherThanInventingThem() throws Exception
+	{
+		final java.util.Random random = new java.util.Random(20260905L);
+		for (int run = 0; run < 300; run++)
+		{
+			final File file = new File(folder.newFolder("run" + run), "queue-1.json");
+			final java.util.Map<String, String> written = new java.util.HashMap<>();
+			final TransactionQueue original = new TransactionQueue(gson, file);
+			final int fills = 1 + random.nextInt(8);
+			for (int i = 0; i < fills; i++)
+			{
+				final GeTransaction tx = fill("id" + run + "_" + i);
+				tx.quantity = 1 + random.nextInt(1000);
+				tx.grossValue = 1 + random.nextInt(1_000_000);
+				tx.itemId = 4151 + i;
+				original.add(tx);
+				written.put(tx.id, tx.itemId + "/" + tx.quantity + "/" + tx.grossValue);
+			}
+
+			final byte[] whole = Files.readAllBytes(file.toPath());
+			final String text = new String(whole, StandardCharsets.UTF_8);
+			// 0 is a client killed mid-append, which takes the tail with it.
+			// The rest destroy one line and leave the others alone.
+			final int kind = random.nextInt(4);
+			Files.write(file.toPath(), kind == 0
+				? java.util.Arrays.copyOf(whole, random.nextInt(whole.length))
+				: replaceLine(text, random, brokenLine(kind)));
+
+			final TransactionQueue reopened = new TransactionQueue(gson, file);
+			final List<GeTransaction> restored = reopened.peek(1000);
+			for (GeTransaction tx : restored)
+			{
+				final String shape = "run " + run + ": " + tx.id + " came back as "
+					+ tx.itemId + "/" + tx.quantity + "/" + tx.grossValue;
+				assertTrue(shape + ", which was never written", written.containsKey(tx.id));
+				assertEquals(shape, written.get(tx.id), tx.itemId + "/" + tx.quantity + "/" + tx.grossValue);
+			}
+			if (kind != 0)
+			{
+				// A line per fill is the whole point of the format: one line
+				// nobody can read must not cost the fills below it.
+				assertTrue("run " + run + ": one broken line cost more than itself, kept "
+						+ restored.size() + " of " + fills,
+					restored.size() >= fills - 1);
+			}
+		}
+	}
+
+	/** The ways a line comes back unreadable, short of the file being cut. */
+	private static String brokenLine(int kind)
+	{
+		switch (kind)
+		{
+			case 1:
+				return "}{ not json at all";
+			case 2:
+				// Parses, and is not a fill.
+				return "{\"nonsense\":true}";
+			default:
+				// Not damage, but it happens.
+				return "";
+		}
+	}
+
+	private static byte[] replaceLine(String text, java.util.Random random, String with)
+	{
+		final String[] lines = text.split("\\n", -1);
+		lines[random.nextInt(lines.length)] = with;
+		return String.join("\n", lines).getBytes(StandardCharsets.UTF_8);
+	}
+
 	@Test
 	public void peekingDoesNotRemove() throws IOException
 	{
