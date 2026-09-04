@@ -82,9 +82,9 @@ public class FlippingRsApiTest
 			+ "\"week\":{\"completedFlips\":12,\"openFlips\":2,\"realisedProfit\":1200000,\"winRate\":0.75,\"gpPerHour\":45000},"
 			+ "\"positions\":{\"positions\":[{\"itemId\":4151,\"itemName\":\"Abyssal whip\",\"remainingQty\":10,"
 			+ "\"buyPrice\":1480000,\"currentSell\":1500000,\"currentBuy\":1520000,\"unrealisedPnl\":96000,\"unrealisedRoi\":0.0065,"
-			+ "\"breakEvenSell\":1510204,\"hoursHeld\":5.5,\"stale\":false}],"
+			+ "\"breakEvenSell\":1510204,\"hoursHeld\":5.5,\"stale\":true}],"
 			+ "\"summary\":{\"openPositions\":1,\"costBasis\":14800000,\"marketValue\":15200000,\"unrealisedPnl\":96000,"
-			+ "\"marketDataAvailable\":true}},"
+			+ "\"marketDataAvailable\":false}},"
 			+ "\"watchlists\":[{\"id\":\"wl_1\",\"name\":\"Plan\",\"itemIds\":[4151,11802]},{\"id\":\"wl_2\",\"itemIds\":null}],"
 			+ "\"quotes\":[{\"id\":4151,\"name\":\"Abyssal whip\",\"buyLimit\":70,\"instantBuy\":1520000,\"instantSell\":1480000,"
 			+ "\"netMargin\":9600,\"roi\":0.0065,\"profitPerLimit\":672000,\"volume24h\":1234},null]}";
@@ -102,28 +102,90 @@ public class FlippingRsApiTest
 		assertEquals("Pro trial, 5 days left", account.getMe().describePlan());
 		assertEquals(2, account.getAccounts().size());
 		assertEquals("a nameless account shows its id", "a2", account.getAccounts().get(1).toString());
+		assertTrue("which journal is the default one, that a new character adopts",
+			account.getAccounts().get(0).isDefault);
+		assertFalse(account.getAccounts().get(1).isDefault);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
 		final FlippingRsApi.Panel trades = api.trades("frs_secret", "a1");
 		assertEquals("/api/plugin/trades?accountId=a1", server.takeRequest().getPath());
-		assertEquals("t2", trades.getRecentTransactions().get(0).id);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
 		final FlippingRsApi.Panel journal = api.journal("frs_secret", "a1", 60);
 		assertEquals("/api/plugin/journal?tzOffset=60&accountId=a1", server.takeRequest().getPath());
-		assertEquals(12, journal.getWeek().getCompletedFlips());
-		assertEquals(10L, journal.getPositions().getPositions().get(0).getRemainingQty());
-		assertEquals(1_520_000L, journal.getPositions().getPositions().get(0).getCurrentBuy());
-		assertEquals(96_000L, journal.getPositions().getSummary().unrealisedPnl);
+		assertEverySentFieldOfTheJournalArrived(journal);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
 		final FlippingRsApi.Panel lists = api.watchlists("frs_secret", "wl_1");
 		assertEquals("/api/plugin/watchlists?watchlistId=wl_1", server.takeRequest().getPath());
 		assertEquals(Arrays.asList(4151, 11802), lists.getWatchlists().get(0).getItemIds());
 		assertTrue("null items are an empty list, not an NPE", lists.getWatchlists().get(1).getItemIds().isEmpty());
-		assertEquals(1_480_000L, lists.getQuotes().get(4151).getBuyAt());
-		assertEquals(1_520_000L, lists.getQuotes().get(4151).getSellAt());
+		assertEquals("Plan", lists.getWatchlists().get(0).toString());
 		assertEquals("a null entry in the quotes array is skipped", 1, lists.getQuotes().size());
+		assertEveryFieldOfTheQuoteArrived(lists.getQuotes().get(4151));
+
+		assertEquals("t2", trades.getRecentTransactions().get(0).id);
+		final GeTransaction recent = trades.getRecentTransactions().get(0);
+		assertEquals("Abyssal whip", recent.itemName);
+		assertEquals("sell", recent.side);
+		assertEquals(1L, recent.quantity);
+		assertEquals(1_500_000L, recent.grossValue);
+		assertEquals("2026-08-31T12:05:00.123456789Z", recent.occurredAt);
+		assertEquals(4151, recent.itemId);
+	}
+
+	/**
+	 * Every figure the Journal tab shows, read back out of one reply.
+	 *
+	 * <p>These are matched to the server's JSON by field name, so a name that
+	 * drifts from the site's does not fail: the field stays at zero and the
+	 * tab shows a break-even of nothing, an age of nothing, a return of
+	 * nought per cent. A sample of the fields cannot catch that; only all of
+	 * them can.
+	 */
+	private static void assertEverySentFieldOfTheJournalArrived(FlippingRsApi.Panel journal)
+	{
+		final FlippingRsApi.Analytics week = journal.getWeek();
+		assertEquals("completed flips", 12, week.getCompletedFlips());
+		assertEquals("open flips", 2, week.getOpenFlips());
+		assertEquals("realised profit", 1_200_000L, week.getRealisedProfit());
+		assertEquals("win rate", 0.75, week.getWinRate(), 0.0);
+		assertEquals("gp per hour", 45_000L, week.getGpPerHour());
+
+		final FlippingRsApi.Position p = journal.getPositions().getPositions().get(0);
+		assertEquals("item", 4151, p.getItemId());
+		assertEquals("item name", "Abyssal whip", p.getItemName());
+		assertEquals("how many are left", 10L, p.getRemainingQty());
+		assertEquals("what they cost", 1_480_000L, p.getBuyPrice());
+		assertEquals("what a patient sale lists at", 1_520_000L, p.getCurrentBuy());
+		assertEquals("what an instant sale gets", 1_500_000L, p.getCurrentSell());
+		assertEquals("profit so far", 96_000L, p.getUnrealisedPnl());
+		assertEquals("return so far", 0.0065, p.getUnrealisedRoi(), 0.0);
+		assertEquals("the price that breaks even", 1_510_204L, p.getBreakEvenSell());
+		assertEquals("how long it has been held", 5.5, p.getHoursHeld(), 0.0);
+		assertTrue("whether it is stale", p.isStale());
+
+		final FlippingRsApi.Positions.Summary totals = journal.getPositions().getSummary();
+		assertEquals("open positions", 1, totals.openPositions);
+		assertEquals("cost basis", 14_800_000L, totals.costBasis);
+		assertEquals("market value", 15_200_000L, totals.marketValue);
+		assertEquals("unrealised", 96_000L, totals.unrealisedPnl);
+		assertFalse("whether there are prices at all", totals.marketDataAvailable);
+	}
+
+	/** The same for a watchlist card's quote. */
+	private static void assertEveryFieldOfTheQuoteArrived(FlippingRsApi.Quote q)
+	{
+		assertEquals("id", 4151, q.getId());
+		// buyAt is the site's instantSell and sellAt its instantBuy: what you
+		// pay to buy now is what someone else is selling at.
+		assertEquals("buy at", 1_480_000L, q.getBuyAt());
+		assertEquals("sell at", 1_520_000L, q.getSellAt());
+		assertEquals("margin after tax", 9_600L, q.getNetMargin());
+		assertEquals("return", 0.0065, q.getRoi(), 0.0);
+		assertEquals("buy limit", 70, q.getBuyLimit());
+		assertEquals("profit per limit", 672_000L, q.getProfitPerLimit());
+		assertEquals("how much trades in a day", 1234L, q.getVolume24h());
 	}
 
 	/**
