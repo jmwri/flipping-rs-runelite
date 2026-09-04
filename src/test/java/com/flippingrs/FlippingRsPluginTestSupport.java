@@ -314,6 +314,20 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
+	/** Where the plugin would talk to, given the settings as they stand. */
+	okhttp3.HttpUrl serverUrl() throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("baseUrl");
+		m.setAccessible(true);
+		return (okhttp3.HttpUrl) m.invoke(plugin);
+	}
+
+	/** RuneLite's --developer-mode flag, which the plugin is given at injection. */
+	void setDeveloperMode(boolean on) throws Exception
+	{
+		set("developerMode", on);
+	}
+
 	/** The user pressing "Send now" on the Activity tab. */
 	void pressSendNow() throws Exception
 	{

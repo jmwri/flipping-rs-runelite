@@ -2890,6 +2890,49 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue("and it went out", support.queue().isEmpty());
 	}
 
+	/**
+	 * The server URL setting is only honoured in developer mode.
+	 *
+	 * <p>It exists so a developer can point the plugin at a server of their
+	 * own. What goes to that server is the API key and every trade, so the
+	 * developer-mode check is the whole of what keeps an ordinary client
+	 * talking to flippingrs.com -- a value left in the config from a
+	 * development build, or put there by hand, must not move anyone's trades.
+	 */
+	@Test
+	public void theServerUrlSettingIsOnlyHonouredInDeveloperMode() throws Exception
+	{
+		when(support.config.baseUrl()).thenReturn("http://localhost:8080");
+
+		support.setDeveloperMode(false);
+		assertEquals("https://flippingrs.com/", support.serverUrl().toString());
+
+		support.setDeveloperMode(true);
+		assertEquals("http://localhost:8080/", support.serverUrl().toString());
+	}
+
+	/**
+	 * And a setting that is not a URL leaves the plugin where it was.
+	 *
+	 * <p>Blank, spaces, or something that is not a URL at all: the answer to
+	 * each is flippingrs.com, not a failure to reach anywhere. A developer
+	 * clearing the box is asking for the real server back.
+	 */
+	@Test
+	public void aServerUrlThatIsNotAUrlFallsBackToTheRealOne() throws Exception
+	{
+		support.setDeveloperMode(true);
+		for (String setting : new String[]{null, "", "   ", "not a url", "://nonsense"})
+		{
+			when(support.config.baseUrl()).thenReturn(setting);
+			assertEquals("[" + setting + "] should leave it alone",
+				"https://flippingrs.com/", support.serverUrl().toString());
+		}
+		// And one that is a URL, with spaces round it, is still that URL.
+		when(support.config.baseUrl()).thenReturn("  http://localhost:9999  ");
+		assertEquals("http://localhost:9999/", support.serverUrl().toString());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
