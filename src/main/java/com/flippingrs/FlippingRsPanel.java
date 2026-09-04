@@ -1942,6 +1942,20 @@ public class FlippingRsPanel extends PluginPanel
 		throw new IllegalArgumentException("no such account in the list: " + id);
 	}
 
+	/** The user picking a watchlist from the dropdown, listener and all. */
+	void setSelectedWatchlistForTest(String id)
+	{
+		for (int i = 0; i < watchlists.getItemCount(); i++)
+		{
+			if (id.equals(watchlists.getItemAt(i).id))
+			{
+				watchlists.setSelectedIndex(i);
+				return;
+			}
+		}
+		throw new IllegalArgumentException("no such watchlist in the list: " + id);
+	}
+
 	/**
 	 * Short gp, the way the game and the site both write it.
 	 *

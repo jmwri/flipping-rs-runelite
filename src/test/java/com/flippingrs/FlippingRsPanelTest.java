@@ -705,6 +705,56 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * And the user choosing still has to look like the user choosing.
+	 *
+	 * <p>Repopulating a combo box fires the same event a pick does, so the
+	 * listener is taken off while the model is swapped and put back after.
+	 * Only the taking off was checked. Leaving it off is the quieter failure
+	 * of the two: the picker moves, the panel shows the new journal, and the
+	 * plugin goes on filing under the old one with nothing to say it did.
+	 */
+	@Test
+	public void pickingAJournalAfterTheListReloadsStillCounts() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final AtomicInteger chosen = new AtomicInteger();
+			panel.onAccountChosen(chosen::incrementAndGet);
+
+			panel.setAccounts(Arrays.asList(account("acct-1", "Main", true),
+				account("acct-2", "Alt", false)), "acct-1");
+			assertEquals("filling the list is not a choice", 0, chosen.get());
+
+			panel.setSelectedForTest("acct-2");
+
+			assertEquals("but picking one is", 1, chosen.get());
+		});
+	}
+
+	/**
+	 * The same for the watchlist picker, which changes what the offer screen
+	 * shows as well as the sidebar.
+	 */
+	@Test
+	public void pickingAWatchlistAfterTheListReloadsStillCounts() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			final AtomicInteger chosen = new AtomicInteger();
+			panel.onWatchlistChosen(chosen::incrementAndGet);
+
+			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_1");
+			assertEquals("filling the list is not a choice", 0, chosen.get());
+
+			panel.setSelectedWatchlistForTest("wl_2");
+
+			assertEquals("but picking one is", 1, chosen.get());
+		});
+	}
+
 	// ------------------------------------------------------------- rendering
 
 	/**
