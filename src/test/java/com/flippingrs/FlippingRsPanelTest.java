@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.PluginPanel;
@@ -1327,6 +1328,85 @@ public class FlippingRsPanelTest
 				card.contains(FlippingRsPanel.when(tx, java.time.Instant.now())
 					+ (char) 10 + FlippingRsPanel.when(tx, java.time.Instant.now())));
 		});
+	}
+
+	/**
+	 * A card's buttons act on that card's item.
+	 *
+	 * <p>Every card carries the same two, so the only thing saying which item
+	 * Remove takes off the list is the one the button was built for. Getting
+	 * that wrong takes a different item off the watchlist than the one whose
+	 * card was clicked, and opens a different item's page.
+	 */
+	@Test
+	public void aCardsButtonsActOnThatCardsItem() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Watchlists");
+			final List<String> acted = new ArrayList<>();
+			panel.onRemoveItem(id -> acted.add("remove " + id));
+			panel.onOpenItem(id -> acted.add("open " + id));
+			// Neither is the item any other test uses, so a button wired to a
+			// fixed id cannot happen to be right.
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 1_500_000, 70, 72_000,
+					null, quote(11802)),
+				new FlippingRsPanel.WatchedItem(13190, "Old school bond", null, 5_000_000, 10, 0,
+					null, quote(13190))));
+
+			press(panel, "Old school bond", "Remove");
+			press(panel, "Armadyl godsword", "Open");
+
+			assertEquals(Arrays.asList("remove 13190", "open 11802"), acted);
+		});
+	}
+
+	/** Presses the named button on the watchlist card whose title names this item. */
+	private static void press(FlippingRsPanel panel, String itemName, String buttonText)
+	{
+		for (Component card : panel.cardsForTest("Watchlists"))
+		{
+			final List<JLabel> labels = new ArrayList<>();
+			collectLabels(card, labels);
+			boolean mine = false;
+			for (JLabel label : labels)
+			{
+				mine |= plain(label).contains(itemName);
+			}
+			if (!mine)
+			{
+				continue;
+			}
+			final List<JButton> buttons = new ArrayList<>();
+			collectButtons(card, buttons);
+			for (JButton button : buttons)
+			{
+				if (buttonText.equals(button.getText()))
+				{
+					button.doClick();
+					return;
+				}
+			}
+			throw new AssertionError("no " + buttonText + " button on the card for " + itemName);
+		}
+		throw new AssertionError("no card for " + itemName);
+	}
+
+	private static void collectButtons(Component c, List<JButton> out)
+	{
+		if (c instanceof JButton)
+		{
+			out.add((JButton) c);
+		}
+		if (c instanceof Container)
+		{
+			for (Component child : ((Container) c).getComponents())
+			{
+				collectButtons(child, out);
+			}
+		}
 	}
 
 	/** Everything written on the card of that tab whose title names this item. */
