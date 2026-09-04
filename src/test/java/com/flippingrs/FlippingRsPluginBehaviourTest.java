@@ -3272,6 +3272,52 @@ public class FlippingRsPluginBehaviourTest
 		}
 	}
 
+	/**
+	 * A backlog goes out five hundred at a time, oldest first.
+	 *
+	 * <p>The queue holds ten thousand, which is what a long outage leaves
+	 * behind, and the whole of it in one request is a payload the site
+	 * refuses outright -- the one kind of refusal that sets a batch aside
+	 * instead of retrying it. So a send takes the oldest five hundred and
+	 * stops, and the next send takes the next five hundred.
+	 *
+	 * <p>Nothing checked the cap or the order. At two requests a minute
+	 * against a limit of thirty, going a batch per send is a slow way to
+	 * clear a full queue -- about ten minutes -- and a cheap one; what
+	 * matters is that it clears and that nothing jumps the line.
+	 */
+	@Test
+	public void aBacklogGoesOutInBatchesOldestFirst() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenReturn(new FlippingRsApi.IngestResult());
+		for (int i = 0; i < 501; i++)
+		{
+			support.queue().add(fill("q" + i));
+		}
+
+		support.drain();
+		support.settleNet();
+
+		final ArgumentCaptor<List<GeTransaction>> first = ArgumentCaptor.forClass(List.class);
+		verify(support.api).submit(anyString(), anyString(), first.capture());
+		assertEquals("five hundred and no more", 500, first.getValue().size());
+		assertEquals("the oldest first", "q0", first.getValue().get(0).id);
+		assertEquals("q499", first.getValue().get(499).id);
+		assertEquals("and the rest are still waiting", 1, support.queue().size());
+
+		clearInvocations(support.api);
+		support.drain();
+		support.settleNet();
+
+		final ArgumentCaptor<List<GeTransaction>> second = ArgumentCaptor.forClass(List.class);
+		verify(support.api).submit(anyString(), anyString(), second.capture());
+		assertEquals(1, second.getValue().size());
+		assertEquals("carrying on where it left off", "q500", second.getValue().get(0).id);
+		assertTrue("and the queue is clear", support.queue().isEmpty());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
