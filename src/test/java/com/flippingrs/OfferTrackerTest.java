@@ -248,17 +248,29 @@ public class OfferTrackerTest
 		assertEquals("a new offer gets its own reference", "ref-1", seen.saved.offerRef);
 	}
 
+	/**
+	 * A cancelled offer reports what filled before it stopped, and says it is
+	 * finished. Both sides: an offer the server still believes is live is one
+	 * it will keep matching later sales against, and a sale can be cancelled
+	 * exactly as a purchase can.
+	 */
 	@Test
-	public void aCancelledBuyStillReportsWhatFilled()
+	public void aCancelledOfferStillReportsWhatFilled()
 	{
-		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 1000, 10, 2, 2000), "ref-1", false);
+		for (boolean buy : new boolean[]{true, false})
+		{
+			final SavedOffer previous = SavedOffer.of(
+				new Offer(buy ? BUYING : SELLING, WHIP, 1000, 10, 2, 2000), "ref-1", false);
 
-		final OfferTracker.Observation seen = observe(previous, new Offer(CANCELLED_BUY, WHIP, 1000, 10, 5, 5000));
+			final OfferTracker.Observation seen = observe(previous,
+				new Offer(buy ? CANCELLED_BUY : CANCELLED_SELL, WHIP, 1000, 10, 5, 5000));
 
-		assertNotNull(seen.transaction);
-		assertEquals(3, seen.transaction.quantity);
-		assertTrue(seen.transaction.cancelled);
-		assertTrue(seen.transaction.completed);
+			final String side = buy ? "a cancelled buy" : "a cancelled sale";
+			assertNotNull(side, seen.transaction);
+			assertEquals(side, 3, seen.transaction.quantity);
+			assertTrue(side + " is cancelled", seen.transaction.cancelled);
+			assertTrue(side + " is finished", seen.transaction.completed);
+		}
 	}
 
 	@Test
@@ -399,19 +411,29 @@ public class OfferTrackerTest
 	 * half-written one. Carrying it forward would send every later fill with an
 	 * empty offerRef, and the server groups fills into one purchase by exactly
 	 * that field, so a single buy would land as a string of unrelated lots.
+	 *
+	 * <p>Both shapes of "none" count. A value written by a version that had no
+	 * references at all reads back as null; one written by a config save that
+	 * did not finish reads back as the empty string, and an empty reference is
+	 * exactly the one that would be sent on every later fill.
 	 */
 	@Test
 	public void aBaselineWithNoOfferRefIsReadopted()
 	{
-		final SavedOffer stale = SavedOffer.of(new Offer(BUYING, WHIP, 1000, 10, 4, 4000), null, false);
+		for (String none : new String[]{null, ""})
+		{
+			final SavedOffer stale = SavedOffer.of(new Offer(BUYING, WHIP, 1000, 10, 4, 4000), none, false);
 
-		final OfferTracker.Observation seen = observe(stale, new Offer(BUYING, WHIP, 1000, 10, 6, 6000));
+			final OfferTracker.Observation seen = observe(stale, new Offer(BUYING, WHIP, 1000, 10, 6, 6000));
 
-		assertNotNull("the progress is reported as recovered under the new reference", seen.transaction);
-		assertEquals(GeTransaction.SOURCE_ADOPTED, seen.transaction.source);
-		assertEquals(6, seen.transaction.quantity);
-		assertNotNull(seen.saved);
-		assertEquals("ref-1", seen.saved.offerRef);
+			final String shape = none == null ? "a null reference" : "an empty reference";
+			assertNotNull(shape + ": the progress is reported as recovered under a new one",
+				seen.transaction);
+			assertEquals(shape, GeTransaction.SOURCE_ADOPTED, seen.transaction.source);
+			assertEquals(shape, 6, seen.transaction.quantity);
+			assertNotNull(shape, seen.saved);
+			assertEquals(shape, "ref-1", seen.saved.offerRef);
+		}
 	}
 
 	@Test
