@@ -81,6 +81,10 @@ final class FlippingRsPluginTestSupport
 			super(1);
 		}
 
+		/** How often the sender was last set to run, in seconds, or -1. */
+		private final java.util.concurrent.atomic.AtomicLong period =
+			new java.util.concurrent.atomic.AtomicLong(-1);
+
 		@Override
 		public java.util.concurrent.ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)
 		{
@@ -90,6 +94,14 @@ final class FlippingRsPluginTestSupport
 				delayed.incrementAndGet();
 			}
 			return super.schedule(command, delay, unit);
+		}
+
+		@Override
+		public java.util.concurrent.ScheduledFuture<?> scheduleWithFixedDelay(
+			Runnable command, long initialDelay, long delay, TimeUnit unit)
+		{
+			period.set(unit.toSeconds(delay));
+			return super.scheduleWithFixedDelay(command, initialDelay, delay, unit);
 		}
 	}
 
@@ -311,6 +323,24 @@ final class FlippingRsPluginTestSupport
 		final Field at = CatchUp.class.getDeclaredField("lastOfferSnapshotAt");
 		at.setAccessible(true);
 		at.setLong(catchUp, System.nanoTime() - TimeUnit.SECONDS.toNanos(seconds));
+	}
+
+	/**
+	 * The exchange's right-click menu, which startUp builds and wire does not.
+	 *
+	 * <p>Tests here drive the plugin through wire rather than startUp, so this
+	 * is null unless a test asks for it -- and a test about the menu that
+	 * forgets would pass on the menu not existing.
+	 */
+	void wireExchangeMenu() throws Exception
+	{
+		set("geMenu", new GeMenu(client, itemManager, id -> { }, id -> { }));
+	}
+
+	/** How often the sender is set to run, in seconds, or -1 if it never was. */
+	long syncPeriodSecondsForTest()
+	{
+		return sendExecutor.period.get();
 	}
 
 	/** The user picking a journal in the Account tab, listener and all. */

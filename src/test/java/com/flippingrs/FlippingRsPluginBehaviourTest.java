@@ -14,7 +14,10 @@ import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.WorldType;
 import java.util.concurrent.atomic.AtomicLong;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.MenuOpened;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.WidgetLoaded;
@@ -2422,6 +2425,66 @@ public class FlippingRsPluginBehaviourTest
 
 		verify(support.api, never()).createWatchlist(anyString(), anyString(), anyList());
 		verify(support.api, never()).updateWatchlist(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * The "send every" setting decides how often the sender runs, and cannot
+	 * be set low enough to hurt.
+	 *
+	 * <p>The plugin is allowed thirty requests a minute for everything it
+	 * does. A setting of one second would spend two a second on its own, so
+	 * the figure is floored, and the floor only matters if the setting is
+	 * being read at all.
+	 */
+	@Test
+	public void theSendIntervalIsTheUsersUntilItWouldBreachTheRateLimit() throws Exception
+	{
+		when(support.config.syncSeconds()).thenReturn(60);
+		support.plugin.onConfigChanged(configChanged("syncSeconds"));
+		assertEquals("the user's figure", 60, support.syncPeriodSecondsForTest());
+
+		when(support.config.syncSeconds()).thenReturn(1);
+		support.plugin.onConfigChanged(configChanged("syncSeconds"));
+		assertEquals("floored, not honoured", 5, support.syncPeriodSecondsForTest());
+
+		when(support.config.syncSeconds()).thenReturn(0);
+		support.plugin.onConfigChanged(configChanged("syncSeconds"));
+		assertEquals("and zero is not a schedule at all", 5, support.syncPeriodSecondsForTest());
+	}
+
+	/**
+	 * Turning the Grand Exchange menu entries off turns them off.
+	 *
+	 * <p>They are added to every right-click inside the exchange, so a setting
+	 * that does nothing is two entries the user asked to be rid of on every
+	 * menu they open.
+	 */
+	@Test
+	public void theExchangeMenuEntriesCanBeTurnedOff() throws Exception
+	{
+		support.wireExchangeMenu();
+		when(support.config.geMenuEntries()).thenReturn(false);
+
+		// A right-click that would otherwise get both entries: over an item on
+		// the exchange's side panel, which carries its own id.
+		final MenuEntry cancel = mock(MenuEntry.class);
+		final MenuEntry over = mock(MenuEntry.class);
+		when(over.getParam1()).thenReturn(InterfaceID.GeOffersSide.ITEMS);
+		when(over.getItemId()).thenReturn(4151);
+		final MenuOpened opened = new MenuOpened();
+		opened.setMenuEntries(new MenuEntry[]{cancel, over});
+
+		support.plugin.onMenuOpened(opened);
+
+		verify(support.client, never()).getMenu();
+	}
+
+	private static ConfigChanged configChanged(String key)
+	{
+		final ConfigChanged event = new ConfigChanged();
+		event.setGroup(FlippingRsConfig.GROUP);
+		event.setKey(key);
+		return event;
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
