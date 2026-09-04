@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import okhttp3.OkHttpClient;
+import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -295,6 +296,23 @@ public class FlippingRsApiTest
 	// ------------------------------------- retry or drop: the decision that matters
 
 	/**
+	 * Answers every request, however many the client makes, with one status.
+	 *
+	 * @see #failuresThatAreNotAboutTheBatchAreWorthRetrying
+	 */
+	private void answerEverythingWith(int code)
+	{
+		server.setDispatcher(new Dispatcher()
+		{
+			@Override
+			public MockResponse dispatch(RecordedRequest request)
+			{
+				return new MockResponse().setResponseCode(code);
+			}
+		});
+	}
+
+	/**
 	 * Anything that is not about this batch is worth retrying. That includes
 	 * a bad key: a mistyped one gets fixed, and the user who fixes it expects
 	 * the trades from the meantime to go out, not to have been deleted thirty
@@ -305,7 +323,13 @@ public class FlippingRsApiTest
 	{
 		for (int code : new int[]{500, 502, 503, 504, 429, 408, 401, 402, 403, 404})
 		{
-			server.enqueue(new MockResponse().setResponseCode(code));
+			// Answered by a dispatcher rather than a queued response, because
+			// OkHttp retries a 408 by itself. A queued one is taken by that
+			// retry, and every code after it in this list then met a server
+			// with nothing left to say: the call timed out, the timeout is an
+			// IOException, and the loop went green having never asked about a
+			// revoked key, a lapsed plan or a moved endpoint at all.
+			answerEverythingWith(code);
 			try
 			{
 				api.submit("k", "a", oneFill());
@@ -323,6 +347,46 @@ public class FlippingRsApiTest
 	}
 
 	/**
+	 * A reply too big to hold is not held.
+	 *
+	 * <p>Reading a body puts all of it in memory, and the client runs in 768
+	 * megabytes. Every real reply here is a few kilobytes, but a server having
+	 * a bad day -- or anything sitting between here and it -- can answer with
+	 * far more, and a big enough one takes the game down rather than failing a
+	 * sync. So only the first megabyte is read, and a reply cut off there does
+	 * not parse, which is the right answer: the batch is held and tried again.
+	 *
+	 * <p>The reply here is valid JSON that would confirm the batch if it were
+	 * read whole, so this fails if the cap is ever taken off.
+	 */
+	@Test
+	public void aReplyTooBigToHoldIsNotRead() throws Exception
+	{
+		final StringBuilder body = new StringBuilder(2_000_000);
+		body.append("{\"accepted\":1,\"padding\":\"");
+		for (int i = 0; i < 1_500_000; i++)
+		{
+			body.append('a');
+		}
+		body.append("\"}");
+		server.enqueue(new MockResponse().setBody(body.toString()));
+
+		try
+		{
+			api.submit("k", "a", oneFill());
+			fail("a reply of " + body.length() + " bytes should not have been read whole");
+		}
+		catch (FlippingRsApi.PermanentException e)
+		{
+			fail("the batch is fine; it is the reply that could not be read");
+		}
+		catch (IOException expected)
+		{
+			// Right: cut off, so it does not parse, so the batch is tried again.
+		}
+	}
+
+	/**
 	 * A malformed, oversized or invalid batch will be just as bad in five
 	 * minutes. Retrying it forever would wedge the queue behind a batch that
 	 * can never drain, losing every trade after it.
@@ -332,7 +396,7 @@ public class FlippingRsApiTest
 	{
 		for (int code : new int[]{400, 413, 422})
 		{
-			server.enqueue(new MockResponse().setResponseCode(code));
+			answerEverythingWith(code);
 			try
 			{
 				api.submit("k", "a", oneFill());
