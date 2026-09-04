@@ -1718,12 +1718,26 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue(support.panel.activityNoticeForTest().contains("This feature requires the Pro plan."));
 	}
 
-	/** "Record trades" off is a promise not to contact the server, snapshots included. */
+	/**
+	 * "Record trades" off is a promise not to contact the server, snapshots
+	 * included.
+	 *
+	 * <p>The snapshot is the one send that is not a trade, so it is the easy
+	 * one to forget: it reports which items the character has offers on, and
+	 * at what price, while the user believes they turned reporting off. Set up
+	 * so that it would go out -- a journal picked and a real offer in a slot --
+	 * or the test cannot tell the promise being kept from the send having
+	 * nothing to say.
+	 */
 	@Test
 	public void recordingOffSendsNoSnapshots() throws Exception
 	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.config.enabled()).thenReturn(false);
-		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
 
 		final WidgetLoaded opened = new WidgetLoaded();
 		opened.setGroupId(InterfaceID.GE_OFFERS);
@@ -1942,5 +1956,232 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
 		assertFalse(new TransactionQueue(support.gson, new File(queueDir, "queue-1234.json")).size() > 0);
+	}
+
+	/**
+	 * A slot whose running total has wrapped is reported as an estimate.
+	 *
+	 * <p>The client holds what an offer has spent in a signed int, and a big
+	 * offer runs past what that can hold. The figure is still sent, because
+	 * the server reconciles against it, but it has to arrive marked as
+	 * approximate -- a number known to be rough is useful, and the same number
+	 * believed to be exact is a wrong journal entry.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	public void aSlotWhoseRunningTotalHasWrappedIsReportedAsAnEstimate() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[2] = offer(GrandExchangeOfferState.BUYING, 3, Integer.MIN_VALUE + 1000);
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		final ArgumentCaptor<List<FlippingRsApi.OfferState>> sent = ArgumentCaptor.forClass(List.class);
+		verify(support.api).submitOffers(anyString(), anyString(), sent.capture());
+		assertTrue("the wrapped slot must be flagged", reported(sent.getValue(), 2).spentEstimated);
+		assertTrue("and one that fits must not be", !reported(sent.getValue(), 3).spentEstimated);
+	}
+
+	/**
+	 * A snapshot the server recovered nothing from says nothing.
+	 *
+	 * <p>Every open offer is snapshotted whenever the exchange is opened, and
+	 * almost every one of those tells the server nothing it did not have. A
+	 * notice on each would be a notice on nearly all of them, and it would
+	 * also re-read the account tabs against a thirty-a-minute limit for no
+	 * news.
+	 */
+	@Test
+	public void aSnapshotThatRecoveredNothingSaysNothing() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+		assertTrue("nothing was recovered, so there is nothing to say",
+			!support.panel.activityNoticeShowingForTest());
+	}
+
+	/** The state reported for one slot. */
+	private static FlippingRsApi.OfferState reported(List<FlippingRsApi.OfferState> sent, int slot)
+	{
+		for (FlippingRsApi.OfferState state : sent)
+		{
+			if (state.slot == slot)
+			{
+				return state;
+			}
+		}
+		throw new AssertionError("slot " + slot + " was not reported");
+	}
+
+	/**
+	 * The snapshot after a login waits for the client's offer burst to settle.
+	 *
+	 * <p>The client replays every slot in the first ticks after login, and a
+	 * snapshot taken in the middle of that reports the slots half-replayed --
+	 * which the server would reconcile against, and recover a shortfall that
+	 * is only the burst not having finished. So the read waits, and the wait
+	 * is the point: it has to be late enough to be after the burst and it has
+	 * to actually happen.
+	 */
+	@Test
+	public void theSnapshotAfterLoginWaitsForTheOfferBurstToSettle() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		when(support.client.getTickCount()).thenReturn(100);
+		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
+
+		for (int tick = 100; tick < 103; tick++)
+		{
+			when(support.client.getTickCount()).thenReturn(tick);
+			support.plugin.onGameTick(new GameTick());
+		}
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api, never()).submitOffers(anyString(), anyString(), anyList());
+
+		when(support.client.getTickCount()).thenReturn(103);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * Opening the exchange twice over does not snapshot twice over.
+	 *
+	 * <p>Every open schedules one, and a flipper opens the exchange constantly.
+	 * The plugin gets thirty requests a minute for everything it does, so a
+	 * snapshot whose answer cannot have changed is one that has to be skipped
+	 * rather than spent.
+	 */
+	@Test
+	public void openingTheExchangeAgainStraightAwayDoesNotSnapshotAgain() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		for (int tick : new int[]{5, 10})
+		{
+			support.plugin.onWidgetLoaded(opened);
+			when(support.client.getTickCount()).thenReturn(tick);
+			support.plugin.onGameTick(new GameTick());
+			support.settleNet();
+			support.settleSwing();
+		}
+
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * Once the gap has run out, a snapshot still only happens when something
+	 * asked for one.
+	 *
+	 * <p>The gap between snapshots is a floor, not a schedule. What decides
+	 * that a snapshot is wanted is the exchange opening or a login settling,
+	 * and that request is spent when it is served -- otherwise every tick from
+	 * then on would ask again and the gap alone would decide, snapshotting for
+	 * ever at six requests a minute out of the thirty the plugin has.
+	 */
+	@Test
+	public void aSnapshotOnlyHappensWhenSomethingAskedForOne() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		// The gap has run out, and nothing has opened the exchange since.
+		support.offersLastSnapshotSecondsAgo(30);
+		for (int tick = 6; tick < 12; tick++)
+		{
+			when(support.client.getTickCount()).thenReturn(tick);
+			support.plugin.onGameTick(new GameTick());
+		}
+		support.settleNet();
+		support.settleSwing();
+
+		verify(support.api).submitOffers(anyString(), anyString(), anyList());
+	}
+
+	/**
+	 * A send does not drag a snapshot along behind it.
+	 *
+	 * <p>A snapshot after a send is a safety net, not the record: the send has
+	 * just told the server what happened. Trades come in bursts, so taking one
+	 * per send would put the plugin over the thirty requests a minute it is
+	 * allowed, which is why the gap after a send is a long one.
+	 */
+	@Test
+	public void aSendSoonAfterASnapshotDoesNotTakeAnother() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
+		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
+		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
+
+		final WidgetLoaded opened = new WidgetLoaded();
+		opened.setGroupId(InterfaceID.GE_OFFERS);
+		support.plugin.onWidgetLoaded(opened);
+		when(support.client.getTickCount()).thenReturn(5);
+		support.plugin.onGameTick(new GameTick());
+		support.settleNet();
+		support.settleSwing();
+
+		// Well past the gap between ordinary snapshots, and nowhere near the
+		// longer one a send has to wait out.
+		support.offersLastSnapshotSecondsAgo(20);
+		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api, times(1)).submitOffers(anyString(), anyString(), anyList());
+
+		// And once that longer gap has run out, the safety net does go up.
+		support.offersLastSnapshotSecondsAgo(120);
+		fire(offer(GrandExchangeOfferState.BUYING, 8, 7_900_000));
+		support.drain();
+		support.settleNet();
+		support.settleSwing();
+		verify(support.api, times(2)).submitOffers(anyString(), anyString(), anyList());
 	}
 }

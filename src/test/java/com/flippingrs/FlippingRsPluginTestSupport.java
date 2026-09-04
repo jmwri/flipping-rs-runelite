@@ -298,6 +298,21 @@ final class FlippingRsPluginTestSupport
 		f.setLong(plugin, System.nanoTime() - TimeUnit.MINUTES.toNanos(1));
 	}
 
+	/**
+	 * As if the last slot snapshot had been taken this many seconds ago, so a
+	 * test can say what happens once the gap between snapshots has run out
+	 * without waiting out the real one.
+	 */
+	void offersLastSnapshotSecondsAgo(long seconds) throws Exception
+	{
+		final Field catchUpField = FlippingRsPlugin.class.getDeclaredField("catchUp");
+		catchUpField.setAccessible(true);
+		final Object catchUp = catchUpField.get(plugin);
+		final Field at = CatchUp.class.getDeclaredField("lastOfferSnapshotAt");
+		at.setAccessible(true);
+		at.setLong(catchUp, System.nanoTime() - TimeUnit.SECONDS.toNanos(seconds));
+	}
+
 	/** The user picking a journal in the Account tab, listener and all. */
 	void chooseAccount(String id) throws Exception
 	{
