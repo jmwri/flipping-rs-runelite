@@ -1533,6 +1533,29 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, never()).createWatchlist(anyString(), anyString(), anyList());
 	}
 
+	/**
+	 * And taking off an item that is not on it sends nothing either.
+	 *
+	 * <p>The other half of the same guard, and the half that was missing. The
+	 * Remove button only appears on a card for something watched, but the
+	 * cards are what was on the list when they were drawn -- so a list that
+	 * changed since then, on this client or another, offers Remove for an item
+	 * the list no longer has. Sending the list back unchanged spends one of
+	 * thirty requests a minute, and says "Removed from Plan" for something
+	 * that was not.
+	 */
+	@Test
+	public void removingAnItemThatIsNotWatchedSendsNothing() throws Exception
+	{
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+
+		support.removeFromWatchlist(13190);
+
+		verify(support.api, never()).updateWatchlist(anyString(), anyString(), anyList());
+		verify(support.api, never()).createWatchlist(anyString(), anyString(), anyList());
+		assertFalse("and says nothing about it", support.panel.watchlistNoticeShowingForTest());
+	}
+
 	/** A plan limit is shown in the server's words, and nothing is invented locally. */
 	@Test
 	public void aPlanLimitIsShownNotWorkedAround() throws Exception
