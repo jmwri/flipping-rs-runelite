@@ -137,9 +137,9 @@ once it is back on, the catch-up described above can still add an offer that
 completed while it was off, saved without a time, from your open offers or
 your Grand Exchange history.
 
-Trades on Deadman, Leagues, beta, tournament, speedrunning, PvP Arena and
-Fresh Start worlds are not recorded, since their prices and items have nothing
-to do with the main game.
+Trades on Deadman, Leagues, beta, no-save, tournament, speedrunning, PvP Arena
+and Fresh Start worlds are not recorded, since their prices and items have
+nothing to do with the main game.
 
 The plugin always talks to `https://flippingrs.com`. The **Server URL**
 setting only works when RuneLite is started in developer mode, so nothing can
