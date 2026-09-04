@@ -1016,6 +1016,35 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * A notice's clock stops once it has cleared the notice.
+	 *
+	 * <p>Each notice clears itself after twenty seconds, which is one firing,
+	 * not a heartbeat. A repeating clock goes on waking the Swing thread every
+	 * twenty seconds to clear a notice that is already clear, for the life of
+	 * the client, three times over -- and nothing about the sidebar would look
+	 * any different.
+	 */
+	@Test
+	public void aNoticeClockStopsOnceItHasCleared() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.setActivityNotice("Set aside 3 trades.", Color.WHITE);
+			panel.setWatchlistNotice("Added to Plan.", Color.WHITE);
+			panel.setJournalNotice("Sale recorded.", Color.WHITE);
+			assertEquals("all three are counting down", 3, panel.armedNoticeTimersForTest());
+
+			panel.expireNoticesForTest();
+
+			assertEquals("and none of them is still going", 0, panel.armedNoticeTimersForTest());
+			assertEquals("the activity notice cleared", "", panel.activityNoticeForTest());
+			assertEquals("the watchlist notice cleared", "", panel.watchlistNoticeForTest());
+			assertEquals("the journal notice cleared", "", panel.journalNoticeForTest());
+		});
+	}
+
 	// ------------------------------------------------------------- redrawing
 
 	/**

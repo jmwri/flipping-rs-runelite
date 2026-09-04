@@ -1799,18 +1799,42 @@ public class FlippingRsPanel extends PluginPanel
 		return activityNoticeTimer.isRunning();
 	}
 
+	/** How many of the three notice clocks are running. */
+	int armedNoticeTimersForTest()
+	{
+		int armed = 0;
+		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer, journalNoticeTimer})
+		{
+			if (timer.isRunning())
+			{
+				armed++;
+			}
+		}
+		return armed;
+	}
+
 	/** Fires the notice timers now, as if the interval had passed. */
 	void expireNoticesForTest()
 	{
 		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer, journalNoticeTimer})
 		{
-			if (timer.isRunning())
+			if (!timer.isRunning())
+			{
+				continue;
+			}
+			for (java.awt.event.ActionListener listener : timer.getActionListeners())
+			{
+				listener.actionPerformed(null);
+			}
+			// Swing stops a one-shot timer when it fires and leaves a repeating
+			// one going, so this has to as well. Stopping every timer here
+			// regardless left the two indistinguishable, and a test written
+			// against this could not have told a clock that clears a notice
+			// once from one that goes on waking the Swing thread every twenty
+			// seconds for the life of the client.
+			if (!timer.isRepeats())
 			{
 				timer.stop();
-				for (java.awt.event.ActionListener listener : timer.getActionListeners())
-				{
-					listener.actionPerformed(null);
-				}
 			}
 		}
 	}
