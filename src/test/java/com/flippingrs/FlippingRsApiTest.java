@@ -437,6 +437,39 @@ public class FlippingRsApiTest
 				.getAsJsonObject().keySet()));
 	}
 
+	/**
+	 * The plan line reads properly, and reads at all when the site does not
+	 * say what the plan is.
+	 *
+	 * <p>A tier the site leaves out is the one that matters. The line is built
+	 * by capitalising the first letter of it, so a missing tier is not a blank
+	 * line -- it throws, out of the reply handler, on the thread that does the
+	 * connecting. Nothing catches that: the accounts never load, the status
+	 * never changes, and the sidebar sits on whatever it last said.
+	 */
+	@Test
+	public void thePlanLineReadsProperlyAndReadsAtAll()
+	{
+		assertEquals("Pro plan", plan("pro", false, 0));
+		assertEquals("Free plan", plan("free", false, 0));
+		assertEquals("Pro trial, 5 days left", plan("pro", true, 5));
+		assertEquals("one day is a day", "Pro trial, 1 day left", plan("pro", true, 1));
+		assertEquals("Pro trial, 0 days left", plan("pro", true, 0));
+
+		assertEquals("a tier the site did not send", "Unknown plan", plan(null, false, 0));
+		assertEquals("Unknown plan", plan("", false, 0));
+		assertEquals("Unknown trial, 3 days left", plan(null, true, 3));
+	}
+
+	private static String plan(String tier, boolean onTrial, int daysLeft)
+	{
+		final FlippingRsApi.Me me = new FlippingRsApi.Me();
+		me.effectiveTier = tier;
+		me.onTrial = onTrial;
+		me.trialDaysLeft = daysLeft;
+		return me.describePlan();
+	}
+
 	// ------------------------------------- retry or drop: the decision that matters
 
 	/**
