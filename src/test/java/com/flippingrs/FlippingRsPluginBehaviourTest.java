@@ -2683,6 +2683,37 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api, timeout(5000)).submit(anyString(), anyString(), anyList());
 	}
 
+	/**
+	 * The buffer on the Activity tab follows the character too.
+	 *
+	 * <p>Unsent fills are kept per character, because which journal they go
+	 * into is remembered per character. The tab that lists them is not: log
+	 * into an alt and it would still be showing the main's trades waiting to
+	 * send, under a heading that says they are this character's.
+	 */
+	@Test
+	public void theWaitingBufferFollowsTheCharacter() throws Exception
+	{
+		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
+		support.profileConfig.put("gameAccountId", "acct-1");
+		support.connect();
+		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
+
+		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged(null, "main"));
+		support.settle();
+		support.settleSwing();
+		assertEquals("this character has a fill waiting", 1, support.panel.pendingForTest().size());
+
+		// The same client, now logged in as someone else, who has none.
+		when(support.client.getAccountHash()).thenReturn(9999L);
+		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged("main", "alt"));
+		support.settle();
+		support.settleSwing();
+
+		assertTrue("the other character's fill is not this one's: "
+			+ support.panel.pendingForTest(), support.panel.pendingForTest().isEmpty());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
