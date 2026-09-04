@@ -81,6 +81,24 @@ class GeQuoteOverlay extends OverlayPanel
 		return itemId <= 0 ? null : watchedQuote.apply(itemId);
 	}
 
+	/**
+	 * Where the box goes: the bottom-right of the setup panel.
+	 *
+	 * <p>The bottom-left holds the back button, the price and quantity
+	 * controls are in the middle and the confirm button is centred along the
+	 * bottom, which leaves this corner free. Both edges are clamped, because a
+	 * setup panel narrower or shorter than the box would otherwise put it
+	 * outside the screen it belongs to.
+	 *
+	 * @param height the height the box was last drawn at
+	 */
+	static Point cornerFor(Rectangle bounds, int height)
+	{
+		return new Point(
+			Math.max(bounds.x + MARGIN, bounds.x + bounds.width - WIDTH - MARGIN),
+			Math.max(bounds.y + MARGIN, bounds.y + bounds.height - height - MARGIN));
+	}
+
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
@@ -109,10 +127,8 @@ class GeQuoteOverlay extends OverlayPanel
 			.rightColor(marginColour)
 			.build());
 
-		final int height = lastHeight > 0 ? lastHeight : 60;
-		panelComponent.setPreferredLocation(new Point(
-			Math.max(bounds.x + MARGIN, bounds.x + bounds.width - WIDTH - MARGIN),
-			Math.max(bounds.y + MARGIN, bounds.y + bounds.height - height - MARGIN)));
+		panelComponent.setPreferredLocation(
+			cornerFor(bounds, lastHeight > 0 ? lastHeight : 60));
 
 		final Dimension drawn = super.render(graphics);
 		if (drawn != null)

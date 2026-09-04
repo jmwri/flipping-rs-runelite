@@ -12,6 +12,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +36,46 @@ public class GeQuoteOverlayTest
 		whip.instantSell = 1_480_000;
 		whip.instantBuy = 1_520_000;
 		watched.put(4151, whip);
+	}
+
+	/**
+	 * The box sits in the bottom-right of the setup panel.
+	 *
+	 * <p>Not anywhere: the bottom-left holds the back button, the price and
+	 * quantity boxes are in the middle, and the confirm button runs along the
+	 * bottom. This corner is the one that is free, and covering any of the
+	 * others makes the screen harder to use than having no quote at all.
+	 */
+	@Test
+	public void theQuoteSitsInTheFreeCornerOfTheSetupScreen()
+	{
+		final java.awt.Rectangle bounds = new java.awt.Rectangle(100, 50, 400, 300);
+
+		final java.awt.Point at = GeQuoteOverlay.cornerFor(bounds, 60);
+
+		assertEquals("hard against the right edge, less the margin", 346, at.x);
+		assertEquals("and the bottom edge, less its own height", 286, at.y);
+		assertTrue("inside the panel it belongs to",
+			at.x >= bounds.x && at.y >= bounds.y
+				&& at.x < bounds.x + bounds.width && at.y < bounds.y + bounds.height);
+	}
+
+	/**
+	 * And stays inside a setup panel too small to hold it.
+	 *
+	 * <p>The corner is worked out by subtracting the box from the far edge, so
+	 * a panel narrower or shorter than the box puts it off the left or the top
+	 * of the screen it belongs to unless both are clamped.
+	 */
+	@Test
+	public void theQuoteStaysInsideASetupScreenTooSmallForIt()
+	{
+		final java.awt.Rectangle tiny = new java.awt.Rectangle(100, 50, 40, 20);
+
+		final java.awt.Point at = GeQuoteOverlay.cornerFor(tiny, 60);
+
+		assertEquals("not off the left of it", 104, at.x);
+		assertEquals("nor off the top", 54, at.y);
 	}
 
 	@Test
