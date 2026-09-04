@@ -179,8 +179,14 @@ work is in the cases where that is not straightforward:
   RuneScape account, so the difference comes out as zero instead of re-reporting
   everything on the exchange every time you log in.
 - **Slot reuse.** Collecting a finished offer and placing an identical one gives
-  the same item, price and size. Only the progress going backwards distinguishes
-  them.
+  the same item, price and size. Two things separate them. The progress going
+  backwards, when the new offer has filled less than the old one had; and the
+  old offer having finished, since one that is bought, sold or cancelled cannot
+  be running again. The second is the one that matters when a collect goes
+  unseen and the new offer carries on past where the old one stopped —
+  cancelling a part-filled buy and placing the same buy again, which is
+  ordinary flipping. Two identical *finished* offers cannot be told apart, and
+  are not.
 - **A running total that is an `int`.** `GrandExchangeOffer#getSpent` is a
   32-bit int. The exchange caps an offer at max cash, which is also the largest
   int, so in practice it cannot wrap, but a figure that becomes profit is not
