@@ -345,6 +345,14 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
+	/** The offset the plugin would tell the site this machine is at. */
+	int timezoneOffsetMinutes() throws Exception
+	{
+		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("tzOffsetMinutes");
+		m.setAccessible(true);
+		return (int) m.invoke(plugin);
+	}
+
 	/** One read of the two account tabs, throttling and coalescing and all. */
 	void refreshAccountTabs() throws Exception
 	{

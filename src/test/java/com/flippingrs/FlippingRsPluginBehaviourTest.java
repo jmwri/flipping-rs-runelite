@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Random;
@@ -3234,6 +3235,41 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("the trade is worth more than its name", 1, queued.size());
 		assertEquals(4151, queued.get(0).itemId);
 		assertEquals("", queued.get(0).itemName);
+	}
+
+	/**
+	 * The journal is read for this machine's day, not for UTC.
+	 *
+	 * <p>The Journal tab's week and its daily figures are worked out by the
+	 * site, which needs to know where this player's days begin. The plugin
+	 * tells it, in minutes, and getting that wrong moves every boundary: a
+	 * flip closed late on Sunday lands in the wrong week and the numbers on
+	 * the tab are for a period nobody asked about.
+	 *
+	 * <p>Checked at half past the hour, and in a zone that does not keep
+	 * summer time, so the figure is the same all year and an answer in hours
+	 * or in milliseconds cannot pass for it.
+	 */
+	@Test
+	public void theJournalIsReadForThisMachinesDay() throws Exception
+	{
+		final TimeZone was = TimeZone.getDefault();
+		try
+		{
+			TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
+			assertEquals("five and a half hours ahead, in minutes", 330,
+				support.timezoneOffsetMinutes());
+
+			TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Marquesas"));
+			assertEquals("and nine and a half behind", -570, support.timezoneOffsetMinutes());
+
+			TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+			assertEquals(0, support.timezoneOffsetMinutes());
+		}
+		finally
+		{
+			TimeZone.setDefault(was);
+		}
 	}
 
 	/** One bought row on the Grand Exchange history screen. */
