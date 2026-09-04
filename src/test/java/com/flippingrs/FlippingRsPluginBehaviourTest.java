@@ -3620,6 +3620,29 @@ public class FlippingRsPluginBehaviourTest
 			slots * fillsPerSlot, everywhere.size());
 	}
 
+	/**
+	 * Switching recording off empties the journal picker.
+	 *
+	 * <p>The Account tab says nothing is being read from the site. A dropdown
+	 * still offering journals beside that is a picture of something the plugin
+	 * is not looking at -- and one that can still be used: picking from it
+	 * writes the setting for this character while nothing is being recorded
+	 * against it.
+	 */
+	@Test
+	public void switchingRecordingOffEmptiesTheJournalPicker() throws Exception
+	{
+		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
+		support.connect();
+		assertNotNull("a journal is on offer while recording is on",
+			support.panel.selectedAccountId());
+
+		when(support.config.enabled()).thenReturn(false);
+		support.connect();
+
+		assertNull("and none is once it is off", support.panel.selectedAccountId());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
