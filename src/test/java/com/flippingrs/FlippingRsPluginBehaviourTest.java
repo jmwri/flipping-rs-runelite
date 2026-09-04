@@ -2956,6 +2956,44 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals("http://localhost:9999/", support.serverUrl().toString());
 	}
 
+	/**
+	 * A slot's baseline comes back out of the config exactly as it went in.
+	 *
+	 * <p>It does not live in memory between events: every offer the client
+	 * reports is compared against a baseline read back from RuneLite's config,
+	 * so anything that does not survive that trip is a field the comparison
+	 * never gets to use. Two of them decide whether an offer in a slot is
+	 * still the same offer -- the side it was on, and whether it had finished
+	 * -- and both read null as "cannot tell" and wave the offer through. A
+	 * third, the running total, is what makes a fill's gp exact rather than an
+	 * estimate.
+	 *
+	 * <p>None of that fails loudly. The offer is accepted as the same one, its
+	 * fills are counted against the previous purchase, and the plugin carries
+	 * on.
+	 */
+	@Test
+	public void aSlotBaselineComesBackOutOfTheConfigWholeAlways() throws Exception
+	{
+		final ProfileStore store = new ProfileStore(support.configManager, support.gson);
+		final SavedOffer saved = SavedOffer.of(
+			offerFor(4151, GrandExchangeOfferState.CANCELLED_BUY, 3, 3000), "ref-1", true);
+
+		store.saveOffer(3, saved);
+		final SavedOffer back = store.loadOffer(3);
+
+		assertNotNull("the baseline must be readable back", back);
+		assertEquals("item", saved.itemId, back.itemId);
+		assertEquals("price", saved.price, back.price);
+		assertEquals("size", saved.totalQuantity, back.totalQuantity);
+		assertEquals("progress", saved.quantitySold, back.quantitySold);
+		assertEquals("the running total, which makes the gp exact", saved.spent, back.spent);
+		assertEquals("the state, which says the side and whether it had finished",
+			saved.state, back.state);
+		assertEquals("the reference the site groups a purchase by", saved.offerRef, back.offerRef);
+		assertEquals("whether its history was adopted", saved.adopted, back.adopted);
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{

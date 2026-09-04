@@ -142,6 +142,67 @@ public class TransactionQueueTest
 		return String.join("\n", lines).getBytes(StandardCharsets.UTF_8);
 	}
 
+	/**
+	 * A fill comes back off disk exactly as it went on.
+	 *
+	 * <p>Everything queued crosses a restart this way, which is the whole
+	 * point of the file, and every field of it means something to the site.
+	 * The reference is what groups a thousand partial fills into one
+	 * purchase. The time is what keeps a trade from being filed as recovered
+	 * when it was watched happening. The side decides whether it was a
+	 * purchase at all. Whether it was an estimate says if the gp can be
+	 * trusted to the coin, and whether it completed says if the offer is still
+	 * open.
+	 *
+	 * <p>Losing any of them is silent: the fill still has an id, still goes
+	 * out, and still comes back accepted. Only the journal is wrong.
+	 */
+	@Test
+	public void aFillComesBackOffDiskExactlyAsItWentOn() throws IOException
+	{
+		final File file = file();
+		final GeTransaction tx = fill("t1");
+		// Every field something other than its default, so a field that is not
+		// written cannot come back looking right anyway.
+		tx.offerRef = "offer-1";
+		tx.itemId = 4151;
+		tx.itemName = "Abyssal whip";
+		tx.side = "sell";
+		tx.quantity = 25;
+		tx.grossValue = 30_864_175L;
+		tx.offerPrice = 1_234_567L;
+		tx.offerTotal = 100L;
+		tx.completed = true;
+		tx.cancelled = true;
+		tx.estimated = true;
+		tx.slot = 5;
+		tx.world = 302;
+		tx.occurredAt = "2026-08-31T12:00:00Z";
+		tx.source = GeTransaction.SOURCE_ADOPTED;
+		new TransactionQueue(gson, file).add(tx);
+
+		final List<GeTransaction> back = new TransactionQueue(gson, file).peek(10);
+
+		assertEquals(1, back.size());
+		final GeTransaction got = back.get(0);
+		assertEquals("id", tx.id, got.id);
+		assertEquals("the reference the site groups a purchase by", tx.offerRef, got.offerRef);
+		assertEquals("item", tx.itemId, got.itemId);
+		assertEquals("item name", tx.itemName, got.itemName);
+		assertEquals("side", tx.side, got.side);
+		assertEquals("quantity", tx.quantity, got.quantity);
+		assertEquals("the gp that moved", tx.grossValue, got.grossValue);
+		assertEquals("the offer's price", tx.offerPrice, got.offerPrice);
+		assertEquals("the offer's size", tx.offerTotal, got.offerTotal);
+		assertEquals("whether the offer finished", tx.completed, got.completed);
+		assertEquals("whether it was cancelled", tx.cancelled, got.cancelled);
+		assertEquals("whether the gp is an estimate", tx.estimated, got.estimated);
+		assertEquals("slot", tx.slot, got.slot);
+		assertEquals("world", tx.world, got.world);
+		assertEquals("when it happened", tx.occurredAt, got.occurredAt);
+		assertEquals("whether it was watched or recovered", tx.source, got.source);
+	}
+
 	@Test
 	public void peekingDoesNotRemove() throws IOException
 	{
