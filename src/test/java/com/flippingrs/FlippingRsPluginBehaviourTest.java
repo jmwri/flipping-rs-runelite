@@ -2714,6 +2714,30 @@ public class FlippingRsPluginBehaviourTest
 			+ support.panel.pendingForTest(), support.panel.pendingForTest().isEmpty());
 	}
 
+	/**
+	 * Being told the journal is gone is not overwritten by being told the
+	 * connection is fine.
+	 *
+	 * <p>Both are true at once, and only one of them explains why nothing is
+	 * being sent. A journal deleted on the site, or a key that now belongs to
+	 * a different flippingrs.com account, leaves the trades held until another
+	 * is picked -- and "Connected and recording." is exactly the wrong thing
+	 * to be reading while that happens.
+	 */
+	@Test
+	public void theWarningThatAJournalIsGoneSurvivesConnecting() throws Exception
+	{
+		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
+		// Remembered for this character, and no longer on the site.
+		support.profileConfig.put("gameAccountId", "acct-9");
+
+		support.connect();
+
+		final String status = support.panel.statusTextForTest();
+		assertTrue("the reason the trades are held has to survive: " + status,
+			status.contains("no longer exists"));
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
