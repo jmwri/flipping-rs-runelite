@@ -14,6 +14,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -86,7 +87,13 @@ public class TransactionQueueConcurrencyTest
 			try
 			{
 				go.await();
-				while (confirmed.size() < FILLS)
+				// Stops if the producer fell over, and stops regardless after
+				// the join below would have given up. Spinning until every
+				// fill arrives is right while the producer is alive; if it is
+				// not, this thread never ends, and a broken queue comes out as
+				// a build that hangs rather than a test that failed.
+				final long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
+				while (confirmed.size() < FILLS && failure.get() == null && System.nanoTime() - deadline < 0)
 				{
 					final List<GeTransaction> batch = queue.peek(64);
 					if (batch.isEmpty())
@@ -112,6 +119,9 @@ public class TransactionQueueConcurrencyTest
 			}
 		}, "consumer");
 
+		// Daemons, so neither can hold the JVM open if it does get stuck.
+		producer.setDaemon(true);
+		consumer.setDaemon(true);
 		producer.start();
 		consumer.start();
 		go.countDown();
@@ -160,8 +170,19 @@ public class TransactionQueueConcurrencyTest
 			}
 		}, "producer");
 
+		producer.setDaemon(true);
 		producer.start();
 		go.countDown();
+
+		// Wait for the producer to be under way first. Three peeks at a queue
+		// it has not reached yet drain nothing, and this would go on to assert
+		// that an undrained queue still holds everything -- true, and not what
+		// the test is for.
+		final long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
+		while (queue.isEmpty() && System.nanoTime() - deadline < 0)
+		{
+			Thread.yield();
+		}
 
 		// Drain only a little, concurrently with the producer, then stop.
 		final Set<String> confirmed = new HashSet<>();
@@ -176,6 +197,7 @@ public class TransactionQueueConcurrencyTest
 		}
 		producer.join(TimeUnit.MINUTES.toMillis(1));
 		assertNull("producer threw: " + failure.get(), failure.get());
+		assertFalse("the drain has to have overlapped the producer", confirmed.isEmpty());
 
 		final int expectedRemaining = total - confirmed.size();
 		assertEquals(expectedRemaining, queue.size());
