@@ -269,7 +269,7 @@ they are never resolved and never distributed.
 Lombok is pinned at 1.18.30 to match the RuneLite plugin template, and is used
 only for `@Slf4j`. If you ever need to build on a JDK past 21, the fix is to
 bump it — 1.18.32 covers JDK 22, 1.18.36 covers 23, 1.18.38 covers 24, 1.18.40
-covers 25 — or to drop the dependency and declare the three loggers by hand
+covers 25 — or to drop the dependency and declare the nine loggers by hand
 against slf4j-api, which `runelite-client` already provides.
 
 The tests worth reading first are `OfferTrackerTest` — the login burst, slot
