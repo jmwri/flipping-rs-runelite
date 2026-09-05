@@ -305,6 +305,13 @@ One read per tab, each capped and unfilterable by design:
 `POST /api/plugin/watchlists` and `PATCH /api/plugin/watchlists/{id}` create a
 watchlist and replace its items. The plugin never deletes one.
 
+`POST /api/plugin/positions/{id}/close` records a sale against an open
+position and `DELETE /api/plugin/positions/{id}` removes a lot that was never a
+flip. They are the two actions the site's own Positions page has, and the only
+writes the plugin makes that are not a report of something it watched happen.
+The delete is the one destructive call it can make, and the sidebar asks first;
+the fills stay in the ledger either way, only the lot goes.
+
 `POST /api/plugin/offers` takes the open slots and `POST /api/plugin/history`
 the history screen's rows, for the server to reconcile against the fills it
 has; each answers with how much it already had and how much it took on.
