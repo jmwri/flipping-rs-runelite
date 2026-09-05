@@ -1690,8 +1690,8 @@ public class FlippingRsPanel extends PluginPanel
 	 * about half a millisecond against twenty microseconds for a plain label.
 	 * Twenty-six times the work, and nearly every line here is one line anyway
 	 * -- a price, a time, a margin, a name. Asking for a document to hold them
-	 * put a sixth of a second on the Swing thread each time a watchlist of
-	 * sixty redrew, and that is every thirty seconds the sidebar is open.
+	 * put a sixth of a second on the Swing thread each time a full watchlist of
+	 * fifty redrew, and that is every thirty seconds the sidebar is open.
 	 *
 	 * <p>So the text is measured first, and only the lines that really run past
 	 * their row pay for it. The label's font must already be set, since that is

@@ -65,12 +65,13 @@ Five tabs:
   **Delete**, for a lot that was never a flip, such as supplies you bought to
   use, so later sales of that item are not counted against it. Delete asks
   first, and your recorded trades are kept either way.
-- **Watchlists** shows one of your flippingrs.com watchlists. Each item shows
-  the exact price you can buy and sell at right now, the profit per item after tax,
-  the return on what you'd pay, the buy limit and the profit across one limit,
-  and the day's volume, refreshed every 30 seconds. If you have an offer on the
-  item, that is shown too and updates as it fills. **Open** goes to the item's
-  page on the site and **Find flips** opens the site's flip finder.
+- **Watchlists** shows one of your flippingrs.com watchlists; the dropdown at
+  the top picks which. Each item shows the exact price you can buy and sell at
+  right now, the profit per item after tax, the return on what you'd pay, the
+  buy limit and the profit across one limit, and the day's volume, refreshed
+  every 30 seconds. If you have an offer on the item, that is shown too and
+  updates as it fills. **Open** goes to the item's page on the site, **Remove**
+  takes it off the watchlist, and **Find flips** opens the site's flip finder.
 - **Account** is whether the plugin is connected, which plan you are on, and
   which journal this character uses.
 
@@ -279,9 +280,12 @@ One read per tab, each capped and unfilterable by design:
 - `GET /api/plugin/trades?accountId=`: the last eight recorded fills.
 - `GET /api/plugin/journal?accountId=&tzOffset=`: the week's summary and the
   open positions, marked to market. This and the one above are re-read after a
-  send and when the sidebar is opened, at most once every fifteen seconds, and
-  only while the sidebar is open: they are a picture of a panel, so there is
-  nothing to read them for while nobody can see it.
+  send and when the sidebar is opened, at most once every fifteen seconds. A
+  send only re-reads them while the sidebar is open: they are a picture of a
+  panel, so there is nothing to read them for while nobody can see it.
+  Connecting, picking a journal and logging in on another character read them
+  whether it is open or not, because each of those changes what they would
+  say.
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
   for the items of one of them. Re-read every thirty seconds for the quotes,
   while the sidebar or the exchange is open.
