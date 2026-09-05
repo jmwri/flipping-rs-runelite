@@ -650,6 +650,14 @@ public class FlippingRsPanelTest
 		assertEquals(0L, FlippingRsPanel.parseGp("lots"));
 		assertEquals(0L, FlippingRsPanel.parseGp(""));
 
+		// Double.parseDouble takes both of these as numbers, and rounding
+		// either gives Long.MAX_VALUE -- which the Close box would then post
+		// as the price a position sold at.
+		assertEquals("a word that parses as a number is still not a price",
+			0L, FlippingRsPanel.parseGp("Infinity"));
+		assertEquals("nor is a figure too big to be one",
+			0L, FlippingRsPanel.parseGp("9".repeat(400) + "b"));
+
 		// A shorthand is read as a decimal and multiplied, and not every
 		// decimal lands on a whole number of coins: 8.2 times a million comes
 		// out a fraction under. Cutting the fraction off would record the sale

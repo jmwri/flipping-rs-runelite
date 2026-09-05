@@ -1266,7 +1266,10 @@ public class FlippingRsPanel extends PluginPanel
 		onClosePosition.close(positionId, sellPrice, sellQty);
 	}
 
-	/** "1,480,000", "1480000", "1.48m" and "1.5k" all read as gp; anything else is 0. */
+	/**
+	 * "1,480,000", "1480000", "1.48m" and "1.5k" all read as gp; anything that
+	 * is not a number reads as 0, and so does one too big to be one.
+	 */
 	static long parseGp(String text)
 	{
 		final String s = text == null ? "" : text.trim().toLowerCase(Locale.ROOT).replace(",", "").replace(" ", "");
@@ -1293,7 +1296,14 @@ public class FlippingRsPanel extends PluginPanel
 				multiplier = 1_000_000_000;
 				digits = s.substring(0, s.length() - 1);
 			}
-			return Math.round(Double.parseDouble(digits) * multiplier);
+			final double gp = Double.parseDouble(digits) * multiplier;
+			// Double.parseDouble reads more than a price box has any business
+			// accepting: "Infinity" is a number to it, and so is a run of
+			// digits long enough to overflow to one. Math.round turns either
+			// into Long.MAX_VALUE, and the Close box would post that as the
+			// price a position sold at. Nothing readable is the right answer,
+			// and the box already says a sale price is needed.
+			return Double.isFinite(gp) ? Math.round(gp) : 0;
 		}
 		catch (NumberFormatException e)
 		{
