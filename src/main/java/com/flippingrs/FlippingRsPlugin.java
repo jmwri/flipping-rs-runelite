@@ -1474,10 +1474,6 @@ public class FlippingRsPlugin extends Plugin
 				// again while this is the state, and a login on another character
 				// would otherwise re-point the picker from it -- filling in a
 				// journal on a tab that has just said nothing is being read.
-				// The list the picker was drawn from goes too. It is not read
-				// again while this is the state, and a login on another character
-				// would otherwise re-point the picker from it -- filling in a
-				// journal on a tab that has just said nothing is being read.
 				knownAccounts = null;
 				// And the offer screen, which draws the same quotes the sidebar
 				// does. Left alone it would go on showing the site's prices, frozen
