@@ -734,9 +734,21 @@ public class OfferTrackerTest
 				{
 					final int more = random.nextInt(Math.max(1, total - sold + 1));
 					sold += more;
-					spent += buy
+					// A buy fills at or under the asking price and a sale at or
+					// over it, which is what the tracker checks the client's
+					// total against.
+					final long moved = buy
 						? (long) more * price - random.nextInt(Math.max(1, more))
 						: (long) more * price + random.nextInt(Math.max(1, more));
+					// The client's running total is an int, so this one has to
+					// be, and the narrowing has to be said out loud: the sizes
+					// chosen above keep price times quantity inside half an
+					// int, and if that ever stops being true this test would
+					// otherwise compare the tracker's answer against a total
+					// that quietly wrapped on the way in.
+					assertTrue("run " + run + ": the offer has to stay inside an int, as the exchange's own do",
+						spent + moved <= Integer.MAX_VALUE);
+					spent += (int) moved;
 
 					final GrandExchangeOfferState state;
 					if (look < looks)
