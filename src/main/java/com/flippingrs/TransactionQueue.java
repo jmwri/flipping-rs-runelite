@@ -1,7 +1,7 @@
 package com.flippingrs;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.JsonParseException;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -357,11 +357,15 @@ public class TransactionQueue
 			}
 			log.debug("restored {} pending fills from {}", pending.size(), file);
 		}
-		catch (IOException e)
+		catch (IOException | RuntimeException e)
 		{
-			// Losing the queue is bad; refusing to start because of it is worse,
-			// because then nothing is recorded from here on either.
-			log.warn("could not read the pending queue at {}, starting empty: {}", file, e.toString());
+			// Losing part of the queue is bad; refusing to build one at all is
+			// worse. This runs in the constructor, which is on the path every
+			// fill takes, so an exception out of here is not a queue that comes
+			// back short -- it is an account with no queue at all, and every
+			// fill from then on lost, for as long as the file stays as it is.
+			log.warn("could not finish reading the pending queue at {}; keeping the {} fill(s) read so far: {}",
+				file, pending.size(), e.toString());
 		}
 	}
 
@@ -412,7 +416,7 @@ public class TransactionQueue
 				}
 			}
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
 			log.warn("could not read the pending queue at {}, starting empty: {}", file, e.toString());
 		}
@@ -425,8 +429,13 @@ public class TransactionQueue
 		{
 			return gson.fromJson(line, GeTransaction.class);
 		}
-		catch (JsonSyntaxException e)
+		catch (JsonParseException e)
 		{
+			// The family, not the one member of it Gson happens to raise for
+			// the damage seen so far. Anything Gson refuses has to come out
+			// here as a line skipped: the guard around the whole read is a
+			// backstop, and reaching it costs every line after this one as
+			// well as this one.
 			return null;
 		}
 	}

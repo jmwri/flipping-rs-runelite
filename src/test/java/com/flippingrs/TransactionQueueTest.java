@@ -503,6 +503,33 @@ public class TransactionQueueTest
 	}
 
 	/**
+	 * A line carrying two whole fills costs that line and no more.
+	 *
+	 * <p>An append writes the fill and its newline in one call, so a client
+	 * killed part way through can get the fill down without the newline. The
+	 * next append then lands on the end of it, and one line holds two whole
+	 * fills.
+	 *
+	 * <p>That is not a broken line -- both fills on it are whole -- so it is
+	 * worth saying which way it goes. The line is dropped and the rest of the
+	 * file is kept, which is the same trade the queue makes everywhere else:
+	 * the two fills on it are lost, and nothing is invented from the halves.
+	 */
+	@Test
+	public void twoFillsRunTogetherOnOneLineCostThatLineAndNoMore() throws IOException
+	{
+		final File file = file();
+		final String torn = gson.toJson(fill("a")) + gson.toJson(fill("b"));
+		Files.write(file.toPath(),
+			(torn + "\n" + gson.toJson(fill("c")) + "\n").getBytes(StandardCharsets.UTF_8));
+
+		final TransactionQueue queue = new TransactionQueue(gson, file);
+
+		assertEquals("the line that could be read is kept", 1, queue.size());
+		assertEquals("c", queue.peek(10).get(0).id);
+	}
+
+	/**
 	 * A compaction that cannot be written must not stop the file recording.
 	 *
 	 * <p>Once the queue is full every add evicts, and an eviction is expressed
