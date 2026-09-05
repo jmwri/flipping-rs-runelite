@@ -336,6 +336,33 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * The reason goes on every tab at once, so it has to come off every tab at
+	 * once. It used to come off only the tab whose data happened to arrive
+	 * first, and Trades and Journal are not read at all for a character with no
+	 * journal picked -- so a Watchlists read cleared the flag and left the
+	 * other two saying nothing was being read for the rest of the session.
+	 */
+	@Test
+	public void dataOnOneTabTakesTheReasonOffTheOthers() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel();
+			panel.selectTabForTest("Trades");
+			panel.setPaused("Recording is off.");
+			assertEquals("Recording is off.", panel.journalSummaryForTest());
+			assertTrue(textOnTab(panel, "Trades").contains("Recording is off."));
+
+			panel.setWatchlistItems(Collections.emptyList());
+
+			assertNull(panel.pausedForTest());
+			assertEquals("Not loaded yet.", panel.journalSummaryForTest());
+			assertFalse("Trades stopped saying nothing was being read",
+				textOnTab(panel, "Trades").contains("Recording is off."));
+		});
+	}
+
 	/** The facts line says what is known and nothing about what is not. */
 	@Test
 	public void theFactsLineLeavesOutWhatIsUnknown()
@@ -1462,6 +1489,22 @@ public class FlippingRsPanelTest
 			}
 		}
 		throw new AssertionError("no " + tab + " card for " + itemName);
+	}
+
+	/** Everything written on a tab's list, cards and lone lines alike. */
+	private static String textOnTab(FlippingRsPanel panel, String tab)
+	{
+		final StringBuilder out = new StringBuilder();
+		for (Component card : panel.cardsForTest(tab))
+		{
+			final List<JLabel> labels = new ArrayList<>();
+			collectLabels(card, labels);
+			for (JLabel label : labels)
+			{
+				out.append(plain(label)).append((char) 10);
+			}
+		}
+		return out.toString();
 	}
 
 

@@ -633,6 +633,30 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	/**
+	 * The plugin is reading from the server again, so the tabs that were
+	 * showing the reason it was not are redrawn.
+	 *
+	 * <p>All three, not only the one whose data has just arrived. The reason
+	 * was put on every tab at once by {@link #setPaused}, but it was taken off
+	 * by whichever tab was read first, and the other two went on saying that
+	 * nothing was being read from flippingrs.com while it plainly was. For a
+	 * character with no journal picked that is not a moment: Trades and Journal
+	 * are not read at all without one, so the Watchlists read cleared the flag
+	 * and the other two kept the sentence for the rest of the session.
+	 */
+	private void resumed()
+	{
+		if (paused == null)
+		{
+			return;
+		}
+		paused = null;
+		redrawRecent();
+		redrawJournal();
+		redrawWatchlist();
+	}
+
+	/**
 	 * Replaces the account list, restoring the current selection if it survives.
 	 *
 	 * <p>With nothing remembered ({@code selectedId} null) the server's default
@@ -790,7 +814,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** As above, with the items' sprites by item id, resolved by the plugin. */
 	void setActivity(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
 	{
-		paused = null;
+		resumed();
 		recentProblem = null;
 		recent.clear();
 		for (GeTransaction tx : newestFirst)
@@ -982,7 +1006,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** The journal's week and its open positions, as the server has them. */
 	void setJournal(FlippingRsApi.Analytics week, FlippingRsApi.Positions open)
 	{
-		paused = null;
+		resumed();
 		journalProblem = null;
 		journalLoaded = true;
 		setWrappedText(journalSummary, summarise(week));
@@ -1329,7 +1353,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** Replaces the watchlist's rows, in the server's order. */
 	void setWatchlistItems(List<WatchedItem> items)
 	{
-		paused = null;
+		resumed();
 		watchlistProblem = null;
 		watched = new ArrayList<>(items);
 		redrawWatchlist();
