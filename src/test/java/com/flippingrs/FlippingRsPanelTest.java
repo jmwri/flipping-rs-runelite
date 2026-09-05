@@ -1923,30 +1923,40 @@ public class FlippingRsPanelTest
 	/** Content wide enough that every kind of line has to wrap. */
 	private static void fillWithWideContent(FlippingRsPanel panel)
 	{
+		// Ten-digit figures throughout, because that is what these lines can
+		// really carry: the exchange caps one offer at max cash, and a bow or a
+		// tbow-priced position is an ordinary thing for this panel to be shown.
+		// A price three characters wider is three characters closer to the edge.
 		final GeTransaction tx = new GeTransaction();
 		tx.side = "buy";
-		tx.quantity = 25;
+		tx.quantity = 2_147_483_647L;
 		tx.itemName = "Ancient ceremonial legs";
-		tx.grossValue = 30_864_175;
+		tx.grossValue = 2_147_483_647L;
+		tx.estimated = true;
 		tx.occurredAt = "2026-08-31T16:10:12.482Z";
 		panel.setActivity(Collections.singletonList(tx));
 		panel.setPending(Collections.singletonList(tx));
 
 		final FlippingRsApi.Quote q = quote(4151);
+		q.instantSell = 1_234_567_890L;
+		q.instantBuy = 1_250_000_000L;
+		q.netMargin = -12_345_678L;
+		q.profitPerLimit = 1_098_765_432L;
+		q.volume24h = 12_345_678L;
 		panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
-			4151, "Ancient ceremonial legs", null, 1_500_000, 70, 72_000,
-			"Buying 4/10 at 1.50M", q)));
+			4151, "Ancient ceremonial legs", null, 2_147_483_647, 25_000, 2_147_483_647,
+			"Buying 123456/123456 at 1.25B", q)));
 
 		final FlippingRsApi.Position pos = new FlippingRsApi.Position();
 		pos.id = "p1";
 		pos.itemId = 4151;
 		pos.itemName = "Ancient ceremonial legs";
-		pos.buyPrice = 1_480_000;
-		pos.remainingQty = 10;
-		pos.currentBuy = 1_520_000;
-		pos.currentSell = 1_500_000;
-		pos.unrealisedPnl = 96_000;
-		pos.breakEvenSell = 1_510_204;
+		pos.buyPrice = 1_234_567_890L;
+		pos.remainingQty = 123_456;
+		pos.currentBuy = 1_250_000_000L;
+		pos.currentSell = 1_249_999_999L;
+		pos.unrealisedPnl = -1_234_567_890L;
+		pos.breakEvenSell = 1_234_567_890L;
 		pos.hoursHeld = 5.5;
 		pos.stale = true;
 		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
