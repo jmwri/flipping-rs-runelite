@@ -1023,6 +1023,27 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api).journal(eq("frs_key"), eq("acct-1"), anyInt());
 	}
 
+	/**
+	 * The Account tab has to say something when connecting falls over in a way
+	 * nothing expected.
+	 *
+	 * <p>A key with a stray control character in it is enough: OkHttp refuses
+	 * to put one in a header, which is not an IOException and so was not
+	 * caught. The tab went on showing whatever it last said -- "Not connected",
+	 * on a client that had just been given a key -- with the reason in the log
+	 * and nowhere else, which is the one failure this tab exists to prevent.
+	 */
+	@Test
+	public void aConnectThatFallsOverUnexpectedlySaysSoOnTheAccountTab() throws Exception
+	{
+		when(support.api.account(anyString())).thenThrow(new IllegalArgumentException("bad header value"));
+
+		support.connect();
+
+		final String status = support.panel.statusTextForTest();
+		assertTrue("the tab has to say something: " + status, status.contains("went wrong"));
+	}
+
 	/** The panel read is the connection test, so a refusal on connect is a refused connection. */
 	@Test
 	public void aRefusedPanelReadOnConnectIsAFailedConnection() throws Exception

@@ -1448,69 +1448,89 @@ public class FlippingRsPlugin extends Plugin
 	 * is tried and the Account tab says why. The other tabs are then read one
 	 * by one, and each reports its own failure on its own tab, since a key
 	 * that just worked is not a broken connection.
+	 *
+	 * <p>Never throws. Not because anything schedules it -- nothing does --
+	 * but because this is the read that puts the reason on the Account tab,
+	 * and a failure that escapes leaves that tab saying whatever it said
+	 * before while the plugin quietly does nothing.
 	 */
 	private void connect()
 	{
-		if (!config.enabled())
-		{
-			onPanel(p -> {
-				p.setAccounts(Collections.emptyList(), null);
-				p.setStatus("Recording is off. Nothing is being recorded or sent to flippingrs.com. Switch "
-					+ "\"Record trades\" back on in the plugin settings to carry on.",
-					ColorScheme.LIGHT_GRAY_COLOR);
-				// Old rows next to a status that says nothing is being read
-				// would be a picture of a journal the plugin is not looking at.
-				p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
-			});
-			// The list the picker was drawn from goes too. It is not read
-			// again while this is the state, and a login on another character
-			// would otherwise re-point the picker from it -- filling in a
-			// journal on a tab that has just said nothing is being read.
-			// The list the picker was drawn from goes too. It is not read
-			// again while this is the state, and a login on another character
-			// would otherwise re-point the picker from it -- filling in a
-			// journal on a tab that has just said nothing is being read.
-			knownAccounts = null;
-			// And the offer screen, which draws the same quotes the sidebar
-			// does. Left alone it would go on showing the site's prices, frozen
-			// at whatever they were when recording was switched off, in front
-			// of the box where a price gets typed.
-			watchlists.forget();
-			return;
-		}
-
-		final String key = config.apiKey().trim();
-		if (key.isEmpty())
-		{
-			onPanel(p -> {
-				p.setAccounts(Collections.emptyList(), null);
-				p.setStatus("Add your API key in the plugin settings. You can create one on flippingrs.com "
-					+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
-				p.setPaused("Add an API key to see your journal here.");
-			});
-			knownAccounts = null;
-			watchlists.forget();
-			return;
-		}
-
 		try
 		{
-			applyPanel(api.account(key), true);
+			if (!config.enabled())
+			{
+				onPanel(p -> {
+					p.setAccounts(Collections.emptyList(), null);
+					p.setStatus("Recording is off. Nothing is being recorded or sent to flippingrs.com. Switch "
+						+ "\"Record trades\" back on in the plugin settings to carry on.",
+						ColorScheme.LIGHT_GRAY_COLOR);
+					// Old rows next to a status that says nothing is being read
+					// would be a picture of a journal the plugin is not looking at.
+					p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
+				});
+				// The list the picker was drawn from goes too. It is not read
+				// again while this is the state, and a login on another character
+				// would otherwise re-point the picker from it -- filling in a
+				// journal on a tab that has just said nothing is being read.
+				// The list the picker was drawn from goes too. It is not read
+				// again while this is the state, and a login on another character
+				// would otherwise re-point the picker from it -- filling in a
+				// journal on a tab that has just said nothing is being read.
+				knownAccounts = null;
+				// And the offer screen, which draws the same quotes the sidebar
+				// does. Left alone it would go on showing the site's prices, frozen
+				// at whatever they were when recording was switched off, in front
+				// of the box where a price gets typed.
+				watchlists.forget();
+				return;
+			}
+
+			final String key = config.apiKey().trim();
+			if (key.isEmpty())
+			{
+				onPanel(p -> {
+					p.setAccounts(Collections.emptyList(), null);
+					p.setStatus("Add your API key in the plugin settings. You can create one on flippingrs.com "
+						+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
+					p.setPaused("Add an API key to see your journal here.");
+				});
+				knownAccounts = null;
+				watchlists.forget();
+				return;
+			}
+
+			try
+			{
+				applyPanel(api.account(key), true);
+			}
+			catch (IOException e)
+			{
+				log.debug("could not reach flippingrs.com", e);
+				final String why = FlippingRsApi.describe(e);
+				onPanel(p -> p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
+				return;
+			}
+			refresh(PanelTab.TRADES);
+			refresh(PanelTab.JOURNAL);
+			accountTabsRefreshedAt = System.nanoTime();
+			refresh(PanelTab.WATCHLISTS);
+			refreshPending();
+			// The key may have been missing or wrong while trades piled up.
+			submit(sendExecutor, this::drain);
 		}
-		catch (IOException e)
+		catch (RuntimeException e)
 		{
-			log.debug("could not reach flippingrs.com", e);
-			final String why = FlippingRsApi.describe(e);
-			onPanel(p -> p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
-			return;
+			// The Account tab is where the plugin explains itself, and this is
+			// the read that fills it in. Anything unexpected out of here left
+			// it saying whatever it said last -- "Not connected", on a client
+			// that had just been given a key -- with the reason in the log and
+			// nowhere else, which is the one failure this tab exists to
+			// prevent. The sender and the tab reads are wrapped the same way.
+			log.warn("unexpected failure while connecting to flippingrs.com", e);
+			onPanel(p -> p.setStatus("Something went wrong while connecting. Details are in the client log.",
+				ColorScheme.PROGRESS_ERROR_COLOR));
 		}
-		refresh(PanelTab.TRADES);
-		refresh(PanelTab.JOURNAL);
-		accountTabsRefreshedAt = System.nanoTime();
-		refresh(PanelTab.WATCHLISTS);
-		refreshPending();
-		// The key may have been missing or wrong while trades piled up.
-		submit(sendExecutor, this::drain);
 	}
 
 	/**
