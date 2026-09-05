@@ -503,6 +503,52 @@ public class TransactionQueueTest
 	}
 
 	/**
+	 * A compaction that cannot be written must not stop the file recording.
+	 *
+	 * <p>Once the queue is full every add evicts, and an eviction is expressed
+	 * by rewriting the file rather than appending to it. If that rewrite fails,
+	 * the new fill was never appended either -- and the eviction counter stays
+	 * over the mark, so every add after it goes the same way. One bad rewrite
+	 * stopped the file recording anything for the rest of the session, in the
+	 * one state where every trade in the queue is already at risk.
+	 *
+	 * <p>A directory where the staging file goes is a rewrite that cannot be
+	 * written and an append that still can, which is a real shape on Windows:
+	 * a scanner holding the file open fails the move and not the append.
+	 */
+	@Test
+	public void aFillStillReachesDiskWhenTheCompactionCannotBeWritten() throws IOException
+	{
+		final File file = file();
+		final TransactionQueue queue = new TransactionQueue(gson, file, 300);
+		for (int i = 0; i < 300; i++)
+		{
+			queue.add(fill("a" + i));
+		}
+		assertEquals(300, lines(file));
+
+		// Nothing can be written where the rewrite stages its copy.
+		assertTrue(new File(file.getParentFile(), file.getName() + ".tmp").mkdir());
+
+		// The third eviction is a compaction, and it cannot be written.
+		queue.add(fill("over-1"));
+		queue.add(fill("over-2"));
+		queue.add(fill("over-3"));
+
+		assertEquals("the fill the compaction could not write is appended instead", 303, lines(file));
+
+		// And so is every one after it, rather than the file going quiet.
+		queue.add(fill("over-4"));
+		queue.add(fill("over-5"));
+		assertEquals(305, lines(file));
+
+		final TransactionQueue reopened = new TransactionQueue(gson, file, 300);
+		final List<GeTransaction> restored = reopened.peek(1000);
+		assertEquals("the newest fill is on disk", "over-5",
+			restored.get(restored.size() - 1).id);
+	}
+
+	/**
 	 * A client killed while the file was running ahead of the queue restores
 	 * more rows than the cap. The next fill has to bring it back down rather
 	 * than sit over the cap for good.

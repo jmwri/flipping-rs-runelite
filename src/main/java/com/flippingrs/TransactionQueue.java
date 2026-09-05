@@ -141,7 +141,19 @@ public class TransactionQueue
 		evictionsSinceRewrite += evicted;
 		if (evicted > 1 || evictionsSinceRewrite >= evictionsPerRewrite)
 		{
-			rewrite();
+			// A compaction that could not be written leaves the new fill
+			// nowhere on disk, and the counter over the mark -- so every add
+			// after it takes this branch too, and never appends either. One
+			// failed rewrite would have stopped the file recording anything
+			// for the rest of the session, in the state where the queue is
+			// full and every trade in it is already at risk. Appending is the
+			// same durability the fill would have had; the cost is that the
+			// file runs further past the cap until a rewrite works, and it is
+			// brought back down when one does.
+			if (!rewrite())
+			{
+				append(tx);
+			}
 		}
 		else
 		{
@@ -500,13 +512,15 @@ public class TransactionQueue
 	 * Writes the whole queue out. Needed whenever fills are removed, which an
 	 * append cannot express: after a confirmed send, and on the one add in every
 	 * CAPACITY that has to evict.
+	 *
+	 * @return whether the file now matches the queue
 	 */
-	private void rewrite()
+	private boolean rewrite()
 	{
 		final Path parent = parent();
 		if (parent == null)
 		{
-			return;
+			return false;
 		}
 		try
 		{
@@ -544,12 +558,14 @@ public class TransactionQueue
 			// have a failed one look like a compaction and leave the file
 			// growing for another hundred evictions.
 			evictionsSinceRewrite = 0;
+			return true;
 		}
 		catch (IOException e)
 		{
 			// Keep the in-memory queue and keep going: the fills are still there
 			// for this session, and the next write may work.
 			log.warn("could not persist the pending queue to {}: {}", file, e.toString());
+			return false;
 		}
 	}
 
