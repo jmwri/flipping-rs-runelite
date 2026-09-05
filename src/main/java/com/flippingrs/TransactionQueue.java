@@ -71,10 +71,15 @@ public class TransactionQueue
 	 * turned each new trade into several megabytes of writing.
 	 *
 	 * <p>So the evicted row is left in the file and the new one appended after
-	 * it, and the file is compacted every hundredth eviction instead. The file
-	 * runs at most this far past the cap, and the rows it holds over are real
-	 * trades that were dropped -- so a client killed in between restores a few
-	 * more than it strictly had, which is the harmless direction.
+	 * it, and the file is compacted every hundredth eviction instead. While the
+	 * compactions are landing the file runs at most this far past the cap, and
+	 * the rows it holds over are real trades that were dropped -- so a client
+	 * killed in between restores a few more than it strictly had, which is the
+	 * harmless direction.
+	 *
+	 * <p>It can run further than that when a compaction cannot be written at
+	 * all: see {@link #add}, which appends rather than let the fill go
+	 * unrecorded. The file comes back down on the next compaction that works.
 	 */
 	private final int evictionsPerRewrite;
 
