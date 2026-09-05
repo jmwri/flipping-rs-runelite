@@ -753,15 +753,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setActivityNotice(@Nullable String text, Color colour)
 	{
-		setWrappedText(activityNotice, text);
-		activityNotice.setForeground(colour);
-		activityNotice.setVisible(text != null);
-		activityNoticeTimer.setRepeats(false);
-		activityNoticeTimer.stop();
-		if (text != null)
-		{
-			activityNoticeTimer.start();
-		}
+		setNotice(activityNotice, activityNoticeTimer, text, colour);
 	}
 
 	/** Replaces the list of fills still buffered, newest first. */
@@ -1029,15 +1021,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setJournalNotice(@Nullable String text, Color colour)
 	{
-		setWrappedText(journalNotice, text);
-		journalNotice.setForeground(colour);
-		journalNotice.setVisible(text != null);
-		journalNoticeTimer.setRepeats(false);
-		journalNoticeTimer.stop();
-		if (text != null)
-		{
-			journalNoticeTimer.start();
-		}
+		setNotice(journalNotice, journalNoticeTimer, text, colour);
 	}
 
 	/** The journal could not be read. Shown in the tab itself. */
@@ -1416,15 +1400,7 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	void setWatchlistNotice(@Nullable String text, Color colour)
 	{
-		setWrappedText(watchlistNotice, text);
-		watchlistNotice.setForeground(colour);
-		watchlistNotice.setVisible(text != null);
-		watchlistNoticeTimer.setRepeats(false);
-		watchlistNoticeTimer.stop();
-		if (text != null)
-		{
-			watchlistNoticeTimer.start();
-		}
+		setNotice(watchlistNotice, watchlistNoticeTimer, text, colour);
 	}
 
 	private void redrawWatchlist()
@@ -1638,6 +1614,28 @@ public class FlippingRsPanel extends PluginPanel
 		card.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		card.setBorder(BorderFactory.createEmptyBorder(5, CARD_PADDING, 5, CARD_PADDING));
 		return card;
+	}
+
+	/**
+	 * Puts a notice on a tab, with the clock that takes it off again.
+	 *
+	 * <p>The clock is one-shot and restarted from here rather than left
+	 * running, so a second notice gets the full {@link #NOTICE_SECONDS} rather
+	 * than whatever was left of the first one's.
+	 *
+	 * @param text null to clear the notice and stop the clock
+	 */
+	private static void setNotice(JLabel label, Timer clock, @Nullable String text, Color colour)
+	{
+		setWrappedText(label, text);
+		label.setForeground(colour);
+		label.setVisible(text != null);
+		clock.setRepeats(false);
+		clock.stop();
+		if (text != null)
+		{
+			clock.start();
+		}
 	}
 
 	private static JLabel small(String text)

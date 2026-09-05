@@ -554,20 +554,7 @@ public class FlippingRsApi
 		/** Why rows were refused, one line each. Never null. */
 		public List<String> getProblems()
 		{
-			if (problems == null)
-			{
-				return Collections.emptyList();
-			}
-			final List<String> out = new ArrayList<>(problems.size());
-			for (JsonElement problem : problems)
-			{
-				if (problem == null || problem.isJsonNull())
-				{
-					continue;
-				}
-				out.add(problem.isJsonPrimitive() ? problem.getAsString() : problem.toString());
-			}
-			return out;
+			return problemsOf(problems);
 		}
 	}
 
@@ -616,20 +603,7 @@ public class FlippingRsApi
 		/** Why, one line per refused row. Never null. */
 		public List<String> getProblems()
 		{
-			if (problems == null)
-			{
-				return Collections.emptyList();
-			}
-			final List<String> out = new ArrayList<>(problems.size());
-			for (JsonElement problem : problems)
-			{
-				if (problem == null || problem.isJsonNull())
-				{
-					continue;
-				}
-				out.add(problem.isJsonPrimitive() ? problem.getAsString() : problem.toString());
-			}
-			return out;
+			return problemsOf(problems);
 		}
 
 		/** Rows the server accounted for, one way or another. */
@@ -637,6 +611,33 @@ public class FlippingRsApi
 		{
 			return accepted + duplicate + rejected;
 		}
+	}
+
+	/**
+	 * The refusals a reply carries, as lines for a log or a panel.
+	 *
+	 * <p>Held as raw JSON on the way in -- see {@link IngestResult#problems} --
+	 * so a string comes out as itself and anything structured as the JSON it
+	 * was, rather than failing the parse of a reply that was otherwise fine.
+	 *
+	 * @return never null, and never containing null
+	 */
+	private static List<String> problemsOf(@Nullable List<JsonElement> problems)
+	{
+		if (problems == null)
+		{
+			return Collections.emptyList();
+		}
+		final List<String> out = new ArrayList<>(problems.size());
+		for (JsonElement problem : problems)
+		{
+			if (problem == null || problem.isJsonNull())
+			{
+				continue;
+			}
+			out.add(problem.isJsonPrimitive() ? problem.getAsString() : problem.toString());
+		}
+		return out;
 	}
 
 	private static <T> List<T> withoutNulls(@Nullable List<T> in)
