@@ -1462,6 +1462,15 @@ public class FlippingRsPlugin extends Plugin
 				// would be a picture of a journal the plugin is not looking at.
 				p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
 			});
+			// The list the picker was drawn from goes too. It is not read
+			// again while this is the state, and a login on another character
+			// would otherwise re-point the picker from it -- filling in a
+			// journal on a tab that has just said nothing is being read.
+			// The list the picker was drawn from goes too. It is not read
+			// again while this is the state, and a login on another character
+			// would otherwise re-point the picker from it -- filling in a
+			// journal on a tab that has just said nothing is being read.
+			knownAccounts = null;
 			// And the offer screen, which draws the same quotes the sidebar
 			// does. Left alone it would go on showing the site's prices, frozen
 			// at whatever they were when recording was switched off, in front
@@ -1479,6 +1488,7 @@ public class FlippingRsPlugin extends Plugin
 					+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
 				p.setPaused("Add an API key to see your journal here.");
 			});
+			knownAccounts = null;
 			watchlists.forget();
 			return;
 		}

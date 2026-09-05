@@ -3643,6 +3643,30 @@ public class FlippingRsPluginBehaviourTest
 		assertNull("and none is once it is off", support.panel.selectedAccountId());
 	}
 
+	/**
+	 * And it stays empty when a character changes under it.
+	 *
+	 * <p>The picker is re-pointed on login from the journals last loaded, so
+	 * that an alt lands on its own without another round trip. While recording
+	 * is off there are no journals to re-point it from: the list was loaded
+	 * for a connection the plugin has since given up, and putting it back on
+	 * screen names a journal on a tab that has just said nothing is being read
+	 * from flippingrs.com.
+	 */
+	@Test
+	public void switchingCharacterWhileRecordingIsOffLeavesThePickerEmpty() throws Exception
+	{
+		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
+		support.connect();
+		when(support.config.enabled()).thenReturn(false);
+		support.connect();
+
+		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged("main", "alt"));
+		support.settleSwing();
+
+		assertNull("still none", support.panel.selectedAccountId());
+	}
+
 	/** One bought row on the Grand Exchange history screen. */
 	private void historyScreen(String priceText)
 	{
