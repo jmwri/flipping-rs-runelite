@@ -2,6 +2,7 @@ package com.flippingrs;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.IntFunction;
@@ -192,7 +193,14 @@ class GeHistoryReader
 				continue;
 			}
 			texts.add(plain);
-			final String lower = plain.toLowerCase();
+			// Locale.ROOT, not the machine's. A default-locale fold is a rule
+			// about where the client is running rather than about the text:
+			// the Turkish one maps I to a dotless i, so a word looked for with
+			// an I in it would stop being found on a screen that had not
+			// changed. Neither word has one today, and which words these are
+			// is not a thing for a machine's language settings to have a say
+			// in either way.
+			final String lower = plain.toLowerCase(Locale.ROOT);
 			if (side == null && lower.contains("bought"))
 			{
 				side = "buy";
