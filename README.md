@@ -122,6 +122,8 @@ team. The plugin sends it:
 - items you add to or remove from a watchlist
 - a sale you record against a position, or a position you delete
 - which journal you picked for this character
+- how far your computer's clock is from UTC, so the site's daily totals fall
+  on your calendar day rather than somebody else's
 - your API key, so the site knows the trades are yours
 
 It also reads back what the sidebar shows: your journals, your plan, your
