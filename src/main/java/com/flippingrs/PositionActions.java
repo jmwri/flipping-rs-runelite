@@ -36,13 +36,13 @@ final class PositionActions
 	/** Records a sale against a position. The server caps the quantity at what is left. */
 	void close(String positionId, long sellPrice, @Nullable Long sellQty)
 	{
-		final String key = keyForAnEdit("close a position");
-		if (key == null)
-		{
-			return;
-		}
 		try
 		{
+			final String key = keyForAnEdit("close a position");
+			if (key == null)
+			{
+				return;
+			}
 			api.get().closePosition(key, positionId, sellPrice, sellQty);
 			panel.onPanel(p -> p.setJournalNotice("Sale recorded.", ColorScheme.PROGRESS_COMPLETE_COLOR));
 			rereadJournal.run();
@@ -65,13 +65,13 @@ final class PositionActions
 	/** Deletes a lot that was never a flip. The sidebar has already asked the user. */
 	void delete(String positionId)
 	{
-		final String key = keyForAnEdit("delete a position");
-		if (key == null)
-		{
-			return;
-		}
 		try
 		{
+			final String key = keyForAnEdit("delete a position");
+			if (key == null)
+			{
+				return;
+			}
 			api.get().deletePosition(key, positionId);
 			panel.onPanel(p -> p.setJournalNotice("Position deleted.", ColorScheme.PROGRESS_COMPLETE_COLOR));
 			rereadJournal.run();

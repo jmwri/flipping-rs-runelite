@@ -1080,6 +1080,32 @@ public class FlippingRsPluginBehaviourTest
 			support.panel.journalNoticeForTest().contains("went wrong"));
 	}
 
+	/**
+	 * Including when it is the settings read that falls over.
+	 *
+	 * <p>The sender already has a test for a config proxy that throws, because
+	 * an escape there cancelled the schedule. These do not schedule anything,
+	 * so what an escape costs is the answer the user was waiting for -- and
+	 * the settings read comes first in each of them, before anything the
+	 * catches used to cover.
+	 */
+	@Test
+	public void aSettingsReadThatThrowsIsStillAnsweredOnItsTab() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.connect();
+		when(support.config.enabled()).thenThrow(new IllegalStateException("the config proxy fell over"));
+
+		support.addToWatchlist(11802);
+		assertTrue("the watchlist tab: " + support.panel.watchlistNoticeForTest(),
+			support.panel.watchlistNoticeForTest().contains("went wrong"));
+
+		support.closePosition("pos-1", 1_500_000, 4L);
+		assertTrue("the journal tab: " + support.panel.journalNoticeForTest(),
+			support.panel.journalNoticeForTest().contains("went wrong"));
+	}
+
 	/** The panel read is the connection test, so a refusal on connect is a refused connection. */
 	@Test
 	public void aRefusedPanelReadOnConnectIsAFailedConnection() throws Exception

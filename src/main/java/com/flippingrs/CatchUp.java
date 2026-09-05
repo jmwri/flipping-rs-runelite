@@ -200,23 +200,23 @@ final class CatchUp
 	 */
 	private void sendOffers(List<FlippingRsApi.OfferState> open, long accountHash)
 	{
-		if (!config.enabled())
-		{
-			return;
-		}
-		drain.run();
-		final String key = config.apiKey().trim();
-		final String accountId = store.chosenAccount();
-		if (key.isEmpty() || accountId == null)
-		{
-			return;
-		}
-		if (!stillTheSameAccount(accountHash))
-		{
-			return;
-		}
 		try
 		{
+			if (!config.enabled())
+			{
+				return;
+			}
+			drain.run();
+			final String key = config.apiKey().trim();
+			final String accountId = store.chosenAccount();
+			if (key.isEmpty() || accountId == null)
+			{
+				return;
+			}
+			if (!stillTheSameAccount(accountHash))
+			{
+				return;
+			}
 			final FlippingRsApi.Reconciliation result = api.get().submitOffers(key, accountId, open);
 			if (!result.getProblems().isEmpty())
 			{
@@ -323,36 +323,36 @@ final class CatchUp
 	 */
 	private void sendHistory(List<FlippingRsApi.HistoryRow> rows, long accountHash)
 	{
-		if (!config.enabled())
-		{
-			return;
-		}
-		drain.run();
-		final String key = config.apiKey().trim();
-		final String accountId = store.chosenAccount();
-		if (key.isEmpty() || accountId == null)
-		{
-			return;
-		}
-		if (!stillTheSameAccount(accountHash))
-		{
-			return;
-		}
-		final String screen = signatureOf(accountHash, accountId, rows);
-		if (screen.equals(lastHistorySent))
-		{
-			// The same screen the server has already been shown. Opening the
-			// history is a click, and there is no gap between one open and the
-			// next: without this, a user flicking between their offers and
-			// their history spent a request on each one, against a limit of
-			// thirty a minute that the sends themselves draw on. The screen
-			// changes when an offer completes and is collected, and that is
-			// exactly when this stops matching.
-			log.debug("the history screen has not changed since it was last sent");
-			return;
-		}
 		try
 		{
+			if (!config.enabled())
+			{
+				return;
+			}
+			drain.run();
+			final String key = config.apiKey().trim();
+			final String accountId = store.chosenAccount();
+			if (key.isEmpty() || accountId == null)
+			{
+				return;
+			}
+			if (!stillTheSameAccount(accountHash))
+			{
+				return;
+			}
+			final String screen = signatureOf(accountHash, accountId, rows);
+			if (screen.equals(lastHistorySent))
+			{
+				// The same screen the server has already been shown. Opening the
+				// history is a click, and there is no gap between one open and the
+				// next: without this, a user flicking between their offers and
+				// their history spent a request on each one, against a limit of
+				// thirty a minute that the sends themselves draw on. The screen
+				// changes when an offer completes and is collected, and that is
+				// exactly when this stops matching.
+				log.debug("the history screen has not changed since it was last sent");
+				return;
+			}
 			final FlippingRsApi.Reconciliation result = api.get().submitHistory(key, accountId, rows);
 			lastHistorySent = screen;
 			if (!result.getProblems().isEmpty())

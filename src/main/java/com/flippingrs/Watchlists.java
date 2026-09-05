@@ -336,23 +336,23 @@ final class Watchlists
 	 */
 	private void change(int itemId, boolean add)
 	{
-		if (!config.enabled())
-		{
-			// "Record trades" off is a promise not to contact the server at
-			// all, and a watchlist edit is contact.
-			panel.onPanel(p -> p.setWatchlistNotice("Switch \"Record trades\" back on in the plugin settings to change "
-				+ "your watchlist.", ColorScheme.BRAND_ORANGE));
-			return;
-		}
-		final String key = config.apiKey().trim();
-		if (key.isEmpty())
-		{
-			panel.onPanel(p -> p.setWatchlistNotice("Add your API key in the plugin settings to use watchlists.",
-				ColorScheme.BRAND_ORANGE));
-			return;
-		}
 		try
 		{
+			if (!config.enabled())
+			{
+				// "Record trades" off is a promise not to contact the server at
+				// all, and a watchlist edit is contact.
+				panel.onPanel(p -> p.setWatchlistNotice("Switch \"Record trades\" back on in the plugin settings to change "
+					+ "your watchlist.", ColorScheme.BRAND_ORANGE));
+				return;
+			}
+			final String key = config.apiKey().trim();
+			if (key.isEmpty())
+			{
+				panel.onPanel(p -> p.setWatchlistNotice("Add your API key in the plugin settings to use watchlists.",
+					ColorScheme.BRAND_ORANGE));
+				return;
+			}
 			List<FlippingRsApi.Watchlist> known = lists;
 			if (known == null)
 			{
