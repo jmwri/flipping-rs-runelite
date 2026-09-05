@@ -811,10 +811,11 @@ public class FlippingRsPlugin extends Plugin
 		if (state != GameState.LOADING)
 		{
 			arrivingInWorld = true;
-			// The exchange cannot still be open on a world the client has left,
-			// and it is only ever closed here: logging out tears the widget
-			// tree down without a WidgetClosed for each of its interfaces, so
-			// the flag stuck on and the quote timer went on making a request
+			// The exchange cannot still be open on a world the client has left.
+			// Closing it here as well as on WidgetClosed is not belt and
+			// braces: logging out tears the widget tree down without a
+			// WidgetClosed for each of its interfaces, so with only that one
+			// the flag stuck on, and the quote timer went on making a request
 			// every thirty seconds, forever, against a thirty-a-minute limit,
 			// for an offer screen that had been gone since the last session.
 			watchlists.exchangeOpen(false);
