@@ -31,10 +31,13 @@ you changing a setting every time you log in. That matters for more than
 tidiness: buy limits are tracked per journal, so mixing two characters into
 one gives you wrong limit timers as well as wrong totals.
 
-A plugin key can only do what the plugin needs. It cannot read or export your
-journal, change your account, or use the site's market data. If it ever ends
-up somewhere it shouldn't, it is a much smaller problem than a full key would
-be. Plugin keys are available on every plan.
+A plugin key can only do what the plugin needs: record trades, edit a
+watchlist, close or delete a position, and read back the same few rows the
+sidebar shows. What it cannot do is anything larger than that picture — no
+paging, no filtering, no export of your journal, no changes to your account,
+and no market data beyond the prices for the watchlist it is showing. Anyone
+who took the key would get your sidebar and no more, which is a much smaller
+problem than a full key would be. Plugin keys are available on every plan.
 
 ## Settings
 
