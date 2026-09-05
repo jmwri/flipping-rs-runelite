@@ -1446,6 +1446,36 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(Arrays.asList(13190, 4151), support.panel.watchlistForTest());
 	}
 
+	/**
+	 * A card needs the item's name and its alch value, and one composition
+	 * carries both. Asking for it twice was two of the game thread's heavier
+	 * lookups for every item on the watchlist -- fifty of them at a time,
+	 * every half minute the sidebar is open.
+	 */
+	@Test
+	public void aWatchlistCardReadsItsItemsCompositionOnce() throws Exception
+	{
+		support.showSidebar();
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		clearInvocations(support.itemManager);
+
+		support.connect();
+
+		// The buy limit is asked for exactly once per card and from nowhere
+		// else, so it counts the cards however many times the tab was drawn.
+		assertTrue("a card was built at all", callsTo("getItemStats") > 0);
+		assertEquals("one composition read per card, not two",
+			callsTo("getItemStats"), callsTo("getItemComposition"));
+	}
+
+	/** How many times the item manager was asked for something, by method name. */
+	private long callsTo(String method)
+	{
+		return org.mockito.Mockito.mockingDetails(support.itemManager).getInvocations().stream()
+			.filter(invocation -> invocation.getMethod().getName().equals(method))
+			.count();
+	}
+
 	/** The first add on an account with no watchlist creates one and remembers it. */
 	@Test
 	public void theFirstAddCreatesAWatchlistOnTheServer() throws Exception

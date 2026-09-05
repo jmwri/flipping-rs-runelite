@@ -480,6 +480,7 @@ final class Watchlists
 	 */
 	private FlippingRsPanel.WatchedItem describeItem(int itemId)
 	{
+		String name = "";
 		int price = 0;
 		int limit = 0;
 		int alch = 0;
@@ -489,7 +490,13 @@ final class Watchlists
 			price = itemManager.getItemPrice(itemId);
 			final net.runelite.client.game.ItemStats stats = itemManager.getItemStats(itemId);
 			limit = stats == null ? 0 : stats.getGeLimit();
-			alch = itemManager.getItemComposition(itemId).getHaPrice();
+			// One composition read, not two. The alch value and the name both
+			// come off it, and asking twice meant two of these for every item
+			// on the watchlist -- fifty of them, on the game thread, every
+			// time the quotes are refreshed.
+			final net.runelite.api.ItemComposition composition = itemManager.getItemComposition(itemId);
+			alch = composition.getHaPrice();
+			name = composition.getName() == null ? "" : composition.getName();
 			image = itemManager.getImage(itemId);
 		}
 		catch (RuntimeException e)
@@ -497,7 +504,10 @@ final class Watchlists
 			// A row with a name and no numbers beats no row.
 			log.debug("could not describe item {}", itemId, e);
 		}
-		return new FlippingRsPanel.WatchedItem(itemId, itemName.apply(itemId), image, price, limit, alch,
-			liveOffer(itemId), quotes.get(itemId));
+		// Only when the read above did not get one: the supplier is the same
+		// lookup with the same guard around it, so asking it after a read that
+		// worked is the second read this method exists to avoid.
+		return new FlippingRsPanel.WatchedItem(itemId, name.isEmpty() ? itemName.apply(itemId) : name,
+			image, price, limit, alch, liveOffer(itemId), quotes.get(itemId));
 	}
 }
