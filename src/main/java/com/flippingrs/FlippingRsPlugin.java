@@ -331,14 +331,6 @@ public class FlippingRsPlugin extends Plugin
 	}
 
 	/**
-	 * Builds the collaborators from the injected fields and the executors.
-	 *
-	 * <p>Separate from startUp so a test can set the fields and call this
-	 * without the rest of startUp, which builds a nav button and a real HTTP
-	 * client. Each collaborator reads {@link #api} through a supplier rather
-	 * than holding it, because a developer-mode server change replaces it.
-	 */
-	/**
 	 * Forgets everything that belonged to the last time the plugin ran.
 	 *
 	 * <p>RuneLite reuses the plugin instance across disable and enable, so
@@ -390,6 +382,14 @@ public class FlippingRsPlugin extends Plugin
 		panel.onHidden(() -> sidebarShown(false));
 	}
 
+	/**
+	 * Builds the collaborators from the injected fields and the executors.
+	 *
+	 * <p>Separate from startUp so a test can set the fields and call this
+	 * without the rest of startUp, which builds a nav button and a real HTTP
+	 * client. Each collaborator reads {@link #api} through a supplier rather
+	 * than holding it, because a developer-mode server change replaces it.
+	 */
 	void wire()
 	{
 		store = new ProfileStore(configManager, gson);
@@ -1235,21 +1235,7 @@ public class FlippingRsPlugin extends Plugin
 	 * say which row is at fault, and setting aside five hundred fills for one
 	 * bad row is a lot of journal to lose. So a refused batch of more than one
 	 * is split in half and each half sent on its own; one bad row is found in
-	 * about nine rounds of that, and every good row goes through. If both
-	 * halves are refused as well, the fault is taken to be the batch as a
-	 * whole -- the envelope, the key, the account -- and both are set aside
-	 * without going further, which keeps a refusal that no split can fix to
-	 * three requests rather than a thousand.
-	 *
-	 * <p>The batch is the one that was sent, not a fresh read of the queue.
-	 * Fills arrive on the disk thread while a request is in flight, and peek
-	 * returns from the head, so re-reading would set aside trades that had
-	 * never been sent.
-	 *
-	 * @param batch a batch the server has just refused as a whole
-	 */
-	/**
-	 * Halves a refused batch until the rows at fault are on their own.
+	 * about nine rounds of that, and every good row goes through.
 	 *
 	 * <p>What it does not do is keep halving when both halves are refused. At
 	 * that point the batch either has a bad row in each half, where halving
@@ -1259,14 +1245,22 @@ public class FlippingRsPlugin extends Plugin
 	 * two cannot be told apart without spending requests: a single row sent on
 	 * its own answers only if it happens to be a good one.
 	 *
-	 * <p>So the second reading is assumed and the batch is set aside whole.
-	 * That is the wrong guess when several rows are bad, and it costs the good
-	 * rows beside them -- they go to the set-aside file rather than the
-	 * journal, and the user is told the count. It is the right guess for a
-	 * misconfiguration, which is both the likelier cause and the one that
-	 * repeats: every batch after it is refused the same way, so a search that
-	 * asks about every row would spend the whole rate limit, every sync, for
-	 * as long as the setting stays wrong.
+	 * <p>So the second reading is assumed and the batch is set aside whole,
+	 * which keeps a refusal that no split can fix to three requests rather
+	 * than a thousand. That is the wrong guess when several rows are bad, and
+	 * it costs the good rows beside them -- they go to the set-aside file
+	 * rather than the journal, and the user is told the count. It is the right
+	 * guess for a misconfiguration, which is both the likelier cause and the
+	 * one that repeats: every batch after it is refused the same way, so a
+	 * search that asks about every row would spend the whole rate limit, every
+	 * sync, for as long as the setting stays wrong.
+	 *
+	 * <p>The batch is the one that was sent, not a fresh read of the queue.
+	 * Fills arrive on the disk thread while a request is in flight, and peek
+	 * returns from the head, so re-reading would set aside trades that had
+	 * never been sent.
+	 *
+	 * @param batch a batch the server has just refused as a whole
 	 */
 	private void narrow(TransactionQueue queue, String key, String accountId, List<GeTransaction> batch, Sent sent)
 		throws IOException

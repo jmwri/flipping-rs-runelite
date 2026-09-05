@@ -1167,11 +1167,6 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	/**
-	 * Asks for the sale price and quantity, prefilled with the price a sale
-	 * lists at and everything still held, then hands the answer to the
-	 * plugin. Nothing is sent unless the user confirms.
-	 */
-	/**
 	 * What the Close box starts with in its price field: the price a patient
 	 * sale lists at, or what an instant one would get if the site has no
 	 * listing price. Zero when it has neither, which leaves the field empty
@@ -1204,6 +1199,11 @@ public class FlippingRsPanel extends PluginPanel
 		closePosition(p.getId(), sellPrice, sellQty > 0 ? sellQty : null);
 	}
 
+	/**
+	 * Asks for the sale price and quantity, prefilled with the price a sale
+	 * lists at and everything still held, then hands the answer to the
+	 * plugin. Nothing is sent unless the user confirms.
+	 */
 	private void promptClose(FlippingRsApi.Position p)
 	{
 		final long suggested = suggestedSalePrice(p);

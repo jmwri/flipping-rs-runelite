@@ -177,7 +177,7 @@ class GeHistoryReader
 		final int itemId = icon == null ? 0 : icon.getItemId();
 		final long iconQuantity = icon == null ? 0 : icon.getItemQuantity();
 		long textQuantity = 0;
-		/** The text the "x N" was read off, if any. See the fallback below. */
+		// The text the "x N" was read off, if any. See the fallback below.
 		String countedOn = null;
 		String side = null;
 		long gross = 0;
