@@ -251,8 +251,12 @@ every RuneLite class and it fails with a `LinkageError`. The thin jar is a
 hundred-odd kilobytes of just this plugin, which is what `PluginClassLoader`
 expects.
 
-Every dependency is a transitive of `runelite-client`, so this builds on the
-Plugin Hub in `standard` mode without the dependency-verification step.
+The plugin's own sources compile against nothing but `runelite-client` and
+Lombok, which is exactly what the Plugin Hub's `standard` build provides, so it
+builds there without the dependency-verification step. The three test-only
+dependencies — JUnit, Mockito and MockWebServer — are not part of that: `standard`
+mode replaces this build file and compiles `src/main` alone, so they are never
+resolved and never distributed.
 
 Lombok is pinned at 1.18.30 to match the RuneLite plugin template, and is used
 only for `@Slf4j`. If you ever need to build on a JDK past 21, the fix is to
