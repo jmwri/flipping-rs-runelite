@@ -184,12 +184,12 @@ work is in the cases where that is not straightforward:
   login, carrying the quantity already sold. The baseline is persisted per
   RuneScape account, so the difference comes out as zero instead of re-reporting
   everything on the exchange every time you log in.
-- **Slot reuse.** Collecting a finished offer and placing another one gives the
-  same item, price and size. Three things separate them. The progress going
+- **Slot reuse.** Collecting a finished offer and placing an identical one gives
+  the same item, price and size. Three things separate them. The progress going
   backwards, when the new offer has filled less than the old one had; the old
   offer having finished, since one that is bought, sold or cancelled cannot be
-  running again; and the side, since a buy and a sell are not the same offer
-  however alike the rest of them looks. The second is the one that matters when
+  running again; and the side, since a buy and a sell are not one offer however
+  alike the rest of it looks. The second is the one that matters when
   a collect goes unseen and the new offer carries on past where the old one
   stopped — cancelling a part-filled buy and placing the same buy again, which
   is ordinary flipping. The third catches what progress cannot: a buy placed
@@ -262,9 +262,9 @@ expects.
 The plugin's own sources compile against nothing but `runelite-client` and
 Lombok, which is exactly what the Plugin Hub's `standard` build provides, so it
 builds there without the dependency-verification step. The three test-only
-dependencies — JUnit, Mockito and MockWebServer — are not part of that: `standard`
-mode replaces this build file and compiles `src/main` alone, so they are never
-resolved and never distributed.
+dependencies — JUnit, Mockito and MockWebServer — are not part of that:
+`standard` mode replaces this build file and compiles `src/main` alone, so
+they are never resolved and never distributed.
 
 Lombok is pinned at 1.18.30 to match the RuneLite plugin template, and is used
 only for `@Slf4j`. If you ever need to build on a JDK past 21, the fix is to
