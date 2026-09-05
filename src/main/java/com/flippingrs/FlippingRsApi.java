@@ -933,11 +933,18 @@ public class FlippingRsApi
 	}
 
 	/**
-	 * A list as JSON. Copied into an ArrayList first: the Gson RuneLite ships
-	 * (2.8.5) reflects on the list's own class, and on a modern JDK it cannot
-	 * open {@code java.util.Collections$EmptyList} and friends, so a
-	 * {@code Collections.emptyList()} or {@code singletonList()} handed
-	 * straight to it throws instead of serialising.
+	 * A list as JSON. Copied into an ArrayList first, because the Gson RuneLite
+	 * ships (2.8.5) reflects on the list's own class and asks a private no-arg
+	 * constructor to open itself. A modern JDK refuses -- {@code java.base}
+	 * does not open {@code java.util} -- so a {@code Collections.emptyList()}
+	 * handed straight to it throws InaccessibleObjectException rather than
+	 * serialising.
+	 *
+	 * <p>Lists with no no-arg constructor to find are not asked, and go
+	 * through: {@code singletonList} and {@code Arrays.asList} among them.
+	 * That is what makes it worth doing here rather than at the call sites --
+	 * the failure waits for whichever call happens to be handed an empty list,
+	 * and every other call looks like proof that it cannot happen.
 	 */
 	private JsonElement jsonList(List<?> list)
 	{
