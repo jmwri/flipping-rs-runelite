@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.EnumSet;
@@ -482,6 +483,33 @@ final class FlippingRsPluginTestSupport
 		diskExecutor.submit(() ->
 		{
 		}).get(10, TimeUnit.SECONDS);
+	}
+
+	/**
+	 * Parks the net thread until the returned latch is released. Work handed
+	 * to it meanwhile queues up behind, in order.
+	 *
+	 * <p>For the tests about something changing between a read on one thread
+	 * and the send on the other. Without it, such a test is racing the net
+	 * thread to the change: the send may already have gone, and if what the
+	 * test changes is a mock's stubbing, the stub and the call are on two
+	 * threads at once -- which Mockito does not support.
+	 */
+	CountDownLatch holdNet()
+	{
+		final CountDownLatch release = new CountDownLatch(1);
+		sendExecutor.execute(() ->
+		{
+			try
+			{
+				release.await(10, TimeUnit.SECONDS);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+			}
+		});
+		return release;
 	}
 
 	/** Waits for the net thread to finish whatever was handed to it. */

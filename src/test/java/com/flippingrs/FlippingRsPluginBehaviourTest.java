@@ -1685,11 +1685,20 @@ public class FlippingRsPluginBehaviourTest
 	public void anOfferSnapshotIsNotSentUnderAnotherCharactersJournal() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		// Answered from a field rather than restubbed later: the net thread
+		// asks the same mock, and stubbing one while another thread calls it
+		// is not something Mockito supports.
+		final AtomicLong account = new AtomicLong(1234L);
+		when(support.client.getAccountHash()).thenAnswer(inv -> account.get());
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
 
+		// Held so the character really does change between the slots being
+		// read and the snapshot being sent, rather than whenever the two
+		// threads happen to interleave.
+		final java.util.concurrent.CountDownLatch held = support.holdNet();
 		final WidgetLoaded opened = new WidgetLoaded();
 		opened.setGroupId(InterfaceID.GE_OFFERS);
 		support.plugin.onWidgetLoaded(opened);
@@ -1698,7 +1707,8 @@ public class FlippingRsPluginBehaviourTest
 
 		// Between the slots being read and the snapshot being sent, the client
 		// is on another character.
-		when(support.client.getAccountHash()).thenReturn(9999L);
+		account.set(9999L);
+		held.countDown();
 		support.settleNet();
 		support.settleSwing();
 
@@ -2459,8 +2469,14 @@ public class FlippingRsPluginBehaviourTest
 	public void aHistoryScreenIsNotSentForACharacterWhoDidNotShowIt() throws Exception
 	{
 		support.profileConfig.put("gameAccountId", "acct-1");
+		final AtomicLong account = new AtomicLong(1234L);
+		when(support.client.getAccountHash()).thenAnswer(inv -> account.get());
 		historyScreen("15,000,000 coins");
 
+		// Held for the same reason as its twin for the open slots: the change
+		// has to land between the read and the send, not wherever the two
+		// threads happen to meet.
+		final java.util.concurrent.CountDownLatch held = support.holdNet();
 		final WidgetLoaded opened = new WidgetLoaded();
 		opened.setGroupId(InterfaceID.GE_HISTORY);
 		support.plugin.onWidgetLoaded(opened);
@@ -2469,7 +2485,8 @@ public class FlippingRsPluginBehaviourTest
 
 		// Between the screen being read and the rows being sent, the client is
 		// on another character.
-		when(support.client.getAccountHash()).thenReturn(9999L);
+		account.set(9999L);
+		held.countDown();
 		support.settleNet();
 		support.settleSwing();
 
