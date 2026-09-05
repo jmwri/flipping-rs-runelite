@@ -985,6 +985,33 @@ public class FlippingRsApiTest
 		assertTrue(result.getProblems().get(0).contains("no side"));
 	}
 
+	/**
+	 * And it holds for an id that tries to climb out of the prefix.
+	 *
+	 * <p>The watchlist and position ids go into a path, and they come back from
+	 * the server rather than from here. A slash or a dot segment in one is the
+	 * shape that turns a plugin call into a call somewhere else, and the prefix
+	 * is the whole of what says a plugin key cannot reach further than a plugin
+	 * key should. The ordinary ids below would never show it either way.
+	 */
+	@Test
+	public void anIdThatTriesToClimbOutStaysUnderThePrefix() throws Exception
+	{
+		final String[] hostile = {"..", "../..", "a/b", "%2e%2e", "a?x=1", "a#f", "/"};
+		for (String id : hostile)
+		{
+			server.enqueue(new MockResponse().setBody("{}"));
+			api.deletePosition("k", id);
+			final String path = server.takeRequest().getPath();
+			assertTrue("deleting " + id + " reached " + path, path.startsWith("/api/plugin/"));
+
+			server.enqueue(new MockResponse().setBody("{\"id\":\"wl_1\"}"));
+			api.updateWatchlist("k", id, Collections.singletonList(1));
+			final String patched = server.takeRequest().getPath();
+			assertTrue("patching " + id + " reached " + patched, patched.startsWith("/api/plugin/"));
+		}
+	}
+
 	/** The whole surface, pinned: nothing outside /api/plugin is ever called. */
 	@Test
 	public void everyCallStaysUnderThePluginPrefix() throws Exception
