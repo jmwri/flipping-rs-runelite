@@ -109,6 +109,14 @@ public class FlippingRsApi
 	}
 
 	// ------------------------------------------------------------ the shapes
+	//
+	// These mirror the server's replies rather than the sidebar's needs, so a
+	// field with no getter and no reader is not dead code -- it is the wire
+	// contract written down, and Gson would drop it silently if it went. There
+	// are ten of them today: a quote's spread, tax and data age; a position's
+	// bought and sold quantities; the week's total flips and tax paid; the key
+	// owner's display name; and what a reconciliation already had, matched and
+	// ignored. Anything the panel actually draws has a getter.
 
 	/**
 	 * One of the owner's watchlists. The side panel shows one of these as the
