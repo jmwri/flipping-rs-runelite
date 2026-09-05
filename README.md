@@ -23,8 +23,9 @@ of the plugin you installed months ago.
 2. On flippingrs.com, go to **Account**, then **API keys**, and create a key
    for the RuneLite plugin. Copy it; it is only shown once.
 3. Paste it into the plugin's **API key** setting.
-4. Open the FlippingRS sidebar, go to the **Account** tab, and pick which
-   journal this character's trades go into.
+4. Log in. The **Account** tab in the FlippingRS sidebar will have picked
+   your default journal for this character on its own; change it there if
+   this character should file somewhere else.
 
 Each character remembers its own journal, so an alt can have its own without
 you changing a setting every time you log in. That matters for more than
