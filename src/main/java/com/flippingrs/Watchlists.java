@@ -176,6 +176,15 @@ final class Watchlists
 		}
 	}
 
+	/**
+	 * The watchlist the tab is showing: the remembered one, or the first the
+	 * plugin can actually use.
+	 *
+	 * <p>One without an id is skipped rather than counted. The picker drops
+	 * those, so settling on one had the tab name the next list along while
+	 * listing this one's items -- and an add would have gone out as a PATCH
+	 * to a watchlist with no id, which is not a request that can be built.
+	 */
 	@Nullable
 	private FlippingRsApi.Watchlist currentOf(List<FlippingRsApi.Watchlist> known)
 	{
@@ -184,14 +193,23 @@ final class Watchlists
 			return null;
 		}
 		final String remembered = store.rememberedWatchlistId();
+		FlippingRsApi.Watchlist first = null;
 		for (FlippingRsApi.Watchlist watchlist : known)
 		{
-			if (watchlist.id != null && watchlist.id.equals(remembered))
+			if (watchlist == null || watchlist.id == null || watchlist.id.isEmpty())
+			{
+				continue;
+			}
+			if (watchlist.id.equals(remembered))
 			{
 				return watchlist;
 			}
+			if (first == null)
+			{
+				first = watchlist;
+			}
 		}
-		return known.get(0);
+		return first;
 	}
 
 	/** Whether an item is on the watchlist the panel is showing. */

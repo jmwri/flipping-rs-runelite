@@ -1314,7 +1314,9 @@ public class FlippingRsPanel extends PluginPanel
 			FlippingRsApi.Watchlist select = null;
 			for (FlippingRsApi.Watchlist watchlist : available)
 			{
-				if (watchlist == null || watchlist.id == null)
+				// An id is what an edit is addressed to, so a row without one
+				// is a row nothing can be added to or removed from.
+				if (watchlist == null || watchlist.id == null || watchlist.id.isEmpty())
 				{
 					continue;
 				}

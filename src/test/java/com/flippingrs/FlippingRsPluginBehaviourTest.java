@@ -1753,6 +1753,29 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(Collections.singletonList(4151), support.panel.watchlistForTest());
 	}
 
+	/**
+	 * And with nothing remembered it is not the one the tab settles on either.
+	 *
+	 * <p>The picker drops it, so a tab that settled on it named the next list
+	 * along while listing this one's items -- and the next add would have gone
+	 * out as a PATCH to a watchlist with no id.
+	 */
+	@Test
+	public void anIdLessWatchlistIsNeverTheOneOnShow() throws Exception
+	{
+		final FlippingRsApi.Watchlist broken = new FlippingRsApi.Watchlist();
+		broken.name = "No id";
+		broken.itemIds = Collections.singletonList(11802);
+		serverPanel().watchlists = Arrays.asList(broken, watchlist("wl_1", "Plan", 4151));
+		support.showSidebar();
+
+		support.connect();
+
+		assertEquals("wl_1", support.panel.selectedWatchlistId());
+		assertEquals("the items shown are the ones the picker names",
+			Collections.singletonList(4151), support.panel.watchlistForTest());
+	}
+
 	@Test
 	@SuppressWarnings("unchecked")
 	public void openingTheHistorySendsWhatItShows() throws Exception
