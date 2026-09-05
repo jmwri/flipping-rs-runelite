@@ -94,7 +94,7 @@ import okhttp3.OkHttpClient;
 @PluginDescriptor(
 	name = "FlippingRS",
 	description = "Keeps your flippingrs.com journal up to date on its own: every Grand Exchange trade is recorded as it happens",
-	tags = {"grand", "exchange", "ge", "flip", "flipping", "merch", "profit", "journal", "tracker", "tax"}
+	tags = {"grand", "exchange", "ge", "flip", "flipping", "merching", "profit", "journal", "tracker", "tax"}
 )
 public class FlippingRsPlugin extends Plugin
 {
