@@ -241,6 +241,17 @@ final class CatchUp
 			panel.onPanel(p -> p.setActivityNotice("Couldn't check your open offers against your journal: " + why,
 				ColorScheme.BRAND_ORANGE));
 		}
+		catch (RuntimeException e)
+		{
+			// Not every failure is an IOException: a key the HTTP client will
+			// not put in a header is refused before the request exists. This
+			// is a one-shot task, so an escape costs only this snapshot -- but
+			// it would cost it silently, and the next one would go the same way.
+			log.warn("unexpected failure while sending the open offers", e);
+			panel.onPanel(p -> p.setActivityNotice(
+				"Something went wrong checking your open offers. Details are in the client log.",
+				ColorScheme.BRAND_ORANGE));
+		}
 	}
 
 	/**
@@ -362,6 +373,13 @@ final class CatchUp
 			log.warn("could not send the exchange history: {}", e.getMessage());
 			final String why = FlippingRsApi.describe(e);
 			panel.onPanel(p -> p.setActivityNotice("Couldn't send your Grand Exchange history: " + why,
+				ColorScheme.PROGRESS_ERROR_COLOR));
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure while sending the exchange history", e);
+			panel.onPanel(p -> p.setActivityNotice(
+				"Something went wrong sending your Grand Exchange history. Details are in the client log.",
 				ColorScheme.PROGRESS_ERROR_COLOR));
 		}
 	}

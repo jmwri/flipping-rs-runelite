@@ -12,7 +12,9 @@ import net.runelite.client.ui.ColorScheme;
  * actions the site's own Positions page has, and the server does the maths
  * and answers in its own words when it refuses, which is what the tab shows.
  *
- * <p>Net thread.
+ * <p>Net thread. Neither throws: the user pressed a button and is owed an
+ * answer, and an escape here would be a one-shot task dying with the reason
+ * in the log and nothing on the tab that asked.
  */
 @Slf4j
 final class PositionActions
@@ -51,6 +53,13 @@ final class PositionActions
 			final String why = FlippingRsApi.describe(e);
 			panel.onPanel(p -> p.setJournalNotice("Couldn't record the sale: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
 		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure while closing a position", e);
+			panel.onPanel(p -> p.setJournalNotice(
+				"Something went wrong recording the sale. Details are in the client log.",
+				ColorScheme.PROGRESS_ERROR_COLOR));
+		}
 	}
 
 	/** Deletes a lot that was never a flip. The sidebar has already asked the user. */
@@ -72,6 +81,13 @@ final class PositionActions
 			log.debug("could not delete the position", e);
 			final String why = FlippingRsApi.describe(e);
 			panel.onPanel(p -> p.setJournalNotice("Couldn't delete the position: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure while deleting a position", e);
+			panel.onPanel(p -> p.setJournalNotice(
+				"Something went wrong deleting the position. Details are in the client log.",
+				ColorScheme.PROGRESS_ERROR_COLOR));
 		}
 	}
 

@@ -53,6 +53,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -1042,6 +1043,41 @@ public class FlippingRsPluginBehaviourTest
 
 		final String status = support.panel.statusTextForTest();
 		assertTrue("the tab has to say something: " + status, status.contains("went wrong"));
+	}
+
+	/**
+	 * And the same for every other thing the net thread is asked to do on the
+	 * user's behalf.
+	 *
+	 * <p>These run as one-shot tasks, so an escape cancels nothing -- it just
+	 * kills that task, with the reason in the log and nothing at all on the tab
+	 * whose button was pressed. One key with a control character in it makes
+	 * every call fail this way, so it is all of them or none.
+	 */
+	@Test
+	public void anUnexpectedFailureIsReportedOnTheTabThatAskedForIt() throws Exception
+	{
+		support.profileConfig.put("gameAccountId", "acct-1");
+		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
+		support.connect();
+		when(support.api.updateWatchlist(anyString(), anyString(), anyList()))
+			.thenThrow(new IllegalArgumentException("bad header value"));
+		doThrow(new IllegalArgumentException("bad header value"))
+			.when(support.api).closePosition(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(), any());
+		doThrow(new IllegalArgumentException("bad header value"))
+			.when(support.api).deletePosition(anyString(), anyString());
+
+		support.addToWatchlist(11802);
+		assertTrue("the watchlist tab: " + support.panel.watchlistNoticeForTest(),
+			support.panel.watchlistNoticeForTest().contains("went wrong"));
+
+		support.closePosition("pos-1", 1_500_000, 4L);
+		assertTrue("the journal tab: " + support.panel.journalNoticeForTest(),
+			support.panel.journalNoticeForTest().contains("went wrong"));
+
+		support.deletePosition("pos-1");
+		assertTrue("and again for a delete: " + support.panel.journalNoticeForTest(),
+			support.panel.journalNoticeForTest().contains("went wrong"));
 	}
 
 	/** The panel read is the connection test, so a refusal on connect is a refused connection. */

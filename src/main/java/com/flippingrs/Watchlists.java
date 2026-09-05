@@ -412,6 +412,19 @@ final class Watchlists
 			final String why = FlippingRsApi.describe(e);
 			panel.onPanel(p -> p.setWatchlistNotice("Couldn't update your watchlist: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
 		}
+		catch (RuntimeException e)
+		{
+			// Not every way this can fail is an IOException. A key with a stray
+			// control character in it is refused by the HTTP client before the
+			// request is built, and a config read can throw. This runs as a
+			// one-shot task on the net thread, so an escape kills the task and
+			// nothing else -- but the user right-clicked Add to watchlist and
+			// is owed an answer either way.
+			log.warn("unexpected failure while changing the watchlist", e);
+			panel.onPanel(p -> p.setWatchlistNotice(
+				"Something went wrong updating your watchlist. Details are in the client log.",
+				ColorScheme.PROGRESS_ERROR_COLOR));
+		}
 	}
 
 	private static Set<Integer> setOf(List<Integer> ids)
