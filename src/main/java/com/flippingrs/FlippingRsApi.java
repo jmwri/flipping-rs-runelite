@@ -930,6 +930,48 @@ public class FlippingRsApi
 	// ---------------------------------------------------------------- plumbing
 
 	/**
+	 * The API key as it can actually be sent, or empty when there is none.
+	 *
+	 * <p>Trims, and trims more than {@link String#trim} does. A key copied out
+	 * of a web page can arrive with a non-breaking space on the end of it, and
+	 * that is whitespace to a reader but not to trim, nor even to strip, since
+	 * Character.isWhitespace says no. A header value may hold only printable
+	 * ASCII, so the HTTP client refuses the request before it is built: every
+	 * call throws, for a key the settings box plainly shows as correct, which
+	 * is the least diagnosable shape a wrong key can take.
+	 *
+	 * <p>So the ends are trimmed of anything that is not a printable ASCII
+	 * character other than a space, which covers what trim removed and the
+	 * passengers it did not. Only the ends: a character in the middle is a key
+	 * that is wrong rather than one that was pasted untidily, and quietly
+	 * editing that would send a different key from the one the user set.
+	 */
+	static String trimmedKey(@Nullable String configured)
+	{
+		if (configured == null)
+		{
+			return "";
+		}
+		int from = 0;
+		int to = configured.length();
+		while (from < to && !keyable(configured.charAt(from)))
+		{
+			from++;
+		}
+		while (to > from && !keyable(configured.charAt(to - 1)))
+		{
+			to--;
+		}
+		return configured.substring(from, to);
+	}
+
+	/** Whether a character can begin or end a key: printable ASCII, and not a space. */
+	private static boolean keyable(char c)
+	{
+		return c > 0x20 && c < 0x7f;
+	}
+
+	/**
 	 * Something to show for an exception. Not every IOException carries a
 	 * message, and passing null on to the panel made a failed send read as
 	 * "Last sent: never", which is the opposite of what happened.

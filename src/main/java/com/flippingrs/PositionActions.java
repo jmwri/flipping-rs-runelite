@@ -101,7 +101,7 @@ final class PositionActions
 				ColorScheme.BRAND_ORANGE));
 			return null;
 		}
-		final String key = config.apiKey().trim();
+		final String key = FlippingRsApi.trimmedKey(config.apiKey());
 		if (key.isEmpty())
 		{
 			panel.onPanel(p -> p.setJournalNotice("Add your API key in the plugin settings to " + what + ".",

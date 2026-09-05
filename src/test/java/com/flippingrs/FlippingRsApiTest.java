@@ -552,6 +552,44 @@ public class FlippingRsApiTest
 	 * "Could not connect: ", and not every failure carries a message -- so a
 	 * sentence that stops at the colon tells the user nothing at all.
 	 */
+	/**
+	 * A key is trimmed of what a paste can bring with it, not just of spaces.
+	 *
+	 * <p>Copying a key out of a web page can pick up a non-breaking space.
+	 * String.trim leaves it, and so does strip, because Character.isWhitespace
+	 * does not count it -- but a header value may hold only printable ASCII, so
+	 * the HTTP client throws before the request is built. Every call then fails
+	 * for a key the settings box shows as correct.
+	 */
+	@Test
+	public void aKeyIsTrimmedOfWhatAPasteBringsWithIt()
+	{
+		assertEquals("frs_key", FlippingRsApi.trimmedKey("frs_key"));
+		assertEquals("plain spaces, as trim always did",
+			"frs_key", FlippingRsApi.trimmedKey("  frs_key  "));
+		assertEquals("a non-breaking space, which trim does not remove",
+			"frs_key", FlippingRsApi.trimmedKey("frs_key\u00a0"));
+		assertEquals("at either end", "frs_key", FlippingRsApi.trimmedKey("\u00a0frs_key\u00a0"));
+		assertEquals("and a stray newline", "frs_key", FlippingRsApi.trimmedKey("frs_key\n"));
+		assertEquals("nothing but passengers is no key at all", "", FlippingRsApi.trimmedKey("\u00a0 "));
+		assertEquals("", FlippingRsApi.trimmedKey(null));
+
+		// Not the middle: that is a key that is wrong, not one pasted untidily,
+		// and editing it would send a different key from the one that was set.
+		assertEquals("frs\u00a0key", FlippingRsApi.trimmedKey("frs\u00a0key"));
+	}
+
+	/** And a key trimmed that way is one a request can actually be built with. */
+	@Test
+	public void aTrimmedKeyCanGoInAHeader() throws Exception
+	{
+		server.enqueue(new MockResponse().setBody("{}"));
+
+		api.account(FlippingRsApi.trimmedKey("  frs_key\u00a0"));
+
+		assertEquals("frs_key", server.takeRequest().getHeader("X-Api-Key"));
+	}
+
 	@Test
 	public void aFailureWithNoMessageIsNamedByItsKind()
 	{

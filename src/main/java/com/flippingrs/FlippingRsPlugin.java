@@ -1026,7 +1026,7 @@ public class FlippingRsPlugin extends Plugin
 				return;
 			}
 
-			final String key = config.apiKey().trim();
+			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			if (key.isEmpty())
 			{
 				onPanel(p -> p.setStatus(
@@ -1483,7 +1483,7 @@ public class FlippingRsPlugin extends Plugin
 				return;
 			}
 
-			final String key = config.apiKey().trim();
+			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			if (key.isEmpty())
 			{
 				onPanel(p -> {
@@ -1632,7 +1632,7 @@ public class FlippingRsPlugin extends Plugin
 			{
 				return;
 			}
-			final String key = config.apiKey().trim();
+			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			if (key.isEmpty())
 			{
 				return;

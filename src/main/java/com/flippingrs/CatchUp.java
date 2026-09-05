@@ -207,7 +207,7 @@ final class CatchUp
 				return;
 			}
 			drain.run();
-			final String key = config.apiKey().trim();
+			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			final String accountId = store.chosenAccount();
 			if (key.isEmpty() || accountId == null)
 			{
@@ -330,7 +330,7 @@ final class CatchUp
 				return;
 			}
 			drain.run();
-			final String key = config.apiKey().trim();
+			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			final String accountId = store.chosenAccount();
 			if (key.isEmpty() || accountId == null)
 			{
