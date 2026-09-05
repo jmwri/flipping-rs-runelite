@@ -438,7 +438,6 @@ final class FlippingRsPluginTestSupport
 		return sendExecutor.period.get();
 	}
 
-	/** The user picking a journal in the Account tab, listener and all. */
 	/** The user picking a journal in the dropdown, listener, wiring and all. */
 	void chooseAccount(String id) throws Exception
 	{
@@ -447,7 +446,6 @@ final class FlippingRsPluginTestSupport
 		settleSwing();
 	}
 
-	/** The user picking a different watchlist in the sidebar. */
 	/** The user picking a watchlist in the dropdown, the same way. */
 	void chooseWatchlist(String id) throws Exception
 	{

@@ -1185,7 +1185,6 @@ public class FlippingRsPluginBehaviourTest
 		assertTrue("confirmed fills are the journal's now, not the buffer's", support.panel.pendingForTest().isEmpty());
 	}
 
-	/** A refused batch is Activity's news, not the connection's. */
 	/**
 	 * A batch the site takes in and then refuses part of. Its reply says how
 	 * many rows it would not record, not which, so there is nothing to set
@@ -1193,6 +1192,9 @@ public class FlippingRsPluginBehaviourTest
 	 * way. This notice is the only time anyone is told those trades did not
 	 * make it, so it has to say they are gone rather than merely that
 	 * something went wrong.
+	 *
+	 * <p>And it goes on Activity, which is where what the plugin did with a
+	 * trade is reported. The connection is fine: the site answered.
 	 */
 	@Test
 	public void rowsRefusedInsideAGoodReplyAreReportedAsGone() throws Exception
