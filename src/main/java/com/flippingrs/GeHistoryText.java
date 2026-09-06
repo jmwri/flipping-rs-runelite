@@ -72,8 +72,8 @@ class GeHistoryText
 				reset();
 				return;
 			}
-			final Widget[] children = list.getDynamicChildren();
-			if (children == null)
+			final java.util.List<Widget> children = RowText.under(list);
+			if (children.isEmpty())
 			{
 				reset();
 				return;
@@ -85,7 +85,7 @@ class GeHistoryText
 				{
 					break;
 				}
-				if (icon == null || icon.getItemId() <= 0 || icon.isHidden())
+				if (icon.getItemId() <= 0)
 				{
 					continue;
 				}
@@ -146,39 +146,19 @@ class GeHistoryText
 	 * The line of text belonging to the row an item icon is on.
 	 *
 	 * <p>A row is not one widget: it is an icon and one or more pieces of text
-	 * laid out beside it, and only their positions say which belong together.
-	 * The one taken is the last text that starts within the icon's own height,
-	 * which is the end of that row's sentence and so where something added to
-	 * it reads as part of it.
+	 * laid out at the same height, and only their positions say which belong
+	 * together. The band is the icon's own height grown by half again, because
+	 * a row's text is not always boxed to the same height as its picture --
+	 * requiring it to start inside the icon exactly is what made this find
+	 * nothing at all.
 	 */
 	@Nullable
-	private static Widget textOn(Widget[] children, Widget icon)
+	private static Widget textOn(java.util.List<Widget> children, Widget icon)
 	{
-		final int top = icon.getRelativeY();
-		final int bottom = top + Math.max(1, icon.getHeight());
-		Widget last = null;
-		for (Widget child : children)
-		{
-			if (child == null || child == icon || child.isHidden() || child.getItemId() > 0)
-			{
-				continue;
-			}
-			final String text = child.getText();
-			if (text == null || text.isEmpty())
-			{
-				continue;
-			}
-			final int y = child.getRelativeY();
-			if (y < top || y >= bottom)
-			{
-				continue;
-			}
-			if (last == null || child.getRelativeX() > last.getRelativeX())
-			{
-				last = child;
-			}
-		}
-		return last;
+		final int height = Math.max(1, icon.getHeight());
+		final int slack = height / 2;
+		return RowText.lastIn(children, icon.getRelativeY() - slack,
+			icon.getRelativeY() + height + slack);
 	}
 
 	/**

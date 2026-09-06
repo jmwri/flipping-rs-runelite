@@ -12,8 +12,6 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import javax.annotation.Nullable;
 import net.runelite.api.Client;
-import net.runelite.api.GrandExchangeOffer;
-import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
@@ -21,33 +19,20 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * The site's prices, drawn on the items the exchange is showing -- on whatever
- * screen it is showing them.
+ * The site's prices, drawn on items the exchange shows without a line of text
+ * to put them on.
  *
- * <p>The exchange spends most of its time on the eight-slot screen, and until
- * now that was the one place the plugin said nothing. A slot tells you what
- * you asked for and how much of it has happened; what it cannot tell you is
- * whether what you asked for is still the right number. The same goes for the
- * page you get by clicking an offer, your history, the collection box and the
- * rest: the item is right there and the price is not.
+ * <p>Everywhere the exchange writes a sentence about an item -- the offer
+ * setup screen, an open offer, a row of your history -- the prices go on the
+ * end of that sentence, because a line the client wrote is already positioned,
+ * sized, wrapped and clipped by the screen that owns it. What is left is the
+ * screens that are grids of pictures and nothing else: the collection box, a
+ * view-only exchange, the price checker, the inventory beside it all. There is
+ * nothing there to add to, so those are painted on.
  *
- * <p>Two kinds of line. On one of your own offers, where the plugin knows what
- * you asked for as well as what the item is, it draws the price for the side
- * you are on and how far your offer is from it -- green when the offer is
- * priced to fill sooner, red when it is priced to sit. Everywhere else there
- * is nothing to compare against, so it draws the two ends of the spread, and
- * falls back to the margin alone in a box too narrow for both.
- *
- * <p>Nothing is drawn for an item with no quote, which is every item before
- * the first fetch lands and every unwatched item on a server that does not
- * price single items. A blank box is the honest rendering of not knowing.
- *
- * <p>Drawn on top of the interface rather than inside it. The client will let
- * a plugin add widgets of its own, which would scroll and clip themselves and
- * would need re-adding every time the exchange rebuilds a screen; this draws
- * over the top and does its own clipping instead. The trade is that a caption
- * here can never obscure a real part of the interface by being in the wrong
- * place after a game update -- it is only ever paint.
+ * <p>The two ends of the spread, and the margin alone in a box too narrow for
+ * both. Nothing at all for an item with no quote, which is every item before
+ * the first fetch lands: a blank box is the honest rendering of not knowing.
  */
 class GeItemInfoOverlay extends Overlay
 {
@@ -97,52 +82,9 @@ class GeItemInfoOverlay extends Overlay
 	 * can be pinned by a test without a client running.
 	 */
 	@Nullable
-	static Caption captionFor(@Nullable GrandExchangeOffer offer, @Nullable Quote quote)
+	static Caption captionFor(@Nullable Quote quote)
 	{
-		if (quote == null)
-		{
-			return null;
-		}
-		if (offer != null && offer.getState() != null && offer.getState() != GrandExchangeOfferState.EMPTY)
-		{
-			return againstYourOffer(offer, quote);
-		}
-		return justThePrices(quote);
-	}
-
-	/**
-	 * An item you have an offer on: the price for the side you are on, and how
-	 * far your offer is from it.
-	 */
-	@Nullable
-	private static Caption againstYourOffer(GrandExchangeOffer offer, Quote quote)
-	{
-		final GrandExchangeOfferState state = offer.getState();
-		final boolean buying = state == GrandExchangeOfferState.BUYING
-			|| state == GrandExchangeOfferState.CANCELLED_BUY
-			|| state == GrandExchangeOfferState.BOUGHT;
-		// The price the site says to trade at on this side. The two are not
-		// interchangeable: they are the ends of the spread a flip lives in,
-		// and measuring an offer against the wrong one would call every
-		// sensible offer badly priced by exactly the width of it.
-		final long market = buying ? quote.getBuyAt() : quote.getSellAt();
-		if (market <= 0)
-		{
-			return null;
-		}
-		final long asked = offer.getPrice();
-		// Positive means the offer is on the side of the price that fills
-		// sooner: a buy at or above the site's buy price, a sale at or below
-		// its sell price. Negative is the patient end of the flip, which is
-		// where the profit is and also where an offer can sit all evening --
-		// so it is called out rather than judged.
-		final long edge = buying ? asked - market : market - asked;
-		final Color colour = edge >= 0
-			? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR;
-		return new Caption(
-			(buying ? "Buy " : "Sell ") + FlippingRsPanel.exact(market) + "  " + FlippingRsPanel.signedExact(edge),
-			FlippingRsPanel.signedExact(edge),
-			colour);
+		return quote == null ? null : justThePrices(quote);
 	}
 
 	/**
@@ -194,7 +136,7 @@ class GeItemInfoOverlay extends Overlay
 				// The setup screen carries its own; see GeSetupText.
 				continue;
 			}
-			final Caption caption = captionFor(spot.offer, quoteFor.apply(spot.itemId));
+			final Caption caption = captionFor(quoteFor.apply(spot.itemId));
 			if (caption != null)
 			{
 				draw(graphics, metrics, spot, caption);

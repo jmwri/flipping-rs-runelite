@@ -237,8 +237,10 @@ final class GeItems
 			final Rectangle bounds = boundsOf(client.getWidget(SLOTS[slot]));
 			if (bounds != null)
 			{
-				// A slot is its own box on a screen that does not scroll.
-				into.add(new Spot(offer.getItemId(), bounds, offer, null));
+				// Not painted on: GeSlotText adds to the slot's own text.
+				// Reported all the same, so a right-click finds the item and a
+				// price is fetched for it.
+				into.add(new Spot(offer.getItemId(), bounds, offer, null, false));
 			}
 		}
 	}

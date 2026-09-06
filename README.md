@@ -136,17 +136,18 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Prices are drawn on the items themselves on the rest of those screens.
-On one of your own offers the plugin knows what you asked for as well as what
-the item is, so it shows the price for the side you are on and how far your
-offer is from it — green when your offer is priced to fill sooner, red when it
-is priced to sit. The offer screen is where a flipper actually spends their
-time, and what an offer box cannot tell you on its own is whether the number
-you asked for is still the right one.
+Each of your open offers gains a line too. The plugin knows what you asked for
+as well as what the item is, so it shows the price for the side you are on and
+how far your offer is from it — green when your offer is priced to fill sooner,
+red when it is priced to sit. That is what an offer box cannot tell you on its
+own: whether the number you asked for is still the right one.
 
-Everywhere else there is nothing of yours to compare against, so it shows the
-two ends of the spread, and the margin alone where the box is too narrow for
-both.
+Those three — the setup screen, your offers and your history — are all added to
+text the game already draws, so the game places, sizes, wraps and clips them.
+The screens that are grids of pictures with nothing written on them, like the
+collection box, a view-only exchange and the price checker, have no line to add
+to, so those are painted on: the two ends of the spread, or the margin alone
+where the box is too narrow for both.
 
 All of this works for any item, not only the ones on your watchlist. Nothing
 is drawn for an item the site has no price for, which is the honest rendering
@@ -379,10 +380,14 @@ fills. Everything else is a collaborator it builds in `wire()`:
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.
-- `GeHistoryText` does the same for each row of the history list. Both work
-  through `Appended`, which holds what a line said before and can tell the
-  client rewriting it from the text it put there -- without which a line grows
-  another copy of its prices every time the screen refreshes.
+- `GeHistoryText` and `GeSlotText` do the same for each row of the history and
+  each of the eight offer boxes. All three work through `Appended`, which holds
+  what a line said before and can tell the client rewriting it from the text it
+  put there -- without which a line grows another copy of its prices every time
+  the screen refreshes. `RowText` is how they find the line to add to, which is
+  a geometric question rather than a structural one: an exchange screen is a
+  flat bag of widgets, and what makes them a row is only that they were laid
+  out at the same height.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
   click that asked, and one click answers one message. Which click that is is

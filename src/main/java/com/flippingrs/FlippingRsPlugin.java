@@ -197,6 +197,7 @@ public class FlippingRsPlugin extends Plugin
 	private GeItemInfoOverlay infoOverlay;
 	private GeSetupText setupText;
 	private GeHistoryText historyText;
+	private GeSlotText slotText;
 	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
@@ -263,6 +264,7 @@ public class FlippingRsPlugin extends Plugin
 		overlayManager.add(infoOverlay);
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
+		slotText = new GeSlotText(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
@@ -519,6 +521,12 @@ public class FlippingRsPlugin extends Plugin
 			final GeHistoryText history = historyText;
 			clientThread.invoke(history::reset);
 			historyText = null;
+		}
+		if (slotText != null)
+		{
+			final GeSlotText slots = slotText;
+			clientThread.invoke(slots::reset);
+			slotText = null;
 		}
 		examinePrices = null;
 		if (infoOverlay != null)
@@ -908,6 +916,11 @@ public class FlippingRsPlugin extends Plugin
 		if (history != null)
 		{
 			history.update();
+		}
+		final GeSlotText slots = slotText;
+		if (slots != null)
+		{
+			slots.update();
 		}
 	}
 
