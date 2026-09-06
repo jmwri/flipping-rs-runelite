@@ -136,14 +136,18 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Each of your open offers gains one figure on the end of its own line: how far
-your price is from what the site says that side is worth — green when your
-offer is priced to fill sooner, red when it is priced to sit. One figure
-because an offer box is the smallest space in the exchange and has no room of
-its own to give. It is also the right one to keep: the box already tells you
-the item, the side and your price, and the only thing it cannot tell you is
-whether that price is still the right one. The prices behind it are a hover
-away on the same screen. That is what an offer
+Each of your open offers gains three lines: the site's buy price, its sell
+price, and the margin between them after tax. The side you are trading is in
+white and carries how far your own offer is from it — green when your offer is
+priced to fill sooner, red when it is priced to sit. The other side is greyed:
+it is not what you are doing now, but it is what you will do next, since a buy
+that has filled is a sale about to be listed.
+
+A line each rather than one line of everything, because a price and its
+difference stop being two things the moment either is long — a hundred million
+buying and a hundred and ten million selling is most of a line before anything
+is said about it. The offer boxes are made taller to hold them, and the
+container and window round them grow to match. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is
@@ -392,10 +396,14 @@ fills. Everything else is a collaborator it builds in `wire()`:
   fixed.
 - `GeHistoryText`, `GeSlotText` and `GeTooltipText` do the same for each row of
   the history, each of the eight offer boxes, and whichever hover text is up.
-  Nothing here resizes anything: an earlier attempt made the offer boxes taller
-  to fit a second line, and it could not be made to hold still, because it
-  changed a layout and then read that same layout back as its own baseline.
-  Everything now fits in the room the game already leaves. All three work through `Appended`, which holds
+  `GeSlotLayout` is the one thing that moves the game's furniture rather than
+  adding to it, and the way that goes wrong is worth knowing: an earlier
+  version changed a layout and then read that same layout back as its baseline,
+  so growing the container moved the boxes and the next look could not tell
+  that from the client having laid them out afresh. It grew from its own
+  growth. The layout is now read exactly once, when the screen opens, and every
+  write after is computed from that -- so writing twice changes nothing and
+  nothing is ever measured after it has been moved. All three work through `Appended`, which holds
   what a line said before and can tell the client rewriting it from the text it
   put there -- without which a line grows another copy of its prices every time
   the screen refreshes. `RowText` is how they find the line to add to, which is

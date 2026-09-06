@@ -29,6 +29,12 @@ public class GeSlotTextTest
 		return text.replaceAll("</?col[^>]*>", "");
 	}
 
+	/** The lines the box is given, without their colours. */
+	private static String[] lines(String text)
+	{
+		return plain(text).split("<br>");
+	}
+
 	private static Quote whip()
 	{
 		final Quote quote = new Quote();
@@ -84,9 +90,10 @@ public class GeSlotTextTest
 	 * or over the site's buy price is an offer that will fill sooner, and is
 	 * said in green.
 	 *
-	 * <p>Only the difference. An offer box has no room of its own to give, so
-	 * this goes on the end of a line the game already wrote -- and the one
-	 * thing the box cannot tell you is whether your price is still right.
+	 * <p>A line each, because a price and its difference on one line stop being
+	 * two things the moment either is long: a hundred million buying and a
+	 * hundred and ten million selling is most of a line before anything is
+	 * said about it.
 	 */
 	@Test
 	public void aBuyIsMeasuredAgainstTheSitesBuyPrice()
@@ -94,8 +101,12 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip());
 
 		assertNotNull(text);
-		assertEquals("how far your offer is from what that side is worth",
-			"  +5.0K", plain(text));
+		final String[] lines = lines(text);
+		assertEquals("a line each, and the margin under them", 3, lines.length);
+		assertEquals("your side carries how far you are from it",
+			"Buy 1.48M  +5.0K", lines[0]);
+		assertEquals("the side you are not on is just the price", "Sell 1.52M", lines[1]);
+		assertEquals("+32.0K", lines[2]);
 		assertTrue(text, text.contains(GOOD));
 	}
 
@@ -106,7 +117,7 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip());
 
 		assertNotNull(text);
-		assertEquals("  -10.0K", plain(text));
+		assertEquals("Buy 1.48M  -10.0K", lines(text)[0]);
 		assertTrue(text, text.contains(BAD));
 	}
 
@@ -121,14 +132,38 @@ public class GeSlotTextTest
 	{
 		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip());
 		assertNotNull(good);
-		assertEquals("  +10.0K", plain(good));
+		assertEquals("the sale's own side carries the difference",
+			"Sell 1.52M  +10.0K", lines(good)[1]);
+		assertEquals("and the buy price is just a price", "Buy 1.48M", lines(good)[0]);
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
 			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip());
 		assertNotNull(optimistic);
-		assertEquals("  -80.0K", plain(optimistic));
+		assertEquals("Sell 1.52M  -80.0K", lines(optimistic)[1]);
 		assertTrue(optimistic, optimistic.contains(BAD));
+	}
+
+	/**
+	 * Prices in the hundreds of millions, which is what a single line could
+	 * not hold. Each figure has a line, so the length of one stops mattering.
+	 */
+	@Test
+	public void largePricesEachGetALine()
+	{
+		final Quote big = new Quote();
+		big.id = 4151;
+		big.instantSell = 100_000_000;
+		big.instantBuy = 110_000_000;
+		big.netMargin = 8_800_000;
+
+		final String[] lines = lines(GeSlotText.textFor(
+			offer(GrandExchangeOfferState.BUYING, 99_000_000), big));
+
+		assertEquals(3, lines.length);
+		assertEquals("Buy 100.00M  -1.00M", lines[0]);
+		assertEquals("Sell 110.00M", lines[1]);
+		assertEquals("+8.80M", lines[2]);
 	}
 
 	/**

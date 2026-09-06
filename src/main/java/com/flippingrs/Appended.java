@@ -3,6 +3,7 @@ package com.flippingrs;
 import java.util.Objects;
 import javax.annotation.Nullable;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetSizeMode;
 
 /**
  * Text put on the end of a line the game owns.
@@ -25,6 +26,9 @@ import net.runelite.api.widgets.Widget;
  */
 final class Appended
 {
+	/** One row of the small font, which is what every addition here is made of. */
+	private static final int LINE = 12;
+
 	/** The line being added to, or null if nothing is. */
 	@Nullable
 	private Widget widget;
@@ -37,6 +41,10 @@ final class Appended
 	@Nullable
 	private String written;
 
+	/** The line's own height before it was given room, or -1 if it was not. */
+	private int baseHeight = -1;
+	private int baseHeightMode = -1;
+
 	/**
 	 * Puts {@code extra} on the end of a widget's text, replacing whatever was
 	 * put there before.
@@ -46,12 +54,34 @@ final class Appended
 	 */
 	void to(Widget target, String extra)
 	{
+		to(target, extra, 0);
+	}
+
+	/**
+	 * The same, giving the line room for the rows the addition puts on it.
+	 *
+	 * <p>A line the game wrote is exactly as tall as what the game put in it,
+	 * so a row added to it draws over whatever is underneath.
+	 *
+	 * <p>The height is read once, when this first takes the line, and every
+	 * write after that is computed from it -- never from a height this has
+	 * already changed. Measuring after moving is what makes a resize grow from
+	 * its own growth.
+	 *
+	 * @param rows how many extra rows the addition takes, or 0 for none
+	 */
+	void to(Widget target, String extra, int rows)
+	{
 		if (target != widget)
 		{
 			// A different line, or the same one rebuilt into a new widget.
 			widget = target;
 			original = target.getText();
 			written = null;
+			// The line as the client had it, read before anything is written
+			// to it and not read again while it is this one.
+			baseHeight = target.getHeight();
+			baseHeightMode = target.getHeightMode();
 		}
 		else if (!Objects.equals(target.getText(), written))
 		{
@@ -66,6 +96,16 @@ final class Appended
 			target.setText(composed);
 		}
 		written = composed;
+		if (rows > 0 && baseHeight >= 0)
+		{
+			final int wanted = baseHeight + rows * LINE;
+			if (target.getHeight() != wanted)
+			{
+				target.setHeightMode(WidgetSizeMode.ABSOLUTE);
+				target.setOriginalHeight(wanted);
+				target.revalidate();
+			}
+		}
 	}
 
 	/**
@@ -80,10 +120,17 @@ final class Appended
 		if (widget != null && original != null && Objects.equals(widget.getText(), written))
 		{
 			widget.setText(original);
+			if (baseHeight >= 0)
+			{
+				widget.setHeightMode(baseHeightMode);
+				widget.setOriginalHeight(baseHeight);
+				widget.revalidate();
+			}
 		}
 		widget = null;
 		original = null;
 		written = null;
+		baseHeight = -1;
 	}
 
 	/** The text as it now stands, or null if nothing is being added to. */

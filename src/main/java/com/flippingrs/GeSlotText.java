@@ -27,6 +27,9 @@ import net.runelite.api.widgets.Widget;
 class GeSlotText
 {
 	/** Colours, written as the game's own text renderer reads them. */
+	/** How many rows the prices take, over and above the line they go on. */
+	static final int LINES = 3;
+
 	private static final String MUTED = "9f9f9f";
 	private static final String VALUE = "ffffff";
 	private static final String GOOD = "4caf50";
@@ -82,11 +85,9 @@ class GeSlotText
 					slots[slot].clear();
 					continue;
 				}
-				// On the end of the line rather than under it. A box that is
-				// exactly as tall as what the game put in it has no room for
-				// another row, and making room meant resizing Jagex's grid --
-				// which could not be made to hold still.
-				slots[slot].to(line, text);
+				// Three rows, and the room for them. GeSlotLayout makes the box
+				// tall enough to hold what this makes the line.
+				slots[slot].to(line, "<br>" + text, LINES);
 			}
 		}
 		catch (RuntimeException e)
@@ -134,16 +135,16 @@ class GeSlotText
 	 * What one slot gains: both of the site's prices, and how far your own
 	 * offer is from the one that applies to it.
 	 *
-	 * <p>One number: how far your offer is from what the site says that side is
-	 * worth. An offer box is the smallest space in the exchange and it has no
-	 * room of its own to give -- this goes on the end of a line the game
-	 * already wrote, so what it says has to fit in what is left of it.
+	 * <p>Three lines, one figure each, because a price and its difference on one
+	 * line stop being two things the moment either of them is long: a hundred
+	 * million buying and a hundred and ten million selling is most of a line
+	 * before anything is said about it. A column of three reads at any size.
 	 *
-	 * <p>Which is the right number to keep. The box already tells you the item,
-	 * the side and your price; the one thing it cannot tell you is whether that
-	 * price is still the right one. The prices it is measured against are a
-	 * hover away on the same screen, and spelled out in full on the setup
-	 * screen where there is room for them.
+	 * <p>The side being traded is in white and carries how far your own offer
+	 * is from it, since that is the only price yours can be measured against.
+	 * The other side is grey: it is not what you are doing now, but it is what
+	 * you will do next, and a buy that has filled is a sale about to be listed.
+	 * The margin underneath is what the pair of them come to after tax.
 	 *
 	 * <p>The comparison is still against your own side, because that is the
 	 * only one your offer can be measured against.
@@ -187,9 +188,30 @@ class GeSlotText
 		// words "buy" and "sell" would be repeating the box back at itself, so
 		// the side being traded is picked out in white instead and the two
 		// prices stand on their own.
-		// Two spaces in front of it, so it does not run into whatever the game
-		// wrote on this line.
-		return colour("  ", MUTED)
+		return line("Buy", quote.getBuyAt(), buying, buying ? edge : null)
+			+ "<br>" + line("Sell", quote.getSellAt(), !buying, buying ? null : edge)
+			+ "<br>" + colour(FlippingRsPanel.signed(quote.getNetMargin()),
+				quote.getNetMargin() >= 0 ? GOOD : BAD);
+	}
+
+	/**
+	 * One of the two price lines: what the site says that side is worth, and --
+	 * on the side you are trading -- how far your own offer is from it.
+	 *
+	 * @param yours whether this is the side being traded, which is said in
+	 *              white rather than grey
+	 * @param edge  how far your offer is from this price, or null on the side
+	 *              you are not trading, where there is nothing to compare
+	 */
+	private static String line(String side, long price, boolean yours, @Nullable Long edge)
+	{
+		final String colour = yours ? VALUE : MUTED;
+		final String out = colour(side + " ", MUTED) + colour(FlippingRsPanel.gp(price), colour);
+		if (edge == null)
+		{
+			return out;
+		}
+		return out + colour("  ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}
 
