@@ -19,7 +19,11 @@ import net.runelite.api.widgets.WidgetSizeMode;
  * have to come from somewhere, and a box that will not grow simply draws them
  * over whatever is under it.
  *
- * <p>This is the one thing the plugin moves rather than adds to, and the way
+ * <p>Nothing here moves the exchange. Only heights change, and only downward
+ * from where the game already put things; the window stays where it was, and
+ * if the room for a line is not there the line is not drawn.
+ *
+ * <p>This is the one thing the plugin resizes rather than adds to, and the way
  * it goes wrong is worth naming, because a previous version did. Changing a
  * layout and then reading that same layout back as the baseline cannot work:
  * growing the container moves the boxes inside it, and on the next look there
@@ -109,15 +113,15 @@ class GeSlotLayout
 	 * lines go.
 	 */
 	private final List<Widget> skin = new ArrayList<>();
+
+	/**
+	 * The sprites whose tiling was switched off to stretch them, so it can be
+	 * switched back on with everything else.
+	 */
+	private final List<Widget> tiled = new ArrayList<>();
+
 	private final List<Integer> skinHeight = new ArrayList<>();
 	private final List<Integer> skinMode = new ArrayList<>();
-
-	/** The window, if it had to be slid down the screen, and where it was. */
-	@Nullable
-	private Widget moved;
-	@Nullable
-	private Integer movedY;
-	private int movedYMode;
 
 	/**
 	 * How many rows of text the boxes were last made room for. Read by
@@ -195,10 +199,6 @@ class GeSlotLayout
 			// something already has the room. That is the fix for the cutting
 			// off: it is never the box that clips, it is whatever holds it.
 			openOut(lowest);
-			// And if the window has grown off the top of the screen, it is
-			// moved down rather than left there. Height it could not have is
-			// worth refusing; a position it could have had is not.
-			keepOnScreen();
 			rowsAfforded = afforded;
 		}
 		catch (RuntimeException e)
@@ -278,6 +278,15 @@ class GeSlotLayout
 			final int wanted = base + extra;
 			if (child.getHeight() != wanted)
 			{
+				// A sprite that tiles repeats to fill the height it is given,
+				// and the sprite that draws a slot is the slot's frame -- so a
+				// taller one drew the frame again in the middle of the box.
+				// Off, it is one frame at the size asked for.
+				if (child.getSpriteId() > 0 && child.getSpriteTiling())
+				{
+					tiled.add(child);
+					child.setSpriteTiling(false);
+				}
 				child.setHeightMode(WidgetSizeMode.ABSOLUTE);
 				child.setOriginalHeight(wanted);
 				child.revalidate();
@@ -305,56 +314,6 @@ class GeSlotLayout
 		skinHeight.add(height);
 		skinMode.add(child.getHeightMode());
 		return height;
-	}
-
-	/**
-	 * Moves the window back onto the screen if growing it took it off.
-	 *
-	 * <p>A taller window is centred on where the shorter one was, so it grows
-	 * upwards as much as downwards -- and the exchange sits high enough that
-	 * the top is what runs out first. There is usually room underneath, and
-	 * sliding down into it costs nothing: the window is the same size, in a
-	 * place it fits.
-	 *
-	 * <p>Only ever downwards, and never further than the room below allows,
-	 * so this cannot push the bottom off in the course of saving the top.
-	 */
-	private void keepOnScreen()
-	{
-		if (grown.isEmpty())
-		{
-			return;
-		}
-		final Widget window = grown.get(grown.size() - 1);
-		final java.awt.Rectangle bounds = window.getBounds();
-		if (bounds == null || bounds.height <= 0)
-		{
-			return;
-		}
-		final int above = bounds.y;
-		final int below = client.getCanvasHeight() - (bounds.y + bounds.height);
-		if (above >= 0 || below <= 0)
-		{
-			// Either it is on screen, or there is nowhere to move it to.
-			return;
-		}
-		final int by = Math.min(-above, below);
-		rememberY(window);
-		window.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
-		window.setOriginalY(window.getRelativeY() + by);
-		window.revalidate();
-	}
-
-	/** Keeps where a widget was, the first time it is moved. */
-	private void rememberY(Widget widget)
-	{
-		if (movedY != null)
-		{
-			return;
-		}
-		moved = widget;
-		movedY = widget.getRelativeY();
-		movedYMode = widget.getYPositionMode();
 	}
 
 	/** How far down its own children reach, which is the height it needs. */
@@ -437,10 +396,12 @@ class GeSlotLayout
 	/**
 	 * How much taller the window can get before it runs off the screen.
 	 *
-	 * <p>The whole of it, above and below, because a window that ends up too
-	 * high is slid back down by {@link #keepOnScreen} rather than refused.
-	 * What cannot be recovered from is a window taller than the screen, and
-	 * that is what this is measuring.
+	 * <p>The window stays where the game put it, so height added to it goes
+	 * half above and half below and what can be afforded is twice the smaller
+	 * of the two gaps. Moving it down would buy more room, and it is not
+	 * worth having: a window that jumps somewhere else the moment an offer is
+	 * placed is a worse thing than a line of prices this plugin did not
+	 * manage to fit.
 	 */
 	private int screenRoom()
 	{
@@ -455,7 +416,7 @@ class GeSlotLayout
 		final int height = index >= 0 ? grownHeight.get(index) : bounds.height;
 		final int top = bounds.y + (bounds.height - height) / 2;
 		final int below = client.getCanvasHeight() - (top + height);
-		return Math.max(0, top + below - SPARE);
+		return Math.max(0, 2 * Math.min(top, below) - SPARE);
 	}
 
 	/**
@@ -493,18 +454,16 @@ class GeSlotLayout
 					box.revalidate();
 				}
 			}
+			for (Widget sprite : tiled)
+			{
+				sprite.setSpriteTiling(true);
+			}
 			for (int i = 0; i < skin.size(); i++)
 			{
 				final Widget child = skin.get(i);
 				child.setHeightMode(skinMode.get(i));
 				child.setOriginalHeight(skinHeight.get(i));
 				child.revalidate();
-			}
-			if (moved != null && movedY != null)
-			{
-				moved.setYPositionMode(movedYMode);
-				moved.setOriginalY(movedY);
-				moved.revalidate();
 			}
 			// Outermost first, so each is put back into something still big
 			// enough to hold it.
@@ -655,8 +614,7 @@ class GeSlotLayout
 		skin.clear();
 		skinHeight.clear();
 		skinMode.clear();
-		moved = null;
-		movedY = null;
+		tiled.clear();
 		rowsAfforded = 0;
 	}
 }

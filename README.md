@@ -150,12 +150,11 @@ buying and a hundred and ten million selling is most of a line before anything
 is said about it. The offer boxes are made taller to hold them, and the
 container and window round them grow to match.
 
-The window slides down the screen if growing it would take the title off the
-top, since there is normally room underneath and a window the same size in a
-place it fits costs nothing. Only a window taller than the whole screen is
-refused, and then you get two lines, or one, or just the difference on the end
-of the line that is already there — decided rather than clipped, and your own
-side is never what goes. That is what an offer
+The window itself is never moved. Only heights change, and only as much as the
+screen can take with the window where the game put it — so on a small client
+you may get two lines, or one, or just the difference on the end of the line
+that is already there. What gets left out is decided rather than clipped: the
+margin first, then the side you are not trading, and never your own side. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is
