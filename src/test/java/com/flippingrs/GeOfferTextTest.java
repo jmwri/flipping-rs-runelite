@@ -16,7 +16,7 @@ import static org.junit.Assert.assertTrue;
  * that is the part worth pinning: these are the numbers somebody types an
  * offer from.
  */
-public class GeSetupTextTest
+public class GeOfferTextTest
 {
 	/**
 	 * The text without its colour tags.
@@ -49,7 +49,7 @@ public class GeSetupTextTest
 	@Test
 	public void thePricesAreExactToTheCoin()
 	{
-		final String text = plain(GeSetupText.textFor(whip()));
+		final String text = plain(GeOfferText.textFor(whip()));
 
 		assertTrue(text, text.contains("Buy 1,480,000"));
 		assertTrue(text, text.contains("Sell 1,520,000"));
@@ -72,7 +72,7 @@ public class GeSetupTextTest
 		quote.limitRemaining = 3412;
 		quote.dataAgeSeconds = 250;
 
-		final String text = plain(GeSetupText.textFor(quote));
+		final String text = plain(GeOfferText.textFor(quote));
 
 		assertFalse("one line", text.contains("<br>"));
 		assertTrue(text, text.startsWith("Buy "));
@@ -91,7 +91,7 @@ public class GeSetupTextTest
 		quote.dataAgeSeconds = -1;
 
 		assertFalse(quote.hasLimitLeft());
-		final String text = plain(GeSetupText.textFor(quote));
+		final String text = plain(GeOfferText.textFor(quote));
 		assertFalse(text, text.contains("Limit"));
 		assertFalse(text, text.contains("Priced"));
 		assertTrue("the prices are still there", text.contains("Buy 1,480,000"));
@@ -109,8 +109,8 @@ public class GeSetupTextTest
 		final Quote stale = whip();
 		stale.dataAgeSeconds = 4000;
 
-		assertFalse(GeSetupText.stale(fresh));
-		assertTrue(GeSetupText.stale(stale));
+		assertFalse(GeOfferText.stale(fresh));
+		assertTrue(GeOfferText.stale(stale));
 	}
 
 	/**
@@ -124,7 +124,7 @@ public class GeSetupTextTest
 	@Test
 	public void theColoursAreColoursRatherThanTokens()
 	{
-		final String text = GeSetupText.textFor(whip());
+		final String text = GeOfferText.textFor(whip());
 
 		assertFalse(text, text.contains("<colNORMAL>"));
 		assertFalse(text, text.contains("<colHIGHLIGHT>"));
@@ -134,12 +134,12 @@ public class GeSetupTextTest
 	@Test
 	public void theAgeOfThePricesIsSaidPlainly()
 	{
-		assertEquals("just now", GeSetupText.age(0));
-		assertEquals("a minute is still now", "just now", GeSetupText.age(60));
-		assertEquals("4m ago", GeSetupText.age(4 * 60 + 30));
-		assertEquals("59m ago", GeSetupText.age(59 * 60));
-		assertEquals("1h ago", GeSetupText.age(3600));
-		assertEquals("2h ago", GeSetupText.age(2 * 3600 + 1800));
+		assertEquals("just now", GeOfferText.age(0));
+		assertEquals("a minute is still now", "just now", GeOfferText.age(60));
+		assertEquals("4m ago", GeOfferText.age(4 * 60 + 30));
+		assertEquals("59m ago", GeOfferText.age(59 * 60));
+		assertEquals("1h ago", GeOfferText.age(3600));
+		assertEquals("2h ago", GeOfferText.age(2 * 3600 + 1800));
 	}
 
 	/**
@@ -151,8 +151,8 @@ public class GeSetupTextTest
 	@Test
 	public void anItemThatHasNeverTradedHasNoAge()
 	{
-		assertNull(GeSetupText.age(-1));
-		assertNotNull("and a real age still reads", GeSetupText.age(0));
+		assertNull(GeOfferText.age(-1));
+		assertNotNull("and a real age still reads", GeOfferText.age(0));
 	}
 
 	/**
@@ -164,24 +164,24 @@ public class GeSetupTextTest
 	{
 		final Quote quote = new Quote();
 		quote.limitRemaining = 3412;
-		assertEquals("3.4K", GeSetupText.limitLeft(quote));
+		assertEquals("3.4K", GeOfferText.limitLeft(quote));
 
 		quote.limitRemaining = 0;
 		quote.limitResetsInSeconds = 2 * 3600 + 14 * 60;
-		assertEquals("none for 2h 14m", GeSetupText.limitLeft(quote));
+		assertEquals("none for 2h 14m", GeOfferText.limitLeft(quote));
 
 		quote.limitResetsInSeconds = 0;
 		assertEquals("a reset it does not know about is not invented",
-			"none", GeSetupText.limitLeft(quote));
+			"none", GeOfferText.limitLeft(quote));
 	}
 
 	@Test
 	public void howLongUntilTheLimitResets()
 	{
-		assertEquals("under a minute", GeSetupText.until(30));
-		assertEquals("12m", GeSetupText.until(12 * 60 + 59));
-		assertEquals("1h 12m", GeSetupText.until(3600 + 12 * 60));
-		assertEquals("an exact number of hours does not trail a 0m", "4h", GeSetupText.until(4 * 3600));
+		assertEquals("under a minute", GeOfferText.until(30));
+		assertEquals("12m", GeOfferText.until(12 * 60 + 59));
+		assertEquals("1h 12m", GeOfferText.until(3600 + 12 * 60));
+		assertEquals("an exact number of hours does not trail a 0m", "4h", GeOfferText.until(4 * 3600));
 	}
 
 	/**
@@ -193,6 +193,6 @@ public class GeSetupTextTest
 	public void aServerThatSaysNothingAboutTheLimitSaysNothing()
 	{
 		assertFalse(new Quote().hasLimitLeft());
-		assertFalse(GeSetupText.textFor(whip()).contains("Limit"));
+		assertFalse(GeOfferText.textFor(whip()).contains("Limit"));
 	}
 }

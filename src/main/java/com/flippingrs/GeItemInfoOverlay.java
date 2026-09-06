@@ -133,7 +133,7 @@ class GeItemInfoOverlay extends Overlay
 			onScreen.add(spot.itemId);
 			if (!spot.paint)
 			{
-				// The setup screen carries its own; see GeSetupText.
+				// The setup screen carries its own; see GeOfferText.
 				continue;
 			}
 			final Caption caption = captionFor(quoteFor.apply(spot.itemId));

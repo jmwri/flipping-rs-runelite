@@ -196,7 +196,7 @@ public class FlippingRsPlugin extends Plugin
 	private FlippingRsPanel panel;
 	private GeMenu geMenu;
 	private GeItemInfoOverlay infoOverlay;
-	private GeSetupText setupText;
+	private GeOfferText offerText;
 	private GeHistoryText historyText;
 	private GeTooltip tooltip;
 	private ExaminePrices examinePrices;
@@ -263,7 +263,7 @@ public class FlippingRsPlugin extends Plugin
 			itemId -> submit(sendExecutor, () -> addToWatchlist(itemId)));
 		infoOverlay = new GeItemInfoOverlay(client, config, this::watchedQuote, watchlists::showingOffers);
 		overlayManager.add(infoOverlay);
-		setupText = new GeSetupText(client, config, this::watchedQuote);
+		offerText = new GeOfferText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
 		tooltip = new GeTooltip(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
@@ -510,12 +510,12 @@ public class FlippingRsPlugin extends Plugin
 			clientToolbar.removeNavigation(navButton);
 			navButton = null;
 		}
-		if (setupText != null)
+		if (offerText != null)
 		{
 			// The line belongs to a screen this plugin is no longer keeping up
 			// to date, so it goes rather than sitting there frozen.
-			clientThread.invoke(setupText::reset);
-			setupText = null;
+			clientThread.invoke(offerText::reset);
+			offerText = null;
 		}
 		if (historyText != null)
 		{
@@ -905,7 +905,7 @@ public class FlippingRsPlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		catchUp.tick(client.getTickCount());
-		final GeSetupText text = setupText;
+		final GeOfferText text = offerText;
 		if (text != null)
 		{
 			// Every tick, not only when the client rebuilds the screen: the
@@ -943,7 +943,7 @@ public class FlippingRsPlugin extends Plugin
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event)
 	{
-		final GeSetupText text = setupText;
+		final GeOfferText text = offerText;
 		if (text != null && event.getScriptId() == ScriptID.GE_OFFERS_SETUP_BUILD)
 		{
 			text.rebuilt();

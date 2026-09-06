@@ -11,6 +11,7 @@ import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -142,6 +143,49 @@ public class GeItemsTest
 
 		assertEquals(1, spots.size());
 		assertEquals(4151, spots.get(0).itemId);
+	}
+
+	/**
+	 * The status page you get by clicking a placed offer is written into, not
+	 * painted on, exactly as the setup page is.
+	 *
+	 * <p>Still a spot, because it is still an item on screen and so still an
+	 * item worth having a price for -- but painting one on it as well as
+	 * writing one into it would put the same numbers on the same screen twice.
+	 */
+	@Test
+	public void theStatusPageIsWrittenIntoRatherThanPaintedOn()
+	{
+		noWidgets();
+		final Widget page = holding(10, 10, 300, 200, item(4151, 20, 20, 32, 32));
+		when(client.getWidget(InterfaceID.GeOffers.DETAILS)).thenReturn(page);
+
+		final List<GeItems.Spot> spots = GeItems.onScreen(client);
+
+		assertEquals(1, spots.size());
+		assertFalse("the status page draws its own", spots.get(0).paint);
+	}
+
+	/**
+	 * And which item that page is about is asked of the page rather than of
+	 * the varp.
+	 *
+	 * <p>The varp holds whatever was last searched for, which after a search
+	 * and a click on a different slot is a different item -- and the price of
+	 * the wrong item is worse than no price at all.
+	 */
+	@Test
+	public void aScreenAboutOneItemCanBeAskedWhichItemThatIs()
+	{
+		noWidgets();
+		when(client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH)).thenReturn(1042);
+		final Widget page = holding(10, 10, 300, 200, item(4151, 20, 20, 32, 32));
+		when(client.getWidget(InterfaceID.GeOffers.DETAILS)).thenReturn(page);
+
+		assertEquals("the offer's item, not the last thing searched for",
+			4151, GeItems.itemIn(client, InterfaceID.GeOffers.DETAILS));
+		assertEquals("and nothing at all when the page is not up",
+			0, GeItems.itemIn(client, InterfaceID.GeCollect.COLLECT_0));
 	}
 
 	/**
