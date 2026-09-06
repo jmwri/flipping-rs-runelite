@@ -28,6 +28,7 @@ class GeSlotText
 {
 	/** Colours, written as the game's own text renderer reads them. */
 	private static final String MUTED = "9f9f9f";
+	private static final String VALUE = "ffffff";
 	private static final String GOOD = "4caf50";
 	private static final String BAD = "d32f2f";
 
@@ -126,8 +127,16 @@ class GeSlotText
 	}
 
 	/**
-	 * What one slot gains: the price the site has for the side you are on, and
-	 * how far your offer is from it.
+	 * What one slot gains: both of the site's prices, and how far your own
+	 * offer is from the one that applies to it.
+	 *
+	 * <p>Both prices, not only the side you are on. Showing one was a smaller
+	 * thing to read but it left the slot unable to answer the question after
+	 * the one it was answering: a buy that has filled is a sale about to be
+	 * listed, and the price it should be listed at was the number not shown.
+	 *
+	 * <p>The comparison is still against your own side, because that is the
+	 * only one your offer can be measured against.
 	 *
 	 * <p>Null for a slot with nothing in it, or one whose item nobody has a
 	 * price for -- which is every item before the first fetch lands. Static, so
@@ -163,7 +172,12 @@ class GeSlotText
 		// where the profit is and also where an offer can sit all evening --
 		// so it is stated rather than judged.
 		final long edge = buying ? offer.getPrice() - market : market - offer.getPrice();
-		return colour(buying ? "Buy " : "Sell ", MUTED) + colour(FlippingRsPanel.gp(market), MUTED)
+		// The side being traded is named first, so which of the two the
+		// difference is measured against is on the line rather than implied.
+		return colour("Buy ", buying ? VALUE : MUTED)
+			+ colour(FlippingRsPanel.gp(quote.getBuyAt()), buying ? VALUE : MUTED)
+			+ colour("  Sell ", buying ? MUTED : VALUE)
+			+ colour(FlippingRsPanel.gp(quote.getSellAt()), buying ? MUTED : VALUE)
 			+ colour("  ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}

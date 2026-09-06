@@ -136,14 +136,19 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Each of your open offers gains a line too. The plugin knows what you asked for
-as well as what the item is, so it shows the price for the side you are on and
-how far your offer is from it — green when your offer is priced to fill sooner,
-red when it is priced to sit. That is what an offer box cannot tell you on its
-own: whether the number you asked for is still the right one.
+Each of your open offers gains a line too: both of the site's prices, and how
+far your own offer is from the one that applies to it — green when your offer
+is priced to fill sooner, red when it is priced to sit. That is what an offer
+box cannot tell you on its own: whether the number you asked for is still the
+right one. Both prices rather than only the side you are trading, because a buy
+that has filled is a sale about to be listed, and the price to list it at is
+the other one.
 
-Those three — the setup screen, your offers and your history — are all added to
-text the game already draws, so the game places, sizes, wraps and clips them.
+And where the exchange shows hover text of its own, the same prices go on the
+end of it — on the offers screen, the collection box and a view-only exchange.
+
+All of those — the setup screen, your offers, your history and the hover text —
+are added to text the game already draws, so the game places, sizes, wraps and clips them.
 The screens that are grids of pictures with nothing written on them, like the
 collection box, a view-only exchange and the price checker, have no line to add
 to, so those are painted on: the two ends of the spread, or the margin alone
@@ -380,8 +385,8 @@ fills. Everything else is a collaborator it builds in `wire()`:
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.
-- `GeHistoryText` and `GeSlotText` do the same for each row of the history and
-  each of the eight offer boxes. All three work through `Appended`, which holds
+- `GeHistoryText`, `GeSlotText` and `GeTooltipText` do the same for each row of
+  the history, each of the eight offer boxes, and whichever hover text is up. All three work through `Appended`, which holds
   what a line said before and can tell the client rewriting it from the text it
   put there -- without which a line grows another copy of its prices every time
   the screen refreshes. `RowText` is how they find the line to add to, which is

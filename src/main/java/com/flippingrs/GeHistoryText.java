@@ -103,7 +103,7 @@ class GeHistoryText
 				}
 				else
 				{
-					row.to(text, "  " + textFor(quote));
+					row.to(text, "<br>" + textFor(quote));
 				}
 				index++;
 			}
@@ -165,21 +165,25 @@ class GeHistoryText
 	 * What one row gains: the two prices and the margin, which is what turns a
 	 * list of what you did into a list of what would be worth doing again.
 	 *
-	 * <p>Rounded rather than exact. A history row is already a sentence and
-	 * these go on the end of it; the exact figures belong on the screen where
-	 * a price is being typed, not on the one being read back.
+	 * <p>On its own line under the row's text rather than running on from it.
+	 * A row already says what you did and for how much; the prices are a
+	 * different thing being said about the same item, and reading them off the
+	 * end of somebody else's sentence is harder than reading them off a line
+	 * of their own.
+	 *
+	 * <p>Rounded rather than exact. The exact figures belong on the screen
+	 * where a price is being typed, not on the one being read back.
 	 *
 	 * <p>Static, so the wording is pinned by a test rather than by running a
 	 * client.
 	 */
 	static String textFor(Quote quote)
 	{
-		return colour("(", MUTED) + colour(FlippingRsPanel.gp(quote.getBuyAt()), MUTED)
-			+ colour(" / ", MUTED) + colour(FlippingRsPanel.gp(quote.getSellAt()), MUTED)
+		return colour("Buy ", MUTED) + colour(FlippingRsPanel.gp(quote.getBuyAt()), MUTED)
+			+ colour("  Sell ", MUTED) + colour(FlippingRsPanel.gp(quote.getSellAt()), MUTED)
 			+ colour("  ", MUTED)
 			+ colour(FlippingRsPanel.signed(quote.getNetMargin()),
-				quote.getNetMargin() >= 0 ? GOOD : BAD)
-			+ colour(")", MUTED);
+				quote.getNetMargin() >= 0 ? GOOD : BAD);
 	}
 
 	/** One run of text in one colour, as the game's own text renderer reads it. */

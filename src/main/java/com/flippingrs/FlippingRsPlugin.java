@@ -31,6 +31,7 @@ import net.runelite.api.WorldType;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
@@ -198,6 +199,7 @@ public class FlippingRsPlugin extends Plugin
 	private GeSetupText setupText;
 	private GeHistoryText historyText;
 	private GeSlotText slotText;
+	private GeTooltipText tooltipText;
 	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
@@ -265,6 +267,7 @@ public class FlippingRsPlugin extends Plugin
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
 		slotText = new GeSlotText(client, config, this::watchedQuote);
+		tooltipText = new GeTooltipText(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
@@ -527,6 +530,12 @@ public class FlippingRsPlugin extends Plugin
 			final GeSlotText slots = slotText;
 			clientThread.invoke(slots::reset);
 			slotText = null;
+		}
+		if (tooltipText != null)
+		{
+			final GeTooltipText tooltips = tooltipText;
+			clientThread.invoke(tooltips::reset);
+			tooltipText = null;
 		}
 		examinePrices = null;
 		if (infoOverlay != null)
@@ -921,6 +930,21 @@ public class FlippingRsPlugin extends Plugin
 		if (slots != null)
 		{
 			slots.update();
+		}
+	}
+
+	/**
+	 * The hover text follows the pointer rather than the tick, so it is
+	 * brought up to date on every frame instead of six times a second.
+	 * Nothing is written unless what it would say has changed.
+	 */
+	@Subscribe
+	public void onBeforeRender(BeforeRender event)
+	{
+		final GeTooltipText tooltips = tooltipText;
+		if (tooltips != null)
+		{
+			tooltips.update();
 		}
 	}
 
