@@ -97,7 +97,12 @@ class GeTooltip
 				reset();
 				return;
 			}
-			final String extra = textFor(quote, offerOn(itemId));
+			// In the colour the box already writes in, read off the line being
+			// added to rather than assumed. The exchange's hover box is dark
+			// text on pale yellow and the sidebar's palette is built for the
+			// opposite, so the plugin's own colours came out washed out on it
+			// -- and white, which was most of them, came out invisible.
+			final String extra = textFor(quote, offerOn(itemId), text.getTextColor());
 			line.to(text, "<br>" + extra);
 			box.fit(tip, text, extra);
 		}
@@ -189,47 +194,70 @@ class GeTooltip
 	 * <p>The item's name is not repeated: the game's box already leads with
 	 * it, and this goes underneath.
 	 *
+	 * <p>Written in the box's own colour rather than the plugin's. The sidebar
+	 * is pale text on a dark panel and the exchange's hover box is the exact
+	 * opposite, so the palette that reads well in one is unreadable in the
+	 * other -- the sidebar's white came out as nothing at all on the yellow.
+	 * Taking the colour off the line being added to makes the addition look
+	 * like part of what was already there, and goes on doing so if Jagex
+	 * recolours the box.
+	 *
+	 * <p>The two signed numbers keep colours of their own, because what they
+	 * say is whether something is good or bad rather than what it is. Dark
+	 * shades, chosen against the pale box rather than against the panel.
+	 *
 	 * <p>Static, so the wording is pinned by a test rather than by running a
 	 * client.
+	 *
+	 * @param textColour the colour the box writes in, as {@code getTextColor}
+	 *                   gives it
 	 */
-	static String textFor(Quote quote, @Nullable GrandExchangeOffer offer)
+	static String textFor(Quote quote, @Nullable GrandExchangeOffer offer, int textColour)
 	{
+		final String own = colour(textColour);
 		final StringBuilder out = new StringBuilder();
-		out.append(ColourText.MUTED).append("Buy ").append(ColourText.VALUE)
-			.append(FlippingRsPanel.exact(quote.getBuyAt())).append("<br>")
-			.append(ColourText.MUTED).append("Sell ").append(ColourText.VALUE)
-			.append(FlippingRsPanel.exact(quote.getSellAt())).append("<br>")
-			.append(ColourText.MUTED).append("Margin ")
+		out.append(own).append("Buy ").append(FlippingRsPanel.exact(quote.getBuyAt())).append("<br>")
+			.append(own).append("Sell ").append(FlippingRsPanel.exact(quote.getSellAt())).append("<br>")
+			.append(own).append("Margin ")
 			.append(quote.getNetMargin() >= 0 ? ColourText.GOOD : ColourText.BAD)
 			.append(FlippingRsPanel.signedExact(quote.getNetMargin()));
 
 		final Long edge = GeSlotText.edgeOf(offer, quote);
 		if (edge != null)
 		{
-			out.append("<br>").append(ColourText.MUTED).append("Yours ")
+			out.append("<br>").append(own).append("Yours ")
 				.append(edge >= 0 ? ColourText.GOOD : ColourText.BAD)
 				.append(FlippingRsPanel.signedExact(edge));
 		}
 		if (quote.hasLimitLeft())
 		{
-			out.append("<br>").append(ColourText.MUTED).append("Limit ")
-				.append(ColourText.VALUE).append(GeOfferText.limitLeft(quote));
+			out.append("<br>").append(own).append("Limit ").append(GeOfferText.limitLeft(quote));
 		}
 		final String age = GeOfferText.age(quote.getDataAgeSeconds());
 		if (age != null)
 		{
-			out.append("<br>").append(ColourText.MUTED).append("Priced ").append(age);
+			out.append("<br>").append(own).append("Priced ").append(age);
 		}
 		return out.toString();
 	}
 
-	/** The colours a line is written in, as the game's own renderer reads them. */
+	/** One colour, written as the game's own text renderer reads it. */
+	static String colour(int rgb)
+	{
+		return String.format("<col=%06x>", rgb & 0xffffff);
+	}
+
+	/**
+	 * The two colours that are a judgement rather than a value.
+	 *
+	 * <p>Dark, because they go on the exchange's pale yellow box. The
+	 * sidebar's greens and reds are lit for a dark panel and turn to pastel on
+	 * this one, which is a poor way to say "your offer will sit all evening".
+	 */
 	static final class ColourText
 	{
-		static final String MUTED = "<col=9f9f9f>";
-		static final String VALUE = "<col=ffffff>";
-		static final String GOOD = "<col=4caf50>";
-		static final String BAD = "<col=d32f2f>";
+		static final String GOOD = "<col=0b6b1f>";
+		static final String BAD = "<col=9b1c1c>";
 
 		private ColourText()
 		{
