@@ -136,32 +136,33 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Each of your open offers gains three lines: the site's buy price, its sell
-price, and the margin between them after tax. Buy above sell whichever way you
-are trading, so a column of eight boxes reads at a glance. The side you are
-trading is in white and carries how far your own offer is from it — green when your offer is
-priced to fill sooner, red when it is priced to sit. The other side is greyed:
-it is not what you are doing now, but it is what you will do next, since a buy
-that has filled is a sale about to be listed.
+Point at an item anywhere else in the exchange and you get the same numbers in
+a tooltip: the item's name, the site's buy price, its sell price, the margin
+between them after tax, the buy limit and how old the prices are. Buy above
+sell whichever way you are trading. If the item is one of your eight open
+offers, one more line says how far your own price is from the side you are
+trading — green when your offer is priced to fill sooner, red when it is priced
+to sit. That is what an offer box cannot tell you on its own: whether the
+number you asked for is still the right one. Both prices rather than only your
+side, because a buy that has filled is a sale about to be listed, and the price
+to list it at is the other one.
 
-A line each rather than one line of everything, because a price and its
-difference stop being two things the moment either is long — a hundred million
-buying and a hundred and ten million selling is most of a line before anything
-is said about it. The offer boxes are made taller to hold them, and the
-container and window round them grow to match.
+A tooltip rather than lines inside the boxes, and it took a while to get there.
+The offer boxes are the size the game made them; six goes at making one taller
+found six separate things that had to be made taller with it — the layer, the
+containers above it, the window, the border sprite, the tiling of that sprite —
+and each was only found by somebody looking at their screen. So the exchange is
+now left exactly as the game draws it, and the prices are shown beside the
+pointer instead, where they have as much room as they need because they are not
+inside anything. Prices are exact to the coin there, since a tooltip has room
+for that and these are numbers somebody is about to type.
 
-The window itself is never moved. Only heights change, and only as much as the
-screen can take with the window where the game put it — so on a small client
-you may get two lines, or one, or just the difference on the end of the line
-that is already there. What gets left out is decided rather than clipped: the
-margin first, then the side you are not trading, and never your own side. That is what an offer
-box cannot tell you on its own: whether the number you asked for is still the
-right one. Both prices rather than only the side you are trading, because a buy
-that has filled is a sale about to be listed, and the price to list it at is
-the other one.
-
-And where the exchange shows hover text of its own, the same prices go on the
-end of it — on the offers screen, the collection box and a view-only exchange.
+It answers a question rather than announcing one, too. Eight boxes each
+carrying three lines is a wall of numbers about seven items nobody asked about;
+pointing at one is the moment somebody wants to know. The tooltip works on
+every screen `GeItems` knows — your offer boxes, an offer you have already
+placed, the history, the collection box, the price checker, the inventory
+beside it all, and a view-only exchange.
 
 All of those — the setup screen, your offers, your history and the hover text —
 are added to text the game already draws, so the game places, sizes, wraps and clips them.
@@ -401,22 +402,24 @@ fills. Everything else is a collaborator it builds in `wire()`:
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.
-- `GeHistoryText`, `GeSlotText` and `GeTooltipText` do the same for each row of
-  the history, each of the eight offer boxes, and whichever hover text is up.
-  `GeSlotLayout` is the one thing that moves the game's furniture rather than
-  adding to it, and the way that goes wrong is worth knowing: an earlier
-  version changed a layout and then read that same layout back as its baseline,
-  so growing the container moved the boxes and the next look could not tell
-  that from the client having laid them out afresh. It grew from its own
-  growth. The layout is now read exactly once, when the screen opens, and every
-  write after is computed from that -- so writing twice changes nothing and
-  nothing is ever measured after it has been moved. All three work through `Appended`, which holds
+- `GeHistoryText` does the same for each row of the history. Both work through `Appended`, which holds
   what a line said before and can tell the client rewriting it from the text it
   put there -- without which a line grows another copy of its prices every time
   the screen refreshes. `RowText` is how they find the line to add to, which is
   a geometric question rather than a structural one: an exchange screen is a
   flat bag of widgets, and what makes them a row is only that they were laid
   out at the same height.
+- `GeTooltip` shows the same numbers beside the pointer, on every screen
+  `GeItems` knows. It is what is left of a long attempt to put them inside the
+  offer boxes, and the lesson is worth keeping: the exchange's own furniture is
+  sized by the game and does not want to be resized. Making one box taller
+  needed the layer, the containers above it, the window, the border sprite and
+  that sprite's tiling all made taller too, each discovered only by looking at
+  a screenshot. A tooltip needs none of them. `GeSlotText` is all that survived
+  -- the arithmetic of how far your offer is from the site's price for the side
+  you are on, which is worth a test of its own because getting it backwards
+  would call every sensible offer badly priced by exactly the width of the
+  spread, and would do it in green.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
   click that asked, and one click answers one message. Which click that is is

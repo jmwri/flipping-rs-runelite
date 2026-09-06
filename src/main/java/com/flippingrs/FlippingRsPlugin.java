@@ -163,6 +163,9 @@ public class FlippingRsPlugin extends Plugin
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
+	private net.runelite.client.ui.overlay.tooltip.TooltipManager tooltipManager;
+
+	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -198,9 +201,7 @@ public class FlippingRsPlugin extends Plugin
 	private GeItemInfoOverlay infoOverlay;
 	private GeSetupText setupText;
 	private GeHistoryText historyText;
-	private GeSlotText slotText;
-	private GeTooltipText tooltipText;
-	private GeSlotLayout slotLayout;
+	private GeTooltip tooltip;
 	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
@@ -267,10 +268,7 @@ public class FlippingRsPlugin extends Plugin
 		overlayManager.add(infoOverlay);
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
-		slotText = new GeSlotText(client, config, this::watchedQuote,
-			() -> slotLayout == null ? 0 : slotLayout.rowsAfforded());
-		tooltipText = new GeTooltipText(client, config, this::watchedQuote);
-		slotLayout = new GeSlotLayout(client, config);
+		tooltip = new GeTooltip(client, config, this::watchedQuote, tooltipManager);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
@@ -528,26 +526,7 @@ public class FlippingRsPlugin extends Plugin
 			clientThread.invoke(history::reset);
 			historyText = null;
 		}
-		if (slotText != null)
-		{
-			final GeSlotText slots = slotText;
-			clientThread.invoke(slots::reset);
-			slotText = null;
-		}
-		if (tooltipText != null)
-		{
-			final GeTooltipText tooltips = tooltipText;
-			clientThread.invoke(tooltips::reset);
-			tooltipText = null;
-		}
-		if (slotLayout != null)
-		{
-			// The exchange gets its own layout back; this is the one thing the
-			// plugin moves rather than adds to.
-			final GeSlotLayout layout = slotLayout;
-			clientThread.invoke(layout::reset);
-			slotLayout = null;
-		}
+		tooltip = null;
 		examinePrices = null;
 		if (infoOverlay != null)
 		{
@@ -904,14 +883,6 @@ public class FlippingRsPlugin extends Plugin
 		{
 			watchlists.exchangeOpen(true);
 			catchUp.exchangeOpened(client.getTickCount());
-			final GeSlotLayout layout = slotLayout;
-			if (layout != null)
-			{
-				// The one moment the exchange's own layout can be read without
-				// reading this plugin's work back: the client has just built
-				// the screen and nothing has touched it yet.
-				layout.screenOpened();
-			}
 		}
 		else if (event.getGroupId() == InterfaceID.GE_HISTORY)
 		{
@@ -945,32 +916,20 @@ public class FlippingRsPlugin extends Plugin
 		{
 			history.update();
 		}
-		final GeSlotLayout layout = slotLayout;
-		if (layout != null)
-		{
-			// Before the text, so the lines have somewhere to go on the tick
-			// the screen opens rather than the one after it.
-			layout.update();
-		}
-		final GeSlotText slots = slotText;
-		if (slots != null)
-		{
-			slots.update();
-		}
 	}
 
 	/**
-	 * The hover text follows the pointer rather than the tick, so it is
-	 * brought up to date on every frame instead of six times a second.
-	 * Nothing is written unless what it would say has changed.
+	 * The tooltip follows the pointer rather than the tick, so it is offered on
+	 * every frame rather than six times a second. RuneLite clears the tooltips
+	 * it was given each frame, so this has to be one of them.
 	 */
 	@Subscribe
 	public void onBeforeRender(BeforeRender event)
 	{
-		final GeTooltipText tooltips = tooltipText;
-		if (tooltips != null)
+		final GeTooltip hover = tooltip;
+		if (hover != null)
 		{
-			tooltips.update();
+			hover.update();
 		}
 	}
 
