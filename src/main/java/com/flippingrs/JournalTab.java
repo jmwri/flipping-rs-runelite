@@ -73,7 +73,13 @@ final class JournalTab extends SidebarTab
 	@Override
 	String refreshedBy()
 	{
-		return "when you trade";
+		return "on a trade";
+	}
+
+	@Override
+	long refreshEverySeconds()
+	{
+		return PanelReads.panelRefreshSeconds();
 	}
 
 	@Override

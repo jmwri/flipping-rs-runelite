@@ -128,7 +128,13 @@ final class AccountTab extends SidebarTab
 	@Override
 	String refreshedBy()
 	{
-		return "when you connect";
+		return "on connect";
+	}
+
+	@Override
+	long refreshEverySeconds()
+	{
+		return PanelReads.panelRefreshSeconds();
 	}
 
 	void setAccounts(List<GameAccount> available, @Nullable String selectedId)

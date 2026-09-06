@@ -73,10 +73,27 @@ final class PanelReads
 	 */
 	private static final long NEVER = Long.MIN_VALUE;
 
-	/** The tabs that are re-read on their own; Account is only read by connect. */
+	/**
+	 * How often the sidebar re-reads itself while it is open.
+	 *
+	 * <p>On top of the reads that already happen because something occurred --
+	 * a trade recorded, the sidebar opened, a key entered -- not instead of
+	 * them. Those cover what this client did; this covers what happened
+	 * elsewhere: a sale closed on the website, a plan changed, a journal
+	 * traded on from another computer. Without it a sidebar left open beside a
+	 * quiet exchange shows the same figures all evening and gives no sign that
+	 * they are old.
+	 *
+	 * <p>A minute, and only while the sidebar is on screen. Three requests
+	 * against a budget of sixty a minute that the sends and the quotes draw on
+	 * too, and none of them worth spending on a panel nobody has open.
+	 */
+	private static final long PANEL_REFRESH_SECONDS = 60;
+
+	/** The tabs that are re-read on their own. */
 	enum Tab
 	{
-		TRADES, JOURNAL, WATCHLISTS
+		TRADES, JOURNAL, WATCHLISTS, ACCOUNT
 	}
 
 	/**
@@ -528,6 +545,15 @@ final class PanelReads
 					// them. Null here is fine and simply means no limits.
 					part = api.get().watchlists(key, store.rememberedWatchlistId(), accountId);
 					break;
+				case ACCOUNT:
+					// No journal needed: this is about the key, not about what
+					// was traded with it. Applied as a connection would apply
+					// it, so a read that succeeds after one that failed puts
+					// the tab back to saying it is connected rather than
+					// leaving the failure up until the next connect.
+					part = api.get().account(key);
+					applyPanel(part, true);
+					return;
 				default:
 					return;
 			}
@@ -550,6 +576,10 @@ final class PanelReads
 					case WATCHLISTS:
 						p.setWatchlistProblem(why);
 						break;
+					case ACCOUNT:
+						p.setStatus("Could not reach flippingrs.com: " + why,
+							ColorScheme.PROGRESS_ERROR_COLOR);
+						break;
 					default:
 						break;
 				}
@@ -559,6 +589,40 @@ final class PanelReads
 		{
 			log.warn("unexpected failure refreshing the {} tab", tab, e);
 		}
+	}
+
+	/**
+	 * The tick that re-reads the sidebar, while anyone has it open.
+	 *
+	 * <p>Guarded for the same reason {@link #quotesTick} is: a fixed-delay
+	 * task that throws is cancelled for good, and the sidebar would then stop
+	 * refreshing for the rest of the session with nothing on screen to say so
+	 * -- which is exactly the failure the freshness line under each tab now
+	 * makes visible, and no reason to let it happen.
+	 */
+	void panelTick()
+	{
+		try
+		{
+			if (!sidebarShown)
+			{
+				return;
+			}
+			// Through the same throttle the sends use, so a tick landing just
+			// after a trade was recorded does not read the same rows twice.
+			refreshAccountTabs();
+			refresh(Tab.ACCOUNT);
+		}
+		catch (RuntimeException e)
+		{
+			log.warn("unexpected failure refreshing the sidebar", e);
+		}
+	}
+
+	/** How often {@link #panelTick} should be run. */
+	static long panelRefreshSeconds()
+	{
+		return PANEL_REFRESH_SECONDS;
 	}
 
 	/**

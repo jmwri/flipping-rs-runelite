@@ -536,20 +536,27 @@ public class FlippingRsPanelTest
 				"Updated just now · next in 22s", plainText(
 				panel.freshnessTextForTest("Watchlists", now + 8_000)));
 
-			// The rest are read because something happened, so they say what.
+			// The rest re-read on the sidebar's own minute, and sooner when
+			// something happens -- so they say both. A countdown alone would
+			// have somebody waiting out forty seconds for a row that a trade
+			// they just made had already put there.
 			panel.setJournal(new Analytics(), new Positions());
-			assertEquals("Updated just now · next when you trade",
+			assertEquals("Updated just now · next in 60s or on a trade",
 				plainText(panel.refreshLineForTest("Positions")));
-			assertEquals("Updated just now · next when you trade",
+			assertEquals("Updated just now · next in 60s or on a trade",
 				plainText(panel.refreshLineForTest("Analytics")));
 
 			panel.setRecentTrades(Collections.emptyList(), Collections.emptyMap());
-			assertEquals("Updated just now · next when you trade",
+			assertEquals("Updated just now · next in 60s or on a trade",
 				plainText(panel.refreshLineForTest("Journal")));
 
 			panel.setAccounts(Collections.emptyList(), null);
-			assertEquals("Updated just now · next when you connect",
+			assertEquals("Updated just now · next in 60s or on connect",
 				plainText(panel.refreshLineForTest("Account")));
+
+			assertEquals("and later on it says so, and says the read is due",
+				"Updated 2m ago · next due now or on a trade",
+				plainText(panel.freshnessTextForTest("Positions", now + 125_000)));
 		});
 	}
 

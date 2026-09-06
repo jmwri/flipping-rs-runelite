@@ -127,10 +127,9 @@ abstract class SidebarTab
 	 * How often this tab's data is re-read on a timer, or 0 when nothing is
 	 * scheduled.
 	 *
-	 * <p>Only the quotes are on a clock. Everything else is read because
-	 * something happened -- a trade was recorded, the sidebar was opened, a
-	 * key was entered -- and a countdown to a moment nobody has scheduled
-	 * would be a number this plugin made up.
+	 * <p>Every tab that shows the server's answers has one. The quotes keep
+	 * their own faster clock; the rest share the sidebar's, which only runs
+	 * while the sidebar is open.
 	 */
 	long refreshEverySeconds()
 	{
@@ -138,8 +137,13 @@ abstract class SidebarTab
 	}
 
 	/**
-	 * What brings the next read, for a tab that has no timer. Null for a tab
-	 * that shows nothing of the server's.
+	 * What else brings a read sooner than the timer would, or null when
+	 * nothing does.
+	 *
+	 * <p>Said as well as the countdown rather than instead of it. A trade
+	 * recorded now refreshes the journal now, and a tab that only offered a
+	 * countdown would have somebody waiting out forty seconds for a row that
+	 * was already there.
 	 */
 	@Nullable
 	String refreshedBy()
@@ -193,6 +197,10 @@ abstract class SidebarTab
 			// a fixed delay from the last one finishing, so the last second of
 			// the count is a moment this cannot be exact about.
 			out.append(" · next ").append(left > 0 ? "in " + left + "s" : "due now");
+			if (refreshedBy() != null)
+			{
+				out.append(" or ").append(refreshedBy());
+			}
 		}
 		else
 		{
