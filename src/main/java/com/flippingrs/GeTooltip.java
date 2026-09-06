@@ -225,9 +225,14 @@ class GeTooltip
 		final Long edge = GeSlotText.edgeOf(offer, quote);
 		if (edge != null)
 		{
+			// The price you actually asked for, then how it compares with the
+			// line above it. Both, because the comparison is the answer and
+			// the price is what makes the comparison checkable -- and because
+			// the exchange shows a slot's total rather than its price each.
 			out.append("<br>").append(own).append("Yours ")
+				.append(FlippingRsPanel.exact(offer.getPrice())).append(" ")
 				.append(edge >= 0 ? ColourText.GOOD : ColourText.BAD)
-				.append(FlippingRsPanel.signedExact(edge));
+				.append("(").append(GeSlotText.gapFrom(offer, quote)).append(")");
 		}
 		if (quote.hasLimitLeft())
 		{

@@ -148,12 +148,20 @@ Point at an item anywhere else in the exchange and the game's own yellow hover
 box gains the same numbers: the site's buy price, its sell price, the margin
 between them after tax, the buy limit and how old the prices are. Buy above
 sell whichever way you are trading. If the item is one of your eight open
-offers, one more line says how far your own price is from the side you are
-trading — green when your offer is priced to fill sooner, red when it is priced
-to sit. That is what an offer box cannot tell you on its own: whether the
-number you asked for is still the right one. Both prices rather than only your
-side, because a buy that has filled is a sale about to be listed, and the price
-to list it at is the other one.
+offers, one more line says what you asked for and how that compares —
+`Yours 436 (2 over sell)`, green when your offer is priced to fill sooner, red
+when it is priced to sit. That is what an offer box cannot tell you on its own:
+whether the number you asked for is still the right one. Both prices rather
+than only your side, because a buy that has filled is a sale about to be
+listed, and the price to list it at is the other one.
+
+Named rather than signed, and it is worth saying why. A bare "-2" is a
+difference from something unnamed, in a direction the reader has to guess, and
+whether it is good news depends on which side of the trade they are on: over
+the market is what a buyer wants and what a seller does not. Naming the price
+answers all three at once, and since the line sits directly under that price in
+the box, the arithmetic is right there to be checked. Your own price is shown
+too, because the exchange displays a slot's total rather than its price each.
 
 The game's box rather than one of the plugin's own, and rather than lines
 inside the offer boxes. The offer boxes are the size the game made them; six
