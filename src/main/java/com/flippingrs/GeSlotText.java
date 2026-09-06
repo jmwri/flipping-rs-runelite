@@ -193,7 +193,9 @@ class GeSlotText
 			? colour(buyAt, VALUE)
 			: colour(buyAt, buying ? VALUE : MUTED) + colour("/", MUTED)
 				+ colour(sellAt, buying ? MUTED : VALUE);
-		return prices + colour(" ", MUTED)
+		// Two spaces, not one. A single space between two numbers in the small
+		// font leaves them touching, and "434gp -2gp" read as one figure.
+		return prices + colour("  ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}
 

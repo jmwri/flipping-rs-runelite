@@ -99,7 +99,7 @@ public class GeSlotTextTest
 
 		assertNotNull(text);
 		assertEquals("both prices, and the difference against yours",
-			"1.48M/1.52M +5.0K", plain(text));
+			"1.48M/1.52M  +5.0K", plain(text));
 		assertTrue(text, text.contains(GOOD));
 	}
 
@@ -110,7 +110,7 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip());
 
 		assertNotNull(text);
-		assertEquals("1.48M/1.52M -10.0K", plain(text));
+		assertEquals("1.48M/1.52M  -10.0K", plain(text));
 		assertTrue(text, text.contains(BAD));
 	}
 
@@ -125,13 +125,13 @@ public class GeSlotTextTest
 	{
 		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip());
 		assertNotNull(good);
-		assertEquals("1.48M/1.52M +10.0K", plain(good));
+		assertEquals("1.48M/1.52M  +10.0K", plain(good));
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
 			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip());
 		assertNotNull(optimistic);
-		assertEquals("1.48M/1.52M -80.0K", plain(optimistic));
+		assertEquals("1.48M/1.52M  -80.0K", plain(optimistic));
 		assertTrue(optimistic, optimistic.contains(BAD));
 	}
 
@@ -154,7 +154,7 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offerOn(3144, GrandExchangeOfferState.SELLING, 436), karambwan);
 
 		assertNotNull(text);
-		assertEquals("434gp -2gp", plain(text));
+		assertEquals("434gp  -2gp", plain(text));
 	}
 
 	/**
