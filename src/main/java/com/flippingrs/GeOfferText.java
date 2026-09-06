@@ -153,8 +153,10 @@ class GeOfferText
 	 *
 	 * <p>One line. It is going on the end of somebody else's, and the
 	 * description's box is only so tall. What qualifies the prices is folded
-	 * onto the end rather than dropped: the buy limit and the age are what say
-	 * whether the numbers before them can be trusted.
+	 * onto the end rather than dropped: the buy limit, the day's volume and
+	 * the age are what say whether the numbers before them can be acted on.
+	 * The volume is shortened to "Vol" here and spelt out everywhere else,
+	 * because this is the one place where the line has to stay a line.
 	 *
 	 * <p>Coloured with the colours themselves rather than with RuneLite's
 	 * {@code <colNORMAL>} tokens, which are only turned into colours for
@@ -176,6 +178,14 @@ class GeOfferText
 		if (quote.hasLimitLeft())
 		{
 			under.append("Limit ").append(limitLeft(quote));
+		}
+		final String traded = FlippingRsPanel.volume(quote);
+		if (traded != null)
+		{
+			// Before the age, because it qualifies the margin the way the
+			// limit does: a margin on an item that barely trades is a number
+			// you cannot act on however fresh it is.
+			under.append(under.length() > 0 ? "  ·  " : "").append("Vol ").append(traded);
 		}
 		final String age = age(quote.getDataAgeSeconds());
 		if (age != null)

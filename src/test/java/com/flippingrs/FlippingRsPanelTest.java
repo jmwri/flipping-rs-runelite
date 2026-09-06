@@ -414,7 +414,7 @@ public class FlippingRsPanelTest
 		final Quote q = quote(4151);
 		assertEquals("Buy 1,480,000 · Sell 1,520,000", FlippingRsPanel.pricesLine(q));
 		assertEquals("Margin +9,600 · ROI 0.7%", FlippingRsPanel.marginLine(q));
-		assertEquals("Limit 70 · +672.0K per limit · 1.2K traded/24h",
+		assertEquals("Limit 70 · +672.0K per limit · Volume 1.2K/24h",
 			FlippingRsPanel.limitLine(new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, null, q)));
 
 		final Quote losing = quote(1);

@@ -195,4 +195,34 @@ public class GeOfferTextTest
 		assertFalse(new Quote().hasLimitLeft());
 		assertFalse(GeOfferText.textFor(whip()).contains("Limit"));
 	}
+
+	/**
+	 * The offer screens carry the volume too, shortened.
+	 *
+	 * <p>"Vol" rather than "Volume" here alone: this line goes on the end of
+	 * the game's own description and has to stay one line, which is the whole
+	 * reason it was put there.
+	 */
+	@Test
+	public void theOfferLineCarriesTheVolumeShortened()
+	{
+		final Quote quote = whip();
+		quote.volume24h = 1234;
+		quote.dataAgeSeconds = 250;
+
+		final String text = GeOfferText.textFor(quote).replaceAll("<[^>]*>", "");
+
+		assertTrue(text, text.contains("Vol 1.2K/24h"));
+		assertTrue("and it qualifies the margin, so it comes before the age: " + text,
+			text.indexOf("Vol ") < text.indexOf("Priced "));
+	}
+
+	/** And says nothing when the site has no volume for the item. */
+	@Test
+	public void anOfferLineWithoutVolumeDoesNotMentionIt()
+	{
+		final String text = GeOfferText.textFor(whip());
+
+		assertFalse(text, text.contains("Vol"));
+	}
 }

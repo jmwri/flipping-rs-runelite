@@ -193,7 +193,8 @@ class ExaminePrices
 	}
 
 	/**
-	 * What gets added to the line: the two prices and the margin.
+	 * What gets added to the line: the two prices, the margin, and the day's
+	 * volume when the site has it.
 	 *
 	 * <p>Coloured with the colour itself rather than with RuneLite's
 	 * {@code <colNORMAL>} tokens. Those are only turned into colours for the
@@ -207,11 +208,22 @@ class ExaminePrices
 	 */
 	static String suffix(Quote quote)
 	{
-		return colour(" Buy ", MUTED) + colour(FlippingRsPanel.exact(quote.getBuyAt()), VALUE)
-			+ colour(" · Sell ", MUTED) + colour(FlippingRsPanel.exact(quote.getSellAt()), VALUE)
-			+ colour(" · Margin ", MUTED)
-			+ colour(FlippingRsPanel.signedExact(quote.getNetMargin()),
-				quote.getNetMargin() >= 0 ? GOOD : BAD);
+		final StringBuilder out = new StringBuilder();
+		out.append(colour(" Buy ", MUTED)).append(colour(FlippingRsPanel.exact(quote.getBuyAt()), VALUE))
+			.append(colour(" · Sell ", MUTED)).append(colour(FlippingRsPanel.exact(quote.getSellAt()), VALUE))
+			.append(colour(" · Margin ", MUTED))
+			.append(colour(FlippingRsPanel.signedExact(quote.getNetMargin()),
+				quote.getNetMargin() >= 0 ? GOOD : BAD));
+		// Examine is asked from a bank or off the ground, away from the
+		// exchange and from anything else that would say whether the item
+		// moves at all. It is the place this number is least likely to be
+		// known already.
+		final String traded = FlippingRsPanel.volume(quote);
+		if (traded != null)
+		{
+			out.append(colour(" · Volume ", MUTED)).append(colour(traded, VALUE));
+		}
+		return out.toString();
 	}
 
 	/** One run of text in one colour, as the game's own text renderer reads it. */

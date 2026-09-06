@@ -15,6 +15,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import org.junit.Before;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -301,5 +302,31 @@ public class ExaminePricesTest
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
 			.setValue(org.mockito.ArgumentMatchers.anyString());
+	}
+
+	/**
+	 * An examine line carries the volume as well.
+	 *
+	 * <p>Examine is asked from a bank or off the ground, away from the
+	 * exchange and from anything else that would say whether the item moves at
+	 * all -- so it is the place this number is least likely to be known
+	 * already.
+	 */
+	@Test
+	public void anExamineLineCarriesTheVolume()
+	{
+		final Quote quote = new Quote();
+		quote.instantSell = 1_480_000;
+		quote.instantBuy = 1_520_000;
+		quote.netMargin = 32_000;
+		quote.volume24h = 1234;
+
+		final String plain = ExaminePrices.suffix(quote).replaceAll("<[^>]*>", "");
+
+		assertTrue(plain, plain.endsWith(" · Volume 1.2K/24h"));
+
+		quote.volume24h = 0;
+		assertFalse("and nothing at all when the site has none",
+			ExaminePrices.suffix(quote).contains("Volume"));
 	}
 }

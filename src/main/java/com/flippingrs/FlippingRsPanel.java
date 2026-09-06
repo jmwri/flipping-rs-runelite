@@ -938,9 +938,10 @@ public class FlippingRsPanel extends PluginPanel
 		{
 			out.append(out.length() > 0 ? " · " : "").append(signed(q.getProfitPerLimit())).append(" per limit");
 		}
-		if (q != null && q.getVolume24h() > 0)
+		final String traded = volume(q);
+		if (traded != null)
 		{
-			out.append(out.length() > 0 ? " · " : "").append(count(q.getVolume24h())).append(" traded/24h");
+			out.append(out.length() > 0 ? " · " : "").append("Volume ").append(traded);
 		}
 		return out.toString();
 	}
@@ -1524,6 +1525,27 @@ public class FlippingRsPanel extends PluginPanel
 			return String.format(Locale.ROOT, "%.1fK", n / 1_000d);
 		}
 		return Long.toString(n);
+	}
+
+	/**
+	 * "1.2K/24h", or null when the site has no volume for the item.
+	 *
+	 * <p>Null rather than "0/24h". A day with no trades and a server that does
+	 * not send the figure look identical from here, and of the two readings
+	 * the wrong one is a great deal worse: it would say an item nobody can
+	 * shift is worth a hundred million a flip, which is exactly the item
+	 * somebody would put their whole bank into.
+	 *
+	 * <p>Shared, because it now appears on the watchlist card, in the
+	 * exchange's hover box, on both offer screens and on an examine line, and
+	 * four copies of a format is four places for one to say something
+	 * different about the same number.
+	 */
+	@Nullable
+	static String volume(@Nullable Quote quote)
+	{
+		return quote == null || quote.getVolume24h() <= 0
+			? null : count(quote.getVolume24h()) + "/24h";
 	}
 
 	/** A fraction as a percentage: 0.0213 is "2.1%". */

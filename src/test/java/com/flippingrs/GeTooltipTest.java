@@ -151,6 +151,48 @@ public class GeTooltipTest
 		assertEquals("Priced 4m ago", lines[4]);
 	}
 
+	/**
+	 * The day's volume, which is what says whether a margin is one anybody can
+	 * take.
+	 *
+	 * <p>A wide spread on an item that trades twice a day is not an
+	 * opportunity; it is the reason the spread is wide. Nothing says that on
+	 * any of the exchange's own screens.
+	 */
+	@Test
+	public void theDaysVolumeSaysWhetherTheMarginCanBeTaken()
+	{
+		final Quote quote = whip();
+		quote.volume24h = 1234;
+		quote.dataAgeSeconds = -1;
+
+		final String[] lines = lines(GeTooltip.textFor(quote, null, BOX_TEXT));
+
+		assertEquals(4, lines.length);
+		assertEquals("Volume 1.2K/24h", lines[3]);
+	}
+
+	/**
+	 * An item the site has no volume for says nothing, rather than saying
+	 * none.
+	 *
+	 * <p>A day with no trades and a server that does not send the figure look
+	 * identical from here, and of the two readings the wrong one is much the
+	 * worse: "0/24h" on an item that trades all day would talk somebody out of
+	 * a good flip, and is the more likely of the two to be what happened.
+	 */
+	@Test
+	public void anItemWithNoVolumeSaysNothingAboutIt()
+	{
+		final Quote quote = whip();
+		quote.dataAgeSeconds = -1;
+
+		final String text = GeTooltip.textFor(quote, null, BOX_TEXT);
+
+		assertFalse(text, text.contains("Volume"));
+		assertFalse(text, text.contains("24h"));
+	}
+
 	/** And a server that sends neither leaves both off rather than guessing. */
 	@Test
 	public void aServerThatSaysNeitherLeavesThemOff()
