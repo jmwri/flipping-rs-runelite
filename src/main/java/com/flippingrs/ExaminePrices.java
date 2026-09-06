@@ -56,18 +56,21 @@ class ExaminePrices
 	private final IntFunction<Quote> quoteFor;
 	/** Asks for a price for an item nobody has one for yet. */
 	private final IntConsumer wanted;
+	/** Resolves an item's name, for a price that arrives after its line. */
+	private final IntFunction<String> itemName;
 
 	/** The item the last examine was asked about, or -1. */
 	private int examined = -1;
 
 	ExaminePrices(Client client, FlippingRsConfig config, ChatMessageManager chat,
-		IntFunction<Quote> quoteFor, IntConsumer wanted)
+		IntFunction<Quote> quoteFor, IntConsumer wanted, IntFunction<String> itemName)
 	{
 		this.client = client;
 		this.config = config;
 		this.chat = chat;
 		this.quoteFor = quoteFor;
 		this.wanted = wanted;
+		this.itemName = itemName;
 	}
 
 	/**
@@ -158,10 +161,9 @@ class ExaminePrices
 			final Quote quote = quoteFor.apply(itemId);
 			if (quote == null)
 			{
-				// Nobody has asked the site about this item. Ask now, so the
-				// next examine of it can answer; saying nothing is better than
-				// a price arriving in the chat box after the line it belongs
-				// to has scrolled away from it.
+				// Nobody has asked the site about this item yet. Ask now; the
+				// answer follows as its own line, naming the item, rather than
+				// this examine going unanswered.
 				wanted.accept(itemId);
 				return;
 			}
@@ -170,7 +172,11 @@ class ExaminePrices
 			{
 				return;
 			}
-			node.setValue(node.getValue() + suffix(quote));
+			// The format message, not the value. What suffix builds carries
+			// RuneLite's own colour tags, and it is update() reading the format
+			// message that turns those into a coloured line; writing the tags
+			// straight into the value puts them on screen as themselves.
+			node.setRuneLiteFormatMessage(node.getValue() + suffix(quote));
 			chat.update(node);
 			client.refreshChat();
 		}
@@ -205,22 +211,45 @@ class ExaminePrices
 	}
 
 	/**
-	 * The same, as a line of its own, for an item examined from somewhere the
-	 * chat did not produce a message to hang it off.
+	 * A price that arrived after the line it belonged to.
 	 *
-	 * <p>Unused today and kept out of the click path deliberately: it exists
-	 * for the caller that wants to say something rather than append it.
+	 * <p>The first examine of an item nobody has asked the site about cannot
+	 * be answered on the spot: there is nothing to answer with until a request
+	 * comes back. Saying nothing at all was the first attempt at that and it
+	 * reads exactly like a broken feature -- you examine a thing, and the
+	 * plugin you installed to price things says nothing.
+	 *
+	 * <p>So the answer follows a moment later, as its own line, naming the
+	 * item. Naming it is what makes a late line readable rather than a price
+	 * floating free of anything: by the time it lands the examine text may
+	 * have a couple of lines above it.
 	 */
-	void say(String itemName, Quote quote)
+	void priced(int itemId)
 	{
-		chat.queue(QueuedMessage.builder()
-			.type(ChatMessageType.CONSOLE)
-			.runeLiteFormattedMessage(new ChatMessageBuilder()
-				.append(ChatColorType.HIGHLIGHT)
-				.append(itemName)
-				.append(suffix(quote))
-				.build())
-			.build());
+		try
+		{
+			if (!config.examinePrices())
+			{
+				return;
+			}
+			final Quote quote = quoteFor.apply(itemId);
+			if (quote == null)
+			{
+				return;
+			}
+			chat.queue(QueuedMessage.builder()
+				.type(ChatMessageType.CONSOLE)
+				.runeLiteFormattedMessage(new ChatMessageBuilder()
+					.append(ChatColorType.HIGHLIGHT)
+					.append(itemName.apply(itemId))
+					.append(suffix(quote))
+					.build())
+				.build());
+		}
+		catch (RuntimeException e)
+		{
+			log.debug("could not say what an examined item is worth", e);
+		}
 	}
 
 	/** The item the next examine message will be answered for, for a test. */

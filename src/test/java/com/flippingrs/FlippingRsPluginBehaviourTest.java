@@ -1608,11 +1608,16 @@ public class FlippingRsPluginBehaviourTest
 
 		assertNull("removed from the list, gone from the offer screen", support.watchedQuote(4151));
 
+		// The exchange-prices setting stops the exchange screens drawing, and
+		// nothing else. It used to gate the lookup itself, which quietly took
+		// the examine line with it -- neither what the setting says nor
+		// anywhere a user would look for the reason.
 		when(support.config.setupOverlay()).thenReturn(false);
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
 		server.quotes = Collections.singletonList(whip);
 		support.connect();
-		assertNull("the setting turns it off even for a watched item", support.watchedQuote(4151));
+		assertNotNull("the price is still known, for whatever else wants it",
+			support.watchedQuote(4151));
 	}
 
 	/**

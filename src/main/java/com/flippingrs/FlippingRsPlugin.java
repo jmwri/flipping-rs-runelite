@@ -264,7 +264,7 @@ public class FlippingRsPlugin extends Plugin
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
-			itemId -> watchlists.showingExamined(itemId));
+			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
 		panel = new FlippingRsPanel(new SidebarActions());
 
@@ -410,7 +410,8 @@ public class FlippingRsPlugin extends Plugin
 		sender = new TransactionSender(client, config, store, () -> api, this::onPanel, gson, queueDir,
 			() -> reads.afterSend(), () -> shuttingDown, recordedThisSession::get, this::notifyProblem);
 		watchlists = new Watchlists(client, itemManager, clientThread, config, store, () -> api, this::onPanel,
-			this::itemName, () -> reads.refresh(PanelReads.Tab.WATCHLISTS), work -> submit(sendExecutor, work));
+			this::itemName, () -> reads.refresh(PanelReads.Tab.WATCHLISTS), work -> submit(sendExecutor, work),
+			this::examinedPriced);
 		catchUp = new CatchUp(client, config, store, () -> api, this::onPanel, this::itemName, sender::drain,
 			() -> reads.afterSend(), work -> submit(sendExecutor, work));
 		positions = new PositionActions(config, () -> api, this::onPanel, () -> reads.refresh(PanelReads.Tab.JOURNAL));
@@ -1104,6 +1105,24 @@ public class FlippingRsPlugin extends Plugin
 			log.debug("dropped a deferred re-read submitted during shutdown", e);
 			return false;
 		}
+	}
+
+	/**
+	 * A price arrived for an item somebody examined before anyone had one.
+	 *
+	 * <p>Net thread, from the fetch that answered it. The chat is the client's,
+	 * so the line itself is said on the client thread.
+	 */
+	private void examinedPriced(int itemId)
+	{
+		clientThread.invoke(() ->
+		{
+			final ExaminePrices examine = examinePrices;
+			if (examine != null)
+			{
+				examine.priced(itemId);
+			}
+		});
 	}
 
 	/**

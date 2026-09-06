@@ -178,7 +178,10 @@ class GeHistoryText
 		// its quantity, so it fills the space the row leaves rather than
 		// sitting on anything the row is already using.
 		caption.setXTextAlignment(WidgetTextAlignment.RIGHT);
-		caption.setYTextAlignment(WidgetTextAlignment.CENTER);
+		// Along the bottom of the row, not down the middle of it. A row already
+		// has its own text through the middle, and a caption centred there
+		// lands on top of it.
+		caption.setYTextAlignment(WidgetTextAlignment.BOTTOM);
 		return caption;
 	}
 

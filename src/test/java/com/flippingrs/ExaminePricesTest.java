@@ -47,7 +47,7 @@ public class ExaminePricesTest
 	public void setUp()
 	{
 		when(config.examinePrices()).thenReturn(true);
-		examine = new ExaminePrices(client, config, chat, quotes::get, asked::add);
+		examine = new ExaminePrices(client, config, chat, quotes::get, asked::add, id -> "Abyssal whip");
 
 		final Quote whip = new Quote();
 		whip.id = 4151;
@@ -118,7 +118,9 @@ public class ExaminePricesTest
 
 		final org.mockito.ArgumentCaptor<String> written =
 			org.mockito.ArgumentCaptor.forClass(String.class);
-		org.mockito.Mockito.verify(node).setValue(written.capture());
+		// The format message, not the value: the colour tags only become
+		// colours when ChatMessageManager reads them off the format message.
+		org.mockito.Mockito.verify(node).setRuneLiteFormatMessage(written.capture());
 		assertTrue(written.getValue(), written.getValue().startsWith("A weapon from the abyss."));
 		assertTrue(written.getValue(), written.getValue().contains("1,480,000"));
 		assertTrue(written.getValue(), written.getValue().contains("1,520,000"));
@@ -137,7 +139,7 @@ public class ExaminePricesTest
 		examine.clicked(examineOnGround(4151));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
-		org.mockito.Mockito.verify(node).setValue(org.mockito.ArgumentMatchers.anyString());
+		org.mockito.Mockito.verify(node).setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 	}
 
 	/**
@@ -155,7 +157,7 @@ public class ExaminePricesTest
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, second));
 
 		org.mockito.Mockito.verify(second, org.mockito.Mockito.never())
-			.setValue(org.mockito.ArgumentMatchers.anyString());
+			.setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 	}
 
 	/**
@@ -178,7 +180,7 @@ public class ExaminePricesTest
 		final MessageNode node = node("A weapon from the abyss.");
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
-			.setValue(org.mockito.ArgumentMatchers.anyString());
+			.setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 	}
 
 	/**
@@ -195,7 +197,7 @@ public class ExaminePricesTest
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
-			.setValue(org.mockito.ArgumentMatchers.anyString());
+			.setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 		assertEquals("but it is asked about", java.util.Collections.singletonList(1511), asked);
 	}
 
@@ -234,6 +236,38 @@ public class ExaminePricesTest
 		assertEquals(-1, ExaminePrices.itemFor(event, client::getWidget));
 	}
 
+	/**
+	 * A price that arrives after the line it belonged to is said as its own
+	 * line, naming the item.
+	 *
+	 * <p>The first examine of an item nobody has asked the site about cannot
+	 * be answered on the spot. Saying nothing at all was the first attempt at
+	 * that, and it reads exactly like a broken feature: you examine a thing,
+	 * and the plugin you installed to price things says nothing.
+	 */
+	@Test
+	public void aPriceThatArrivesLateIsSaidWithTheItemsName()
+	{
+		examine.priced(4151);
+
+		final org.mockito.ArgumentCaptor<net.runelite.client.chat.QueuedMessage> said =
+			org.mockito.ArgumentCaptor.forClass(net.runelite.client.chat.QueuedMessage.class);
+		org.mockito.Mockito.verify(chat).queue(said.capture());
+		final String line = said.getValue().getRuneLiteFormattedMessage();
+		assertTrue(line, line.contains("Abyssal whip"));
+		assertTrue(line, line.contains("1,480,000"));
+	}
+
+	/** And an item the server had no price for says nothing at all. */
+	@Test
+	public void aPriceThatNeverArrivedSaysNothing()
+	{
+		examine.priced(1511);
+
+		org.mockito.Mockito.verify(chat, org.mockito.Mockito.never())
+			.queue(org.mockito.ArgumentMatchers.any());
+	}
+
 	/** A message that is not an item examine is left alone. */
 	@Test
 	public void otherChatIsLeftAlone()
@@ -244,7 +278,7 @@ public class ExaminePricesTest
 		examine.examined(message(ChatMessageType.OBJECT_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
-			.setValue(org.mockito.ArgumentMatchers.anyString());
+			.setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 	}
 
 	/** And the setting turns it off entirely. */
@@ -258,6 +292,6 @@ public class ExaminePricesTest
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
-			.setValue(org.mockito.ArgumentMatchers.anyString());
+			.setRuneLiteFormatMessage(org.mockito.ArgumentMatchers.anyString());
 	}
 }

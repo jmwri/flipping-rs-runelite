@@ -36,11 +36,14 @@ import net.runelite.api.widgets.WidgetType;
 class GeSetupText
 {
 	/**
-	 * How far under the item's description to sit, and how tall to be. The
-	 * screen's own lines are eleven pixels apart, which is what the small font
-	 * gives; one line and a gap is what this needs.
+	 * How far under the item's description to sit, and how tall to be.
+	 *
+	 * <p>No gap: flush with the bottom of the description rather than below
+	 * it. The description's box already carries its own padding under the last
+	 * line of text, so anything added to that reads as the line having come
+	 * adrift from what it belongs to.
 	 */
-	private static final int GAP = 4;
+	private static final int GAP = 0;
 	private static final int LINE = 12;
 
 	/**

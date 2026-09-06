@@ -52,6 +52,8 @@ final class Watchlists
 	private final Runnable reread;
 	/** Hands work to the net thread. */
 	private final Consumer<Runnable> netThread;
+	/** Says what an examined item turned out to be worth. Net thread. */
+	private final java.util.function.IntConsumer examinedPriced;
 
 	/** The owner's watchlists, as last read from the server. Null until the first read. */
 	@Nullable
@@ -118,6 +120,10 @@ final class Watchlists
 	/** The last item examined that had no price, or 0. */
 	private volatile int examinedItem;
 
+	/** Whether a fetch asked for by an examine is already on its way. */
+	private final java.util.concurrent.atomic.AtomicBoolean examineFetch =
+		new java.util.concurrent.atomic.AtomicBoolean();
+
 	/**
 	 * Set once a server has said it has no per-item quote route, so the plugin
 	 * stops asking.
@@ -132,7 +138,7 @@ final class Watchlists
 
 	Watchlists(Client client, ItemManager itemManager, ClientThread clientThread, FlippingRsConfig config,
 		ProfileStore store, Supplier<FlippingRsApi> api, PanelUpdates panel, IntFunction<String> itemName,
-		Runnable reread, Consumer<Runnable> netThread)
+		Runnable reread, Consumer<Runnable> netThread, java.util.function.IntConsumer examinedPriced)
 	{
 		this.client = client;
 		this.itemManager = itemManager;
@@ -144,6 +150,7 @@ final class Watchlists
 		this.itemName = itemName;
 		this.reread = reread;
 		this.netThread = netThread;
+		this.examinedPriced = examinedPriced;
 	}
 
 	/** Forgets everything, for a plugin start or stop. */
@@ -288,10 +295,12 @@ final class Watchlists
 	@Nullable
 	Quote quoteFor(int itemId)
 	{
-		if (!config.setupOverlay())
-		{
-			return null;
-		}
+		// Not gated on a setting here. Every caller has its own -- the
+		// exchange screens on one, examine on another -- and gating the lookup
+		// as well meant switching the exchange prices off silently switched
+		// off the examine line too, which is neither what the setting says nor
+		// anywhere the user would look for it.
+		//
 		// The shown watchlist first, and only if the item is actually on it.
 		// The quote map is whatever the last watchlist read returned, which
 		// can still hold the previous list's items; answering from it for an
@@ -334,14 +343,22 @@ final class Watchlists
 	/**
 	 * An item somebody examined that nobody has a price for. Client thread.
 	 *
-	 * <p>Kept until the next fetch takes it, so that examining an item once is
-	 * what makes the second examine of it able to answer. Only one: examine is
-	 * a deliberate act on one item, and remembering a list of them would turn
-	 * an idle rummage through a bank into a request for forty prices.
+	 * <p>Fetched now rather than on the next quote tick. Waiting up to thirty
+	 * seconds for a line about something the user looked at a moment ago is
+	 * indistinguishable from the feature not working.
+	 *
+	 * <p>Only one item is remembered. Examine is a deliberate act on one
+	 * thing, and keeping a list would turn an idle rummage through a bank into
+	 * a request for forty prices; one pending fetch at a time keeps a fast
+	 * rummage to one request rather than one per item.
 	 */
 	void showingExamined(int itemId)
 	{
 		examinedItem = itemId;
+		if (examineFetch.compareAndSet(false, true))
+		{
+			netThread.accept(this::fetchOnDemand);
+		}
 	}
 
 	/**
@@ -355,6 +372,7 @@ final class Watchlists
 	 */
 	void fetchOnDemand()
 	{
+		examineFetch.set(false);
 		if (quoteRouteMissing)
 		{
 			return;
@@ -406,6 +424,18 @@ final class Watchlists
 			if (got != null)
 			{
 				onDemand = got;
+			}
+			// An examine that could not be answered on the spot is answered
+			// now, as its own line. Cleared either way: an item the server had
+			// no price for is not worth asking about again on every tick.
+			final int answered = examinedItem;
+			if (answered > 0)
+			{
+				examinedItem = 0;
+				if (onDemand.containsKey(answered))
+				{
+					examinedPriced.accept(answered);
+				}
 			}
 		}
 		catch (FlippingRsApi.NotHereException e)

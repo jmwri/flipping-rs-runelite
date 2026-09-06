@@ -161,10 +161,10 @@ of the examine line — in the inventory, the bank, or on the ground, none of
 which the Grand Exchange ever sees. It is one line, not two: the prices go on
 the end of the game's own text rather than following it.
 
-An item nobody has asked the site about yet says nothing the first time and is
-answered the next. A price arriving in the chat box seconds after the line it
-belongs to has scrolled away is a line about nothing in particular, so it is
-not sent.
+An item nobody has asked the site about yet is asked about there and then, and
+the answer follows a moment later as its own line, naming the item. It cannot
+be on the end of the examine text, because that line is already written by the
+time there is anything to add to it.
 
 ## Catching up on trades it missed
 
