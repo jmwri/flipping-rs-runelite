@@ -38,7 +38,7 @@ class GeSetupText
 	/**
 	 * How far under the item's description to sit, and how tall to be. The
 	 * screen's own lines are eleven pixels apart, which is what the small font
-	 * gives; two lines and a gap is what this needs.
+	 * gives; one line and a gap is what this needs.
 	 */
 	private static final int GAP = 4;
 	private static final int LINE = 12;
@@ -163,19 +163,18 @@ class GeSetupText
 			// than putting the line at a guessed position for one frame.
 			return;
 		}
-		final int room = roomUnder(setup, page, above);
-		if (room < LINE)
+		if (roomUnder(setup, page, above) < LINE)
 		{
-			// Not even one line fits between the description and whatever the
-			// screen draws next. Drawing anyway would put this on top of the
+			// The line does not fit between the description and whatever the
+			// screen draws next. Drawing anyway would put it on top of the
 			// quantity buttons, which is worse than not drawing at all.
 			hide();
 			return;
 		}
 		target.setHidden(false);
-		target.setText(textFor(quote, room >= LINE * 2));
+		target.setText(textFor(quote));
 		target.setTextColor(colourFor(quote));
-		place(page, above, target, Math.min(LINE * 2, room));
+		place(page, above, target);
 		target.revalidate();
 	}
 
@@ -195,18 +194,17 @@ class GeSetupText
 	 * is a direct child of the page. A frame that has not been laid out yet
 	 * gives no boxes, and the next tick tries again.
 	 */
-	private void place(Rectangle page, Rectangle above, Widget target, int height)
+	private void place(Rectangle page, Rectangle above, Widget target)
 	{
 		final int x = Math.max(0, above.x - page.x);
 		final int y = under(page, above, GAP);
-		if (target.getOriginalX() == x && target.getOriginalY() == y
-			&& target.getOriginalHeight() == height)
+		if (target.getOriginalX() == x && target.getOriginalY() == y)
 		{
 			return;
 		}
 		target.setOriginalX(x);
 		target.setOriginalY(y);
-		target.setOriginalHeight(height);
+		target.setOriginalHeight(LINE);
 		// As wide as the description, so a long line wraps where that one does
 		// rather than running off the side of the page.
 		target.setOriginalWidth(Math.max(0, page.width - 2 * x));
@@ -294,7 +292,7 @@ class GeSetupText
 		// from the description above it; see place.
 		line.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
 		line.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
-		line.setOriginalHeight(LINE * 2);
+		line.setOriginalHeight(LINE);
 		line.setHeightMode(WidgetSizeMode.ABSOLUTE);
 		line.revalidate();
 		return line;
@@ -304,26 +302,19 @@ class GeSetupText
 	 * What the line says: the two prices and the margin, then the buy limit
 	 * and how old the prices are.
 	 *
-	 * <p>Two lines rather than one because the screen is narrow and the first
-	 * three are the numbers being acted on, while the second two are what
-	 * qualifies them. Static, so the wording is pinned by a test rather than
-	 * by running a client.
+	 * <p>One line. It is going into a gap in somebody else's layout, and a gap
+	 * that takes one line is a much safer thing to assume than one that takes
+	 * two -- the taller this is, the likelier it is to reach the quantity
+	 * buttons under it. What qualifies the prices is folded onto the end
+	 * rather than dropped: the buy limit and the age are what say whether the
+	 * numbers before them can be trusted, and losing them to a tight layout
+	 * would leave the confident half on screen and the qualifying half
+	 * nowhere.
+	 *
+	 * <p>Static, so the wording is pinned by a test rather than by running a
+	 * client.
 	 */
 	static String textFor(Quote quote)
-	{
-		return textFor(quote, true);
-	}
-
-	/**
-	 * The same, on one line when the gap under the description will not take
-	 * two.
-	 *
-	 * <p>Folded together rather than dropped: the second line is the buy limit
-	 * and how old the prices are, which is what says whether the first line
-	 * can be trusted. Losing it silently to a tight layout would leave the
-	 * confident half on screen and the qualifying half nowhere.
-	 */
-	static String textFor(Quote quote, boolean twoLines)
 	{
 		final StringBuilder out = new StringBuilder();
 		out.append("Buy ").append(FlippingRsPanel.exact(quote.getBuyAt()))
@@ -341,7 +332,7 @@ class GeSetupText
 		}
 		if (under.length() > 0)
 		{
-			out.append(twoLines ? "<br>" : "  ·  ").append(under);
+			out.append("  ·  ").append(under);
 		}
 		return out.toString();
 	}

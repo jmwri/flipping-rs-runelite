@@ -10,6 +10,7 @@ import net.runelite.api.MenuAction;
 import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
@@ -29,6 +30,15 @@ import net.runelite.client.chat.QueuedMessage;
  * came is forgotten on the next one rather than kept to be paired with
  * somebody else's.
  *
+ * <p>Which click that is, is not obvious. Examining an item in the inventory,
+ * the bank or the exchange is not {@code EXAMINE_ITEM} -- it is a plain
+ * interface op, {@code CC_OP_LOW_PRIORITY}, told apart from every other op on
+ * that widget by its name. And the item it was on is not on the event either:
+ * it has to be read off the widget the op names. Only an item lying on the
+ * ground carries its own id. This is the same pair of cases RuneLite's own
+ * Examine plugin handles, and for the same reason -- there is no third way to
+ * ask.
+ *
  * <p>Client thread. The lookup is a cache read; an item nobody has priced yet
  * is asked about and answered on the next examine rather than kept waiting
  * for, because a price arriving in the chat box seconds after the line it
@@ -37,6 +47,9 @@ import net.runelite.client.chat.QueuedMessage;
 @Slf4j
 class ExaminePrices
 {
+	/** The name of the op, which is the only thing that marks it as an examine. */
+	private static final String EXAMINE = "Examine";
+
 	private final Client client;
 	private final FlippingRsConfig config;
 	private final ChatMessageManager chat;
@@ -60,20 +73,60 @@ class ExaminePrices
 	/**
 	 * Notes which item an examine was asked about.
 	 *
-	 * <p>Both kinds: an item in an interface -- inventory, bank, the exchange
-	 * itself -- and one lying on the ground. Anything else clears it, so a
-	 * stale id can never be paired with the next examine message that happens
-	 * along.
+	 * <p>Anything that is not an examine clears it, so a stale id can never be
+	 * paired with the next examine message that happens along.
 	 */
 	void clicked(MenuOptionClicked event)
 	{
-		final MenuAction action = event.getMenuAction();
-		if (action == MenuAction.EXAMINE_ITEM || action == MenuAction.EXAMINE_ITEM_GROUND)
+		examined = itemFor(event, client::getWidget);
+	}
+
+	/**
+	 * The item an examine click was on, or -1 if the click was not one.
+	 *
+	 * <p>Takes the widget lookup rather than reaching for it, so the two ways
+	 * an examine arrives can be told apart without a client running. Getting
+	 * this wrong is silent: the click is simply never matched, and the examine
+	 * line comes out exactly as the game wrote it.
+	 *
+	 * @param widgets resolves a component id, i.e. {@code Client::getWidget}
+	 */
+	static int itemFor(MenuOptionClicked event, IntFunction<Widget> widgets)
+	{
+		// The op's name is what separates an examine from every other thing
+		// that can be done to an item in an interface. There is no menu action
+		// of its own for it.
+		if (!EXAMINE.equals(event.getMenuOption()))
 		{
-			examined = event.getItemId();
-			return;
+			return -1;
 		}
-		examined = -1;
+		final MenuAction action = event.getMenuAction();
+		if (action == MenuAction.EXAMINE_ITEM_GROUND)
+		{
+			// The only case where the event carries the item itself.
+			return event.getId();
+		}
+		if (action != MenuAction.CC_OP && action != MenuAction.CC_OP_LOW_PRIORITY)
+		{
+			return -1;
+		}
+		// An op on an interface: the widget it was on, and the slot within it.
+		final Widget widget = widgets.apply(event.getParam1());
+		if (widget == null)
+		{
+			return -1;
+		}
+		final int slot = event.getParam0();
+		if (slot >= 0)
+		{
+			final Widget item = widget.getChild(slot);
+			if (item != null && item.getItemId() > 0)
+			{
+				return item.getItemId();
+			}
+		}
+		// A widget that is one item rather than a grid of them.
+		return widget.getItemId() > 0 ? widget.getItemId() : -1;
 	}
 
 	/**

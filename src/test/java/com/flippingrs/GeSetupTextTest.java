@@ -44,37 +44,44 @@ public class GeSetupTextTest
 	}
 
 	/**
-	 * The buy limit and the age go on a second line. They qualify the numbers
-	 * above rather than being numbers to act on, and the screen is narrow.
+	 * One line, always. It goes into a gap in somebody else's layout, and a
+	 * gap that takes one line is a much safer thing to assume than one that
+	 * takes two.
+	 *
+	 * <p>What qualifies the prices is folded onto the end rather than dropped:
+	 * the buy limit and the age are what say whether the numbers before them
+	 * can be trusted.
 	 */
 	@Test
-	public void whatQualifiesThePricesGoesUnderThem()
+	public void everythingIsOnOneLine()
 	{
 		final Quote quote = whip();
 		quote.limitRemaining = 3412;
 		quote.dataAgeSeconds = 250;
 
 		final String text = GeSetupText.textFor(quote);
-		final String[] lines = text.split("<br>");
 
-		assertEquals("two lines", 2, lines.length);
-		assertTrue(lines[0], lines[0].startsWith("Buy "));
-		assertTrue(lines[1], lines[1].contains("Limit 3.4K"));
-		assertTrue(lines[1], lines[1].contains("Priced 4m ago"));
+		assertFalse("one line", text.contains("<br>"));
+		assertTrue(text, text.startsWith("Buy "));
+		assertTrue(text, text.contains("Limit 3.4K"));
+		assertTrue(text, text.contains("Priced 4m ago"));
 	}
 
 	/**
-	 * A server that sends neither leaves the second line off entirely rather
-	 * than drawing an empty one.
+	 * A server that sends neither leaves both off rather than writing an empty
+	 * separator after the prices.
 	 */
 	@Test
-	public void aServerThatSaysNeitherGetsOneLine()
+	public void aServerThatSaysNeitherLeavesThemOff()
 	{
 		final Quote quote = whip();
 		quote.dataAgeSeconds = -1;
 
 		assertFalse(quote.hasLimitLeft());
-		assertFalse(GeSetupText.textFor(quote).contains("<br>"));
+		final String text = GeSetupText.textFor(quote);
+		assertFalse(text, text.contains("Limit"));
+		assertFalse(text, text.contains("Priced"));
+		assertTrue("the prices are still there", text.contains("Buy 1,480,000"));
 	}
 
 	/**
@@ -133,29 +140,6 @@ public class GeSetupTextTest
 		final Rectangle above = new Rectangle(110, 100, 280, 12);
 
 		assertEquals(0, GeSetupText.under(page, above, 4));
-	}
-
-	/**
-	 * A gap too small for two lines gets one, with everything folded onto it.
-	 *
-	 * <p>Folded rather than dropped: the second line is the buy limit and how
-	 * old the prices are, which is what says whether the first line can be
-	 * trusted. Losing it silently to a tight layout would leave the confident
-	 * half on screen and the qualifying half nowhere.
-	 */
-	@Test
-	public void aTightGapFoldsTheSecondLineOntoTheFirst()
-	{
-		final Quote quote = whip();
-		quote.limitRemaining = 3412;
-		quote.dataAgeSeconds = 250;
-
-		final String folded = GeSetupText.textFor(quote, false);
-
-		assertFalse("no second line", folded.contains("<br>"));
-		assertTrue("but nothing is lost", folded.contains("Limit 3.4K"));
-		assertTrue(folded, folded.contains("Priced 4m ago"));
-		assertTrue(folded, folded.contains("Buy 1,480,000"));
 	}
 
 	@Test

@@ -196,6 +196,7 @@ public class FlippingRsPlugin extends Plugin
 	private GeMenu geMenu;
 	private GeItemInfoOverlay infoOverlay;
 	private GeSetupText setupText;
+	private GeHistoryText historyText;
 	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
@@ -261,6 +262,7 @@ public class FlippingRsPlugin extends Plugin
 		infoOverlay = new GeItemInfoOverlay(client, config, this::watchedQuote, watchlists::showingOffers);
 		overlayManager.add(infoOverlay);
 		setupText = new GeSetupText(client, config, this::watchedQuote);
+		historyText = new GeHistoryText(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId));
 
@@ -510,6 +512,12 @@ public class FlippingRsPlugin extends Plugin
 			// to date, so it goes rather than sitting there frozen.
 			clientThread.invoke(setupText::reset);
 			setupText = null;
+		}
+		if (historyText != null)
+		{
+			final GeHistoryText history = historyText;
+			clientThread.invoke(history::reset);
+			historyText = null;
 		}
 		examinePrices = null;
 		if (infoOverlay != null)
@@ -894,6 +902,11 @@ public class FlippingRsPlugin extends Plugin
 			// prices move under it, and a rebuild this does not know about
 			// would otherwise leave the line gone until the screen is closed.
 			text.update();
+		}
+		final GeHistoryText history = historyText;
+		if (history != null)
+		{
+			history.update();
 		}
 	}
 

@@ -8,6 +8,7 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MessageNode;
+import net.runelite.api.widgets.Widget;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.client.chat.ChatMessageManager;
@@ -25,6 +26,13 @@ import static org.mockito.Mockito.when;
  * comes from the click that asked for it. Pairing the two is the whole
  * difference between a useful line and one that confidently prices the wrong
  * item, and it is not something the message itself can be checked against.
+ *
+ * <p>These pin how the client actually reports an examine, which is not how it
+ * reads: examining an item in an interface is a plain op told apart by its
+ * name, and the item is on the widget rather than on the event. An earlier
+ * version of this class assumed a MenuAction of its own and read the id off
+ * the event, and the tests agreed with it -- they were written from the same
+ * assumption, so they passed while the feature did nothing at all.
  */
 public class ExaminePricesTest
 {
@@ -49,11 +57,39 @@ public class ExaminePricesTest
 		quotes.put(4151, whip);
 	}
 
-	private MenuOptionClicked examineOf(MenuAction action, int itemId)
+	/** Examining an item in an interface: the inventory, the bank, the exchange. */
+	private MenuOptionClicked examineInWidget(int widgetId, int slot, int itemId)
 	{
 		final MenuOptionClicked event = mock(MenuOptionClicked.class);
+		when(event.getMenuOption()).thenReturn("Examine");
+		when(event.getMenuAction()).thenReturn(MenuAction.CC_OP_LOW_PRIORITY);
+		when(event.getParam1()).thenReturn(widgetId);
+		when(event.getParam0()).thenReturn(slot);
+
+		final Widget item = mock(Widget.class);
+		when(item.getItemId()).thenReturn(itemId);
+		final Widget container = mock(Widget.class);
+		when(container.getChild(slot)).thenReturn(item);
+		when(client.getWidget(widgetId)).thenReturn(container);
+		return event;
+	}
+
+	/** Examining one lying on the ground, the only case that carries its own id. */
+	private MenuOptionClicked examineOnGround(int itemId)
+	{
+		final MenuOptionClicked event = mock(MenuOptionClicked.class);
+		when(event.getMenuOption()).thenReturn("Examine");
+		when(event.getMenuAction()).thenReturn(MenuAction.EXAMINE_ITEM_GROUND);
+		when(event.getId()).thenReturn(itemId);
+		return event;
+	}
+
+	/** Any other click. */
+	private MenuOptionClicked somethingElse(String option, MenuAction action)
+	{
+		final MenuOptionClicked event = mock(MenuOptionClicked.class);
+		when(event.getMenuOption()).thenReturn(option);
 		when(event.getMenuAction()).thenReturn(action);
-		when(event.getItemId()).thenReturn(itemId);
 		return event;
 	}
 
@@ -77,7 +113,7 @@ public class ExaminePricesTest
 	{
 		final MessageNode node = node("A weapon from the abyss.");
 
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 4151));
+		examine.clicked(examineInWidget(9764864, 3, 4151));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		final org.mockito.ArgumentCaptor<String> written =
@@ -89,13 +125,16 @@ public class ExaminePricesTest
 		assertTrue(written.getValue(), written.getValue().contains("+32,000"));
 	}
 
-	/** An item on the ground is an item too. */
+	/**
+	 * An item on the ground is an item too, and the one case where the event
+	 * carries the item itself rather than naming a widget.
+	 */
 	@Test
 	public void anItemOnTheGroundIsPricedAsWell()
 	{
 		final MessageNode node = node("A weapon from the abyss.");
 
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM_GROUND, 4151));
+		examine.clicked(examineOnGround(4151));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node).setValue(org.mockito.ArgumentMatchers.anyString());
@@ -109,7 +148,7 @@ public class ExaminePricesTest
 	@Test
 	public void oneClickPricesOneMessage()
 	{
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 4151));
+		examine.clicked(examineInWidget(9764864, 3, 4151));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node("A weapon from the abyss.")));
 
 		final MessageNode second = node("A sturdy oak tree.");
@@ -119,12 +158,20 @@ public class ExaminePricesTest
 			.setValue(org.mockito.ArgumentMatchers.anyString());
 	}
 
-	/** Clicking anything else clears the item, so it cannot be paired later. */
+	/**
+	 * An op on the same item that is not an examine forgets it.
+	 *
+	 * <p>This is the case the name check exists for. Every other thing you can
+	 * do to an item in an interface -- wield it, drop it, use it -- arrives as
+	 * the same menu action from the same widget, and only the name tells them
+	 * apart. Without that check, wielding something would have queued its
+	 * prices onto whatever examine line came next.
+	 */
 	@Test
-	public void anyOtherClickForgetsTheItem()
+	public void anOpOnTheSameItemThatIsNotAnExamineForgetsIt()
 	{
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 4151));
-		examine.clicked(examineOf(MenuAction.WALK, 0));
+		examine.clicked(examineInWidget(9764864, 3, 4151));
+		examine.clicked(somethingElse("Wield", MenuAction.CC_OP_LOW_PRIORITY));
 
 		assertEquals(-1, examine.examinedForTest());
 
@@ -144,12 +191,47 @@ public class ExaminePricesTest
 	{
 		final MessageNode node = node("A sturdy oak log.");
 
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 1511));
+		examine.clicked(examineInWidget(9764864, 5, 1511));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
 			.setValue(org.mockito.ArgumentMatchers.anyString());
 		assertEquals("but it is asked about", java.util.Collections.singletonList(1511), asked);
+	}
+
+	/**
+	 * The two ways the client reports an examine, and the ways it does not.
+	 *
+	 * <p>Pinned directly, because this is what was wrong: the class looked for
+	 * a MenuAction of its own and read the id off the event, and neither of
+	 * those is how it arrives.
+	 */
+	@Test
+	public void anExamineIsRecognisedTheWayTheClientReportsOne()
+	{
+		assertEquals("an item in an interface, resolved off the widget",
+			4151, ExaminePrices.itemFor(examineInWidget(9764864, 3, 4151), client::getWidget));
+		assertEquals("an item on the ground, carried on the event",
+			4151, ExaminePrices.itemFor(examineOnGround(4151), client::getWidget));
+		assertEquals("another op on the same widget is not an examine",
+			-1, ExaminePrices.itemFor(somethingElse("Wield", MenuAction.CC_OP_LOW_PRIORITY),
+				client::getWidget));
+		assertEquals("and neither is examining something that is not an item",
+			-1, ExaminePrices.itemFor(somethingElse("Examine", MenuAction.EXAMINE_NPC),
+				client::getWidget));
+	}
+
+	/** A widget the client will not resolve is not an item. */
+	@Test
+	public void anExamineOnAWidgetThatIsNotThereIsNotAnItem()
+	{
+		final MenuOptionClicked event = mock(MenuOptionClicked.class);
+		when(event.getMenuOption()).thenReturn("Examine");
+		when(event.getMenuAction()).thenReturn(MenuAction.CC_OP_LOW_PRIORITY);
+		when(event.getParam1()).thenReturn(1234);
+		when(event.getParam0()).thenReturn(0);
+
+		assertEquals(-1, ExaminePrices.itemFor(event, client::getWidget));
 	}
 
 	/** A message that is not an item examine is left alone. */
@@ -158,7 +240,7 @@ public class ExaminePricesTest
 	{
 		final MessageNode node = node("A sturdy oak tree.");
 
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 4151));
+		examine.clicked(examineInWidget(9764864, 3, 4151));
 		examine.examined(message(ChatMessageType.OBJECT_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())
@@ -172,7 +254,7 @@ public class ExaminePricesTest
 		when(config.examinePrices()).thenReturn(false);
 		final MessageNode node = node("A weapon from the abyss.");
 
-		examine.clicked(examineOf(MenuAction.EXAMINE_ITEM, 4151));
+		examine.clicked(examineInWidget(9764864, 3, 4151));
 		examine.examined(message(ChatMessageType.ITEM_EXAMINE, node));
 
 		org.mockito.Mockito.verify(node, org.mockito.Mockito.never())

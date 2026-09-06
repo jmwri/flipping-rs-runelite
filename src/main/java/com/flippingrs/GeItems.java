@@ -123,11 +123,11 @@ final class GeItems
 		setupPage(client, spots);
 		for (int container : CONTAINERS)
 		{
-			collect(client.getWidget(container), spots, false);
+			collect(client.getWidget(container), spots, false, true);
 		}
 		for (int container : ROW_LISTS)
 		{
-			collect(client.getWidget(container), spots, true);
+			collect(client.getWidget(container), spots, true, false);
 		}
 		return spots;
 	}
@@ -193,15 +193,20 @@ final class GeItems
 
 	/**
 	 * Containers whose children are rows across the whole width rather than
-	 * boxes.
+	 * boxes, and which write their own prices.
 	 *
 	 * <p>A history row carries its item on a narrow icon at the left, but the
 	 * row is the width of the list: the icon's height is the row's height and
 	 * nothing else in the row says which item it is. So the icon's box is
-	 * widened to the list's, which is both where a caption has room to be
-	 * drawn and the area a right-click has to count as being on that row.
-	 * Treating the icon as the whole target meant only a click on the picture
-	 * itself found the item.
+	 * widened to the list's, which is the area a right-click has to count as
+	 * being on that row. Treating the icon as the whole target meant only a
+	 * click on the picture itself found the item.
+	 *
+	 * <p>Not painted on. These lists scroll, and paint on a scrolling list has
+	 * to work out for itself which rows are visible and clip to the viewport;
+	 * {@link GeHistoryText} puts a child in the list instead and lets the
+	 * client do both. The rows are still reported, because a right-click still
+	 * needs to find them and their prices still need fetching.
 	 */
 	private static final int[] ROW_LISTS = {
 		InterfaceID.GeHistory.LIST,
@@ -279,7 +284,7 @@ final class GeItems
 	 * is a static one, and a nested component can be either. Looking at only
 	 * one kind is how a screen ends up silently missed.
 	 */
-	private static void collect(@Nullable Widget container, List<Spot> into, boolean rows)
+	private static void collect(@Nullable Widget container, List<Spot> into, boolean rows, boolean paint)
 	{
 		if (container == null || container.isHidden() || into.size() >= MAX_SPOTS)
 		{
@@ -288,7 +293,7 @@ final class GeItems
 		final Rectangle inside = boundsOf(container);
 		final Rectangle across = rows ? inside : null;
 		// The container itself is not clipped by itself.
-		add(container, into, across, null);
+		add(container, into, across, null, paint);
 		for (Widget[] children : new Widget[][]{
 			container.getDynamicChildren(), container.getStaticChildren(), container.getNestedChildren()})
 		{
@@ -306,7 +311,7 @@ final class GeItems
 				{
 					continue;
 				}
-				add(child, into, across, inside);
+				add(child, into, across, inside, paint);
 			}
 		}
 	}
@@ -318,9 +323,11 @@ final class GeItems
 	 *               row's box spans the list's width rather than the icon's
 	 * @param clip   the container drawing it, so a row scrolled out of a list
 	 *               is not treated as being where its bounds say it is
+	 * @param paint  whether this screen wants a price painted on it, or writes
+	 *               its own
 	 */
 	private static void add(Widget widget, List<Spot> into, @Nullable Rectangle across,
-		@Nullable Rectangle clip)
+		@Nullable Rectangle clip, boolean paint)
 	{
 		final int itemId = widget.getItemId();
 		if (itemId <= 0)
@@ -334,7 +341,7 @@ final class GeItems
 		}
 		into.add(new Spot(itemId,
 			across == null ? bounds : new Rectangle(across.x, bounds.y, across.width, bounds.height),
-			null, clip));
+			null, clip, paint));
 	}
 
 	/** A widget's box on the canvas, or null if it has none worth drawing in. */

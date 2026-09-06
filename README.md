@@ -119,11 +119,11 @@ much of it you want. Nothing the game shows is replaced: the description, the
 guide price and the tax are all left exactly as they are, so if the plugin is
 offline or the item has no price you lose nothing you had before.
 
-The space it goes in is measured rather than assumed, since it is a gap in
-Jagex's layout and theirs to change. A gap too small for two lines gets one,
-with the buy limit and the price age folded onto the end of it; a gap too small
-for even one gets nothing, because a line on top of the quantity buttons would
-be worse than no line.
+It is one line. The space it goes in is measured rather than assumed, since it
+is a gap in Jagex's layout and theirs to change, and a gap that will take one
+line is a much safer thing to expect than one that will take two. If even that
+does not fit, nothing is drawn: a line on top of the quantity buttons would be
+worse than no line.
 
 The buy limit is counted from the trades your journal has, which is not
 necessarily every trade you have made: an item bought before you installed the
@@ -131,7 +131,14 @@ plugin, or on a client that was not reporting, does not count against the
 window. The error only ever goes one way — it can show more room than you
 really have, never less — but it is worth knowing before you trust it.
 
-Prices are drawn on the items themselves on all of those same screens.
+Your Grand Exchange history is written into as well. Each row gets the site's
+prices and the margin on the right-hand side, so a list of what you did reads
+as a list of what would be worth doing again. That one is a child of the list
+rather than paint on top of it for a reason the offer screen did not have: the
+history scrolls, and the client scrolling and clipping a caption with its row
+is the difference between one that follows the row and one that does not.
+
+Prices are drawn on the items themselves on the rest of those screens.
 On one of your own offers the plugin knows what you asked for as well as what
 the item is, so it shows the price for the side you are on and how far your
 offer is from it — green when your offer is priced to fill sooner, red when it
@@ -374,9 +381,12 @@ fills. Everything else is a collaborator it builds in `wire()`:
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.
+- `GeHistoryText` does the same for the history list, one child per row.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
-  click that asked, and one click answers one message.
+  click that asked, and one click answers one message. Which click that is is
+  not obvious: examining an item in an interface is a plain op told apart only
+  by its name, and the item is on the widget rather than on the event.
 - `FlippingRsPanel` is the tab strip and the shared vocabulary; each tab is a
   `SidebarTab` that owns its own widgets and draws only while it is the one on
   screen. The panel asks the plugin for things through `PanelActions`, which is
