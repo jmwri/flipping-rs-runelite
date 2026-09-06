@@ -43,6 +43,15 @@ public class GeSlotTextTest
 		return quote;
 	}
 
+	private static GrandExchangeOffer offerOn(int itemId, GrandExchangeOfferState state, int price)
+	{
+		final GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
+		when(offer.getState()).thenReturn(state);
+		when(offer.getPrice()).thenReturn(price);
+		when(offer.getItemId()).thenReturn(itemId);
+		return offer;
+	}
+
 	private static GrandExchangeOffer offer(GrandExchangeOfferState state, int price)
 	{
 		final GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
@@ -124,6 +133,28 @@ public class GeSlotTextTest
 		assertNotNull(optimistic);
 		assertEquals("1.48M/1.52M -80.0K", plain(optimistic));
 		assertTrue(optimistic, optimistic.contains(BAD));
+	}
+
+	/**
+	 * A cheap item whose two ends round to the same words shows one figure.
+	 *
+	 * <p>"434gp/434gp -2gp" reads as a contradiction: the same number twice
+	 * beside a difference that says they are not the same. They are not -- the
+	 * spread is a coin or two and the words cannot show it -- so the words
+	 * stop trying.
+	 */
+	@Test
+	public void oneFigureWhenBothEndsReadTheSame()
+	{
+		final Quote karambwan = new Quote();
+		karambwan.id = 3144;
+		karambwan.instantSell = 434;
+		karambwan.instantBuy = 434;
+
+		final String text = GeSlotText.textFor(offerOn(3144, GrandExchangeOfferState.SELLING, 436), karambwan);
+
+		assertNotNull(text);
+		assertEquals("434gp -2gp", plain(text));
 	}
 
 	/**

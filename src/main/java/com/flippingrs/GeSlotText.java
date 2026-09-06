@@ -82,7 +82,9 @@ class GeSlotText
 					slots[slot].clear();
 					continue;
 				}
-				slots[slot].to(line, "<br>" + text);
+				// One extra row, and the room for it. Without the room the row
+				// draws over whatever the box has under this line.
+				slots[slot].to(line, "<br>" + text, 1);
 			}
 		}
 		catch (RuntimeException e)
@@ -181,10 +183,17 @@ class GeSlotText
 		// words "buy" and "sell" would be repeating the box back at itself, so
 		// the side being traded is picked out in white instead and the two
 		// prices stand on their own.
-		return colour(FlippingRsPanel.gp(quote.getBuyAt()), buying ? VALUE : MUTED)
-			+ colour("/", MUTED)
-			+ colour(FlippingRsPanel.gp(quote.getSellAt()), buying ? MUTED : VALUE)
-			+ colour(" ", MUTED)
+		final String buyAt = FlippingRsPanel.gp(quote.getBuyAt());
+		final String sellAt = FlippingRsPanel.gp(quote.getSellAt());
+		// One figure when the two read the same. A cheap item's ends of the
+		// spread are often a coin or two apart and round to the same words,
+		// and "434gp/434gp" beside a difference of -2gp reads as a
+		// contradiction rather than as a narrow spread.
+		final String prices = buyAt.equals(sellAt)
+			? colour(buyAt, VALUE)
+			: colour(buyAt, buying ? VALUE : MUTED) + colour("/", MUTED)
+				+ colour(sellAt, buying ? MUTED : VALUE);
+		return prices + colour(" ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}
 
