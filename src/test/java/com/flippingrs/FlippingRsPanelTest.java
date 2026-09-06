@@ -39,9 +39,9 @@ import static org.junit.Assert.assertTrue;
  */
 public class FlippingRsPanelTest
 {
-	private static FlippingRsApi.GameAccount account(String id, String label, boolean isDefault)
+	private static GameAccount account(String id, String label, boolean isDefault)
 	{
-		final FlippingRsApi.GameAccount a = new FlippingRsApi.GameAccount();
+		final GameAccount a = new GameAccount();
 		a.id = id;
 		a.label = label;
 		a.isDefault = isDefault;
@@ -103,16 +103,17 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			assertTrue(panel.journalSummaryForTest(), panel.journalSummaryForTest().contains("Not loaded yet"));
 
-			final FlippingRsApi.Analytics week = new FlippingRsApi.Analytics();
+			final Analytics week = new Analytics();
 			week.completedFlips = 12;
 			week.realisedProfit = 1_200_000;
 			week.winRate = 0.75;
-			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+			final Positions open = new Positions();
 			open.positions = new ArrayList<>();
-			open.summary = new FlippingRsApi.Positions.Summary();
+			open.summary = new Positions.Summary();
 
 			panel.setJournal(week, open);
 
@@ -148,8 +149,9 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
-			final List<FlippingRsApi.GameAccount> accounts = Arrays.asList(
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			final List<GameAccount> accounts = Arrays.asList(
 				account("a1", "Main", true),
 				account("a2", "Alt", false));
 
@@ -165,7 +167,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
 			panel.setAccounts(Arrays.asList(
 				account("a1", "Main", false),
@@ -185,7 +188,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setAccounts(Arrays.asList(
 				account("a1", "Main", true),
 				account("a2", "Alt", false)), "deleted");
@@ -198,7 +202,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setAccounts(Collections.emptyList(), "a1");
 			assertNull(panel.selectedAccountId());
 		});
@@ -213,8 +218,9 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
-			final List<FlippingRsApi.GameAccount> accounts = new ArrayList<>();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			final List<GameAccount> accounts = new ArrayList<>();
 			accounts.add(account(null, "No id", false));
 			accounts.add(null);
 			accounts.add(account("a2", "Real", false));
@@ -236,9 +242,10 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final AtomicInteger chosen = new AtomicInteger();
-			panel.onAccountChosen(chosen::incrementAndGet);
+			actions.accountChosen = chosen::incrementAndGet;
 
 			panel.setAccounts(Arrays.asList(
 				account("a1", "Main", true),
@@ -253,13 +260,14 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setAccounts(Arrays.asList(
 				account("a1", "Main", true),
 				account("a2", "Alt", false)), "a1");
 
 			final AtomicInteger chosen = new AtomicInteger();
-			panel.onAccountChosen(chosen::incrementAndGet);
+			actions.accountChosen = chosen::incrementAndGet;
 			panel.setSelectedForTest("a2");
 
 			assertEquals(1, chosen.get());
@@ -269,9 +277,9 @@ public class FlippingRsPanelTest
 
 	// ------------------------------------------------------------- watchlist
 
-	private static FlippingRsApi.Watchlist watchlist(String id, String name)
+	private static Watchlist watchlist(String id, String name)
 	{
-		final FlippingRsApi.Watchlist w = new FlippingRsApi.Watchlist();
+		final Watchlist w = new Watchlist();
 		w.id = id;
 		w.name = name;
 		return w;
@@ -282,7 +290,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_2");
 			panel.setWatchlistItems(Arrays.asList(
@@ -303,7 +312,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
 			panel.setWatchlistItems(Arrays.asList(
 				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, "Buying 4/10 at 1.50M", null),
@@ -327,7 +337,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setPaused("Recording is off.");
 			assertEquals("Recording is off.", panel.pausedForTest());
 
@@ -348,7 +359,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Trades");
 			panel.setPaused("Recording is off.");
 			assertEquals("Recording is off.", panel.journalSummaryForTest());
@@ -376,9 +388,9 @@ public class FlippingRsPanelTest
 	}
 
 	/** A quote from the site, as the watchlist card renders it. */
-	private static FlippingRsApi.Quote quote(int id)
+	private static Quote quote(int id)
 	{
-		final FlippingRsApi.Quote q = new FlippingRsApi.Quote();
+		final Quote q = new Quote();
 		q.id = id;
 		q.instantSell = 1_480_000;
 		q.instantBuy = 1_520_000;
@@ -399,13 +411,13 @@ public class FlippingRsPanelTest
 	@Test
 	public void theQuoteLinesShowTheSitesNumbersTheRightWayRound()
 	{
-		final FlippingRsApi.Quote q = quote(4151);
+		final Quote q = quote(4151);
 		assertEquals("Buy 1,480,000 · Sell 1,520,000", FlippingRsPanel.pricesLine(q));
 		assertEquals("Margin +9,600 · ROI 0.7%", FlippingRsPanel.marginLine(q));
 		assertEquals("Limit 70 · +672.0K per limit · 1.2K traded/24h",
 			FlippingRsPanel.limitLine(new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 0, 0, 0, null, q)));
 
-		final FlippingRsApi.Quote losing = quote(1);
+		final Quote losing = quote(1);
 		losing.netMargin = -500;
 		losing.roi = -0.01;
 		assertEquals("Margin -500 · ROI -1.0%", FlippingRsPanel.marginLine(losing));
@@ -416,7 +428,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
 			panel.setWatchlistItems(Arrays.asList(
 				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 0, null, quote(4151)),
@@ -432,7 +445,7 @@ public class FlippingRsPanelTest
 	@Test
 	public void theJournalSummaryReadsAsASentence()
 	{
-		final FlippingRsApi.Analytics week = new FlippingRsApi.Analytics();
+		final Analytics week = new Analytics();
 		assertEquals("No flips closed this week.", FlippingRsPanel.summarise(week));
 
 		week.completedFlips = 12;
@@ -451,7 +464,7 @@ public class FlippingRsPanelTest
 	@Test
 	public void aPositionShowsBothSidesOfTheSaleExactly()
 	{
-		final FlippingRsApi.Position p = new FlippingRsApi.Position();
+		final Position p = new Position();
 		p.buyPrice = 1_480_000;
 		p.currentBuy = 1_520_000;
 		p.currentSell = 1_500_000;
@@ -471,9 +484,10 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
-			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
-			final FlippingRsApi.Position whip = new FlippingRsApi.Position();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			final Positions open = new Positions();
+			final Position whip = new Position();
 			whip.itemId = 4151;
 			whip.itemName = "Abyssal whip";
 			whip.remainingQty = 10;
@@ -483,10 +497,10 @@ public class FlippingRsPanelTest
 			whip.unrealisedRoi = 0.0065;
 			whip.hoursHeld = 5;
 			open.positions = Arrays.asList(whip);
-			open.summary = new FlippingRsApi.Positions.Summary();
+			open.summary = new Positions.Summary();
 			open.summary.openPositions = 1;
 
-			panel.setJournal(new FlippingRsApi.Analytics(), open);
+			panel.setJournal(new Analytics(), open);
 
 			assertEquals(Arrays.asList(4151), panel.positionsForTest());
 			assertNull(panel.journalProblemForTest());
@@ -509,18 +523,19 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			assertEquals("Activity", panel.selectedTabForTest());
 
-			final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
-			final FlippingRsApi.Position whip = new FlippingRsApi.Position();
+			final Positions open = new Positions();
+			final Position whip = new Position();
 			whip.itemId = 4151;
 			whip.itemName = "Abyssal whip";
 			whip.remainingQty = 10;
 			open.positions = Arrays.asList(whip);
-			open.summary = new FlippingRsApi.Positions.Summary();
+			open.summary = new Positions.Summary();
 
-			panel.setJournal(new FlippingRsApi.Analytics(), open);
+			panel.setJournal(new Analytics(), open);
 
 			assertEquals("the position is held, so the tab has it when it is shown",
 				Arrays.asList(4151), panel.positionsForTest());
@@ -534,7 +549,7 @@ public class FlippingRsPanelTest
 
 			// And a later change while it is showing is drawn straight away.
 			open.positions = new ArrayList<>();
-			panel.setJournal(new FlippingRsApi.Analytics(), open);
+			panel.setJournal(new Analytics(), open);
 			assertEquals(0, panel.drawnRowsForTest("Journal"));
 		});
 	}
@@ -545,7 +560,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
 			final GeTransaction tx = new GeTransaction();
 			tx.side = "buy";
@@ -588,10 +604,11 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<String> sent = new ArrayList<>();
-			panel.onClosePosition((id, price, qty) -> sent.add(id + "/" + price + "/" + qty));
-			final FlippingRsApi.Position p = position();
+			actions.closePosition = (id, price, qty) -> sent.add(id + "/" + price + "/" + qty);
+			final Position p = position();
 
 			panel.closeAsTyped(p, "1.5m", "5");
 			assertEquals("the price typed and the count typed",
@@ -625,7 +642,7 @@ public class FlippingRsPanelTest
 	@Test
 	public void theCloseBoxOpensOnThePriceAPatientSaleWouldListAt()
 	{
-		final FlippingRsApi.Position p = position();
+		final Position p = position();
 		p.currentBuy = 1_520_000;
 		p.currentSell = 1_500_000;
 		assertEquals(1_520_000L, FlippingRsPanel.suggestedSalePrice(p));
@@ -672,11 +689,12 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<String> closed = new ArrayList<>();
 			final List<String> deleted = new ArrayList<>();
-			panel.onClosePosition((id, price, qty) -> closed.add(id + "@" + price + "x" + qty));
-			panel.onDeletePosition(deleted::add);
+			actions.closePosition = (id, price, qty) -> closed.add(id + "@" + price + "x" + qty);
+			actions.deletePosition = deleted::add;
 
 			panel.closePosition("f1", 1_520_000, 4L);
 			panel.closePosition("f2", 1_000, null);
@@ -724,7 +742,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			assertEquals("Activity", panel.selectedTabForTest());
 
 			for (String tab : new String[]{"Trades", "Journal", "Watchlists", "Account", "Activity"})
@@ -745,7 +764,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final int available = net.runelite.client.ui.PluginPanel.PANEL_WIDTH - 20;
 			assertTrue("tab strip is " + panel.tabStripWidthForTest() + "px, sidebar content is " + available,
 				panel.tabStripWidthForTest() <= available);
@@ -762,7 +782,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setActivityNotice("Recovered 2 trade(s) from your Grand Exchange history.", java.awt.Color.WHITE);
 			panel.setWatchlistNotice("Removed from Plan.", java.awt.Color.WHITE);
 			assertTrue(panel.activityNoticeShowingForTest());
@@ -789,7 +810,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setStatus("Connected and recording.", java.awt.Color.WHITE);
 			panel.setActivityNotice("3 trade(s) were refused", java.awt.Color.WHITE);
 			panel.setWatchlistNotice("Added to Plan.", java.awt.Color.WHITE);
@@ -806,9 +828,10 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final AtomicInteger chosen = new AtomicInteger();
-			panel.onWatchlistChosen(chosen::incrementAndGet);
+			actions.watchlistChosen = chosen::incrementAndGet;
 
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_1");
 
@@ -830,9 +853,10 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final AtomicInteger chosen = new AtomicInteger();
-			panel.onAccountChosen(chosen::incrementAndGet);
+			actions.accountChosen = chosen::incrementAndGet;
 
 			panel.setAccounts(Arrays.asList(account("acct-1", "Main", true),
 				account("acct-2", "Alt", false)), "acct-1");
@@ -853,9 +877,10 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final AtomicInteger chosen = new AtomicInteger();
-			panel.onWatchlistChosen(chosen::incrementAndGet);
+			actions.watchlistChosen = chosen::incrementAndGet;
 
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan"), watchlist("wl_2", "Bonds")), "wl_1");
 			assertEquals("filling the list is not a choice", 0, chosen.get());
@@ -879,7 +904,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setStatus("<b>bold</b> & <script>", java.awt.Color.WHITE);
 
 			final String rendered = panel.statusTextForTest();
@@ -908,7 +934,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final GeTransaction tx = new GeTransaction();
 			tx.side = "buy";
 			tx.quantity = 1;
@@ -959,7 +986,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<GeTransaction> rows = new ArrayList<>();
 			for (int i = 19; i >= 0; i--)
 			{
@@ -993,7 +1021,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<GeTransaction> many = new ArrayList<>();
 			for (int i = 20; i > 0; i--)
 			{
@@ -1025,7 +1054,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final GeTransaction unnamed = new GeTransaction();
 			unnamed.side = "buy";
 			unnamed.quantity = 1;
@@ -1056,7 +1086,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final GeTransaction damaged = new GeTransaction();
 			damaged.side = "buy";
 			damaged.quantity = 1;
@@ -1128,7 +1159,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final GeTransaction tx = new GeTransaction();
 			tx.side = "sell";
 			tx.quantity = 1;
@@ -1165,10 +1197,11 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<String> seen = new ArrayList<>();
-			panel.onShown(() -> seen.add("shown"));
-			panel.onHidden(() -> seen.add("hidden"));
+			actions.shown = () -> seen.add("shown");
+			actions.hidden = () -> seen.add("hidden");
 
 			panel.onActivate();
 			panel.onDeactivate();
@@ -1192,7 +1225,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.setActivityNotice("Set aside 3 trades.", Color.WHITE);
 			panel.setWatchlistNotice("Added to Plan.", Color.WHITE);
 			panel.setJournalNotice("Sale recorded.", Color.WHITE);
@@ -1236,7 +1270,8 @@ public class FlippingRsPanelTest
 
 			for (int run = 0; run < 200; run++)
 			{
-				final FlippingRsPanel panel = new FlippingRsPanel();
+				final TestPanelActions actions = new TestPanelActions();
+				final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
 				final GeTransaction tx = new GeTransaction();
 				tx.id = random.nextBoolean() ? null : "t" + run;
@@ -1249,7 +1284,7 @@ public class FlippingRsPanelTest
 				panel.setActivity(Collections.singletonList(tx));
 				panel.setPending(Collections.singletonList(tx));
 
-				final FlippingRsApi.Position p = new FlippingRsApi.Position();
+				final Position p = new Position();
 				p.id = random.nextBoolean() ? null : "p" + run;
 				p.itemName = names[random.nextInt(names.length)];
 				p.itemId = (int) numbers[random.nextInt(numbers.length)];
@@ -1262,15 +1297,15 @@ public class FlippingRsPanelTest
 				p.unrealisedRoi = random.nextBoolean() ? Double.NaN : random.nextDouble() * 10 - 5;
 				p.hoursHeld = random.nextBoolean() ? Double.NaN : random.nextDouble() * 5000;
 				p.stale = random.nextBoolean();
-				final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+				final Positions open = new Positions();
 				open.positions = Collections.singletonList(p);
 				if (random.nextBoolean())
 				{
-					open.summary = new FlippingRsApi.Positions.Summary();
+					open.summary = new Positions.Summary();
 				}
-				panel.setJournal(new FlippingRsApi.Analytics(), open);
+				panel.setJournal(new Analytics(), open);
 
-				final FlippingRsApi.Quote quote = random.nextBoolean() ? null : quote(4151);
+				final Quote quote = random.nextBoolean() ? null : quote(4151);
 				panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
 					(int) numbers[random.nextInt(numbers.length)],
 					names[random.nextInt(names.length)], null,
@@ -1309,7 +1344,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
 			panel.selectTabForTest("Trades");
 			panel.setActivityProblem("the site is having a moment");
@@ -1344,7 +1380,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Watchlists");
 			panel.setWatchlistItems(Arrays.asList(
 				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 72_000,
@@ -1377,7 +1414,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Trades");
 			final GeTransaction tx = new GeTransaction();
 			tx.itemId = 4151;
@@ -1413,11 +1451,12 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Watchlists");
 			final List<String> acted = new ArrayList<>();
-			panel.onRemoveItem(id -> acted.add("remove " + id));
-			panel.onOpenItem(id -> acted.add("open " + id));
+			actions.removeItem = id -> acted.add("remove " + id);
+			actions.openItem = id -> acted.add("open " + id);
 			// Neither is the item any other test uses, so a button wired to a
 			// fixed id cannot happen to be right.
 			panel.setWatchlistItems(Arrays.asList(
@@ -1530,7 +1569,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Activity");
 			panel.setPending(Collections.emptyList());
 			assertTrue(panel.pendingForTest().isEmpty());
@@ -1568,7 +1608,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			for (String name : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
 			{
 				panel.selectTabForTest(name);
@@ -1633,13 +1674,14 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Journal");
-			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+			panel.setJournal(new Analytics(), holding(position()));
 			final Component[] first = panel.cardsForTest("Journal");
 			assertTrue("expected a card", first.length > 0);
 
-			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+			panel.setJournal(new Analytics(), holding(position()));
 
 			assertSame("the same card, not a rebuilt one", first[0], panel.cardsForTest("Journal")[0]);
 		});
@@ -1658,7 +1700,7 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final Map<String, Consumer<FlippingRsApi.Position>> changes = new LinkedHashMap<>();
+			final Map<String, Consumer<Position>> changes = new LinkedHashMap<>();
 			changes.put("Dragon claws", p -> p.itemName = "Dragon claws");
 			changes.put("7 left", p -> p.remainingQty = 7);
 			changes.put("30h", p -> p.hoursHeld = 30);
@@ -1670,15 +1712,16 @@ public class FlippingRsPanelTest
 			changes.put("1,555,555", p -> p.breakEvenSell = 1_555_555);
 			changes.put("Stale", p -> p.stale = true);
 
-			for (Map.Entry<String, Consumer<FlippingRsApi.Position>> change : changes.entrySet())
+			for (Map.Entry<String, Consumer<Position>> change : changes.entrySet())
 			{
-				final FlippingRsPanel panel = new FlippingRsPanel();
+				final TestPanelActions actions = new TestPanelActions();
+				final FlippingRsPanel panel = new FlippingRsPanel(actions);
 				panel.selectTabForTest("Journal");
-				panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+				panel.setJournal(new Analytics(), holding(position()));
 
-				final FlippingRsApi.Position changed = position();
+				final Position changed = position();
 				change.getValue().accept(changed);
-				panel.setJournal(new FlippingRsApi.Analytics(), holding(changed));
+				panel.setJournal(new Analytics(), holding(changed));
 
 				assertTrue("changing this did not reach the card: " + change.getKey()
 						+ "\n" + drawnText(panel),
@@ -1701,14 +1744,15 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			panel.selectTabForTest("Journal");
-			panel.setJournal(new FlippingRsApi.Analytics(), holding(position()));
+			panel.setJournal(new Analytics(), holding(position()));
 			final Component first = panel.cardsForTest("Journal")[0];
 
-			final FlippingRsApi.Position other = position();
+			final Position other = position();
 			other.id = "p2";
-			panel.setJournal(new FlippingRsApi.Analytics(), holding(other));
+			panel.setJournal(new Analytics(), holding(other));
 
 			assertNotSame("a card whose buttons close the wrong lot", first,
 				panel.cardsForTest("Journal")[0]);
@@ -1716,9 +1760,9 @@ public class FlippingRsPanelTest
 	}
 
 	/** One open lot, with every figure a card shows set to something it is not. */
-	private static FlippingRsApi.Position position()
+	private static Position position()
 	{
-		final FlippingRsApi.Position p = new FlippingRsApi.Position();
+		final Position p = new Position();
 		p.id = "p1";
 		p.itemId = 4151;
 		p.itemName = "Abyssal whip";
@@ -1734,11 +1778,11 @@ public class FlippingRsPanelTest
 		return p;
 	}
 
-	private static FlippingRsApi.Positions holding(FlippingRsApi.Position p)
+	private static Positions holding(Position p)
 	{
-		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+		final Positions open = new Positions();
 		open.positions = Collections.singletonList(p);
-		open.summary = new FlippingRsApi.Positions.Summary();
+		open.summary = new Positions.Summary();
 		return open;
 	}
 
@@ -1785,7 +1829,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			fillWithWideContent(panel);
 
 			final List<String> clipped = new ArrayList<>();
@@ -1819,7 +1864,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			fillWithWideContent(panel);
 
 			final List<String> wasteful = new ArrayList<>();
@@ -1872,7 +1918,8 @@ public class FlippingRsPanelTest
 	{
 		onEdt(() ->
 		{
-			final FlippingRsPanel panel = new FlippingRsPanel();
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			final List<FlippingRsPanel.WatchedItem> items = new ArrayList<>();
 			for (String name : new String[]{"Abyssal whip", "Dragon bones", "Magic logs", "Rune platebody"})
 			{
@@ -1937,7 +1984,7 @@ public class FlippingRsPanelTest
 		panel.setActivity(Collections.singletonList(tx));
 		panel.setPending(Collections.singletonList(tx));
 
-		final FlippingRsApi.Quote q = quote(4151);
+		final Quote q = quote(4151);
 		q.instantSell = 1_234_567_890L;
 		q.instantBuy = 1_250_000_000L;
 		q.netMargin = -12_345_678L;
@@ -1947,7 +1994,7 @@ public class FlippingRsPanelTest
 			4151, "Ancient ceremonial legs", null, 2_147_483_647, 25_000, 2_147_483_647,
 			"Buying 123456/123456 at 1.25B", q)));
 
-		final FlippingRsApi.Position pos = new FlippingRsApi.Position();
+		final Position pos = new Position();
 		pos.id = "p1";
 		pos.itemId = 4151;
 		pos.itemName = "Ancient ceremonial legs";
@@ -1959,10 +2006,10 @@ public class FlippingRsPanelTest
 		pos.breakEvenSell = 1_234_567_890L;
 		pos.hoursHeld = 5.5;
 		pos.stale = true;
-		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
+		final Positions open = new Positions();
 		open.positions = Collections.singletonList(pos);
-		open.summary = new FlippingRsApi.Positions.Summary();
-		panel.setJournal(new FlippingRsApi.Analytics(), open);
+		open.summary = new Positions.Summary();
+		panel.setJournal(new Analytics(), open);
 
 		panel.setStatus("Could not connect to flippingrs.com: the request timed out.", Color.WHITE);
 		panel.setActivityNotice(

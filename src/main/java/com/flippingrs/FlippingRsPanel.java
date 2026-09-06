@@ -5,29 +5,21 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
-import java.awt.Insets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntConsumer;
 import javax.annotation.Nullable;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.Border;
@@ -67,22 +59,22 @@ import net.runelite.client.util.AsyncBufferedImage;
  */
 public class FlippingRsPanel extends PluginPanel
 {
-	private static final DateTimeFormatter TIME = DateTimeFormatter
+	static final DateTimeFormatter TIME = DateTimeFormatter
 		.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
-	private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter
+	static final DateTimeFormatter SHORT_TIME = DateTimeFormatter
 		.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
-	private static final DateTimeFormatter DAY = DateTimeFormatter
+	static final DateTimeFormatter DAY = DateTimeFormatter
 		.ofPattern("d MMM HH:mm", Locale.ENGLISH).withZone(ZoneId.systemDefault());
 
 	static final int RECENT_SHOWN = 8;
 
 	/** This panel's own border, on each side. */
-	private static final int PANEL_PADDING = 10;
+	static final int PANEL_PADDING = 10;
 	/** A card's padding, on each side. */
-	private static final int CARD_PADDING = 6;
+	static final int CARD_PADDING = 6;
 	/** The sprite at the head of a card, and the gap between it and the title. */
-	private static final int ICON_WIDTH = 36;
-	private static final int ICON_GAP = 6;
+	static final int ICON_WIDTH = 36;
+	static final int ICON_GAP = 6;
 
 	/**
 	 * How long a notice stays up. A notice is news -- a recovered trade, an
@@ -111,10 +103,10 @@ public class FlippingRsPanel extends PluginPanel
 		final String offer;
 		/** The site's quote, or null if it has none or could not be reached. */
 		@Nullable
-		final FlippingRsApi.Quote quote;
+		final Quote quote;
 
 		WatchedItem(int itemId, String name, @Nullable AsyncBufferedImage image,
-			int price, int limit, int alch, @Nullable String offer, @Nullable FlippingRsApi.Quote quote)
+			int price, int limit, int alch, @Nullable String offer, @Nullable Quote quote)
 		{
 			this.itemId = itemId;
 			this.name = name;
@@ -127,10 +119,10 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
-	private static final Border SELECTED_TAB = BorderFactory.createCompoundBorder(
+	static final Border SELECTED_TAB = BorderFactory.createCompoundBorder(
 		BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.BRAND_ORANGE),
 		BorderFactory.createEmptyBorder(4, 3, 3, 3));
-	private static final Border UNSELECTED_TAB = BorderFactory.createEmptyBorder(4, 3, 4, 3);
+	static final Border UNSELECTED_TAB = BorderFactory.createEmptyBorder(4, 3, 4, 3);
 
 	/**
 	 * A tab with less padding and the narrower font, so five fit in a
@@ -169,62 +161,16 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
-	// Activity
-	private final JLabel recorded = new JLabel();
-	private final JLabel queued = new JLabel();
-	private final JLabel lastSync = new JLabel();
-	private final JLabel activityNotice = new JLabel();
-	private final Timer activityNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
-		e -> setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
-	private final JButton syncNow = new JButton("Send now");
-	private final JPanel pendingList = new JPanel();
-	private final List<String> pending = new ArrayList<>();
-
-	// Trades
-	private final JPanel recentList = new JPanel();
-	private final List<GeTransaction> recent = new ArrayList<>();
-	private Map<Integer, AsyncBufferedImage> recentImages = new HashMap<>();
+	/** The tab whose contents are on screen; see {@link SidebarTab}. */
 	@Nullable
-	private String recentProblem;
+	private MaterialTab showing;
 
-	// Journal
-	private final JLabel journalSummary = new JLabel();
-	private final JLabel journalOpen = new JLabel();
-	private final JLabel journalNotice = new JLabel();
-	private final Timer journalNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
-		e -> setJournalNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
-	private final JPanel positionList = new JPanel();
-	private List<FlippingRsApi.Position> positions = new ArrayList<>();
-	private boolean journalLoaded;
-	@Nullable
-	private String journalProblem;
-
-	// Watchlists
-	private final JComboBox<FlippingRsApi.Watchlist> watchlists = new JComboBox<>();
-	private final JLabel watchlistNotice = new JLabel();
-	private final Timer watchlistNoticeTimer = new Timer(NOTICE_SECONDS * 1000,
-		e -> setWatchlistNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
-	private final JPanel watchlistItems = new JPanel();
-	private final JButton findFlips = new JButton("Find flips");
-	private List<WatchedItem> watched = new ArrayList<>();
-	/** The live-offer line of each card, so one fill can update one line. */
-	private final Map<Integer, JLabel> offerLines = new HashMap<>();
-	@Nullable
-	private String watchlistProblem;
-
-	/**
-	 * Set while the plugin is not reading from the server at all: recording
-	 * off, or no key. The tabs that show the server's data show this instead
-	 * of stale rows. Cleared by the next data that arrives.
-	 */
-	@Nullable
-	private String paused;
-
-	// Account
-	private final JLabel status = new JLabel();
-	private final JLabel subscription = new JLabel();
-	private final JComboBox<FlippingRsApi.GameAccount> accounts = new JComboBox<>();
-	private final JButton reconnect = new JButton("Reconnect");
+	/** The five tabs, each owning its own widgets and its own deferred redraw. */
+	private final ActivityTab activity;
+	private final TradesTab trades;
+	private final JournalTab journal;
+	private final WatchlistTab watchlist;
+	private final AccountTab account;
 
 	private final MaterialTabGroup tabs;
 	private final MaterialTab activityTab;
@@ -234,54 +180,24 @@ public class FlippingRsPanel extends PluginPanel
 	private final MaterialTab accountTab;
 
 	/**
-	 * The tab whose contents are on screen. Four of the five never are, and
-	 * the lists on them are the expensive part of this panel: a row is a card
-	 * of several labels and, on two of the tabs, a pair of buttons, and two
-	 * hundred open positions measure at around 98ms to build. That was being
-	 * paid every time the journal was re-read, whichever tab the user was
-	 * actually looking at.
+	 * Set while the plugin is not reading from the server at all: recording
+	 * off, or no key. The tabs that show the server's data show this instead
+	 * of stale rows. Cleared by the next data that arrives.
 	 */
 	@Nullable
-	private MaterialTab showing;
+	private String paused;
 
-	/** Lists whose tab was off screen when their data changed. */
-	private boolean pendingStale;
-	private boolean recentStale;
-	private boolean journalStale;
-	/**
-	 * The positions currently drawn as cards, as {@link #signatureOf} sees
-	 * them. Null until the first draw; only set once the cards are up.
-	 */
-	@Nullable
-	private String drawnPositions;
-	private boolean watchlistStale;
+	/** What the plugin does when the sidebar is used. Never null. */
+	private final PanelActions actions;
 
-	/** Set by the plugin; fires when the user picks a different game account. */
-	private Runnable onAccountChosen = () -> {
-	};
-	private Runnable onWatchlistChosen = () -> {
-	};
-	private IntConsumer onOpenItem = id -> {
-	};
-	private IntConsumer onRemoveItem = id -> {
-	};
-	private PositionClose onClosePosition = (id, price, quantity) -> {
-	};
-	private java.util.function.Consumer<String> onDeletePosition = id -> {
-	};
-	private Runnable onShown = () -> {
-	};
-	private Runnable onHidden = () -> {
-	};
-
-	/** What the plugin does when the user closes a position from the sidebar. */
-	interface PositionClose
+	public FlippingRsPanel(PanelActions actions)
 	{
-		void close(String positionId, long sellPrice, @Nullable Long sellQty);
-	}
-
-	public FlippingRsPanel()
-	{
+		this.actions = actions;
+		activity = new ActivityTab(actions);
+		trades = new TradesTab();
+		journal = new JournalTab(actions);
+		watchlist = new WatchlistTab(actions);
+		account = new AccountTab(actions);
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(PANEL_PADDING, PANEL_PADDING, PANEL_PADDING, PANEL_PADDING));
 
@@ -291,11 +207,11 @@ public class FlippingRsPanel extends PluginPanel
 
 		final JPanel display = new JPanel();
 		tabs = new MaterialTabGroup(display);
-		activityTab = new Tab("Activity", tabs, activityTab());
-		tradesTab = new Tab("Trades", tabs, tradesTab());
-		journalTab = new Tab("Journal", tabs, journalTab());
-		watchlistTab = new Tab("Watchlists", tabs, watchlistTab());
-		accountTab = new Tab("Account", tabs, accountTab());
+		activityTab = new Tab("Activity", tabs, activity.body());
+		tradesTab = new Tab("Trades", tabs, trades.body());
+		journalTab = new Tab("Journal", tabs, journal.body());
+		watchlistTab = new Tab("Watchlists", tabs, watchlist.body());
+		accountTab = new Tab("Account", tabs, account.body());
 		for (MaterialTab tab : new MaterialTab[]{activityTab, tradesTab, journalTab, watchlistTab, accountTab})
 		{
 			tabs.addTab(tab);
@@ -321,150 +237,17 @@ public class FlippingRsPanel extends PluginPanel
 		setActivityNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
 		setWatchlistNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
 		setJournalNotice(null, ColorScheme.LIGHT_GRAY_COLOR);
-		redrawPending();
-		redrawRecent();
-		redrawJournal();
 		setWatchlists(new ArrayList<>(), null);
-		redrawWatchlist();
+		// Every tab is now holding data it has not drawn. Selecting the first
+		// draws that one; the other four draw when they are selected.
+		for (SidebarTab tab : new SidebarTab[]{activity, trades, journal, watchlist, account})
+		{
+			tab.refresh();
+		}
 		tabs.select(activityTab);
 	}
 
-	private JPanel activityTab()
-	{
-		final JPanel body = column();
-		body.add(hint("What the plugin is doing on this computer: trades it has recorded this session, "
-			+ "and any still waiting to be sent to your journal."));
-		final JPanel stats = new JPanel(new GridLayout(0, 1, 0, 2));
-		for (JLabel label : new JLabel[]{recorded, queued, lastSync})
-		{
-			label.setFont(FontManager.getRunescapeSmallFont());
-			stats.add(label);
-		}
-		stats.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(stats);
-		body.add(Box.createVerticalStrut(6));
-
-		activityNotice.setFont(FontManager.getRunescapeSmallFont());
-		activityNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(activityNotice);
-		body.add(Box.createVerticalStrut(6));
-
-		syncNow.setToolTipText("Send your waiting trades now instead of at the next scheduled time.");
-		syncNow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		syncNow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		body.add(syncNow);
-		body.add(Box.createVerticalStrut(10));
-
-		body.add(header("Waiting to send"));
-		body.add(Box.createVerticalStrut(4));
-		pendingList.setLayout(new BoxLayout(pendingList, BoxLayout.Y_AXIS));
-		pendingList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		pendingList.setToolTipText("Trades recorded here that your journal hasn't confirmed yet.");
-		body.add(pendingList);
-		return body;
-	}
-
-	private JPanel tradesTab()
-	{
-		final JPanel body = column();
-		body.add(hint("Your most recent trades, as your flippingrs.com journal recorded them."));
-		recentList.setLayout(new BoxLayout(recentList, BoxLayout.Y_AXIS));
-		recentList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		recentList.setToolTipText("Your most recent trades, as your journal has them.");
-		body.add(recentList);
-		return body;
-	}
-
-	private JPanel journalTab()
-	{
-		final JPanel body = column();
-		body.add(hint("Your last seven days and what you are holding, worked out by flippingrs.com."));
-		body.add(header("Last 7 days"));
-		body.add(Box.createVerticalStrut(4));
-		journalSummary.setFont(FontManager.getRunescapeSmallFont());
-		journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		journalSummary.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(journalSummary);
-		body.add(Box.createVerticalStrut(10));
-
-		body.add(header("Open positions"));
-		body.add(Box.createVerticalStrut(4));
-		journalOpen.setFont(FontManager.getRunescapeSmallFont());
-		journalOpen.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		journalOpen.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(journalOpen);
-		body.add(Box.createVerticalStrut(4));
-		journalNotice.setFont(FontManager.getRunescapeSmallFont());
-		journalNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(journalNotice);
-		body.add(Box.createVerticalStrut(4));
-		positionList.setLayout(new BoxLayout(positionList, BoxLayout.Y_AXIS));
-		positionList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		positionList.setToolTipText("What you're holding, what it cost you, and what it's worth right now.");
-		body.add(positionList);
-		return body;
-	}
-
-	private JPanel watchlistTab()
-	{
-		final JPanel body = column();
-		body.add(hint("One of your flippingrs.com watchlists, with live prices. Right-click an item in the "
-			+ "Grand Exchange to add it."));
-		watchlists.setAlignmentX(Component.LEFT_ALIGNMENT);
-		watchlists.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		watchlists.setToolTipText("Which of your flippingrs.com watchlists to show. Right-clicking an item adds it here.");
-		watchlists.addActionListener(e -> onWatchlistChosen.run());
-		body.add(watchlists);
-		body.add(Box.createVerticalStrut(4));
-		watchlistNotice.setFont(FontManager.getRunescapeSmallFont());
-		watchlistNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(watchlistNotice);
-		body.add(Box.createVerticalStrut(4));
-		watchlistItems.setLayout(new BoxLayout(watchlistItems, BoxLayout.Y_AXIS));
-		watchlistItems.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(watchlistItems);
-		body.add(Box.createVerticalStrut(8));
-		findFlips.setToolTipText("Open the flip finder in your browser.");
-		findFlips.setAlignmentX(Component.LEFT_ALIGNMENT);
-		findFlips.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		body.add(findFlips);
-		return body;
-	}
-
-	private JPanel accountTab()
-	{
-		final JPanel body = column();
-		body.add(hint("Your connection to flippingrs.com, and which journal this character's trades go into."));
-		body.add(header("Connection"));
-		body.add(Box.createVerticalStrut(4));
-		status.setFont(FontManager.getRunescapeSmallFont());
-		status.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(status);
-		body.add(Box.createVerticalStrut(4));
-		subscription.setFont(FontManager.getRunescapeSmallFont());
-		subscription.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		subscription.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(subscription);
-		body.add(Box.createVerticalStrut(10));
-
-		body.add(header("Journal"));
-		body.add(Box.createVerticalStrut(4));
-		accounts.setAlignmentX(Component.LEFT_ALIGNMENT);
-		accounts.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		accounts.setToolTipText("Which journal this character's trades go into. Each character remembers its own "
-			+ "choice, so an alt can have its own journal.");
-		accounts.addActionListener(e -> onAccountChosen.run());
-		body.add(accounts);
-		body.add(Box.createVerticalStrut(10));
-
-		reconnect.setToolTipText("Check your API key again and reload everything from flippingrs.com.");
-		reconnect.setAlignmentX(Component.LEFT_ALIGNMENT);
-		reconnect.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		body.add(reconnect);
-		return body;
-	}
-
-	private static JPanel column()
+	static JPanel column()
 	{
 		final JPanel body = new JPanel();
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
@@ -485,97 +268,29 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	private void drawWhatIsShowing()
 	{
-		if (pendingStale)
-		{
-			redrawPending();
-		}
-		if (recentStale)
-		{
-			redrawRecent();
-		}
-		if (journalStale)
-		{
-			redrawJournal();
-		}
-		if (watchlistStale)
-		{
-			redrawWatchlist();
-		}
-	}
-
-	void onSyncNow(Runnable action)
-	{
-		syncNow.addActionListener(e -> action.run());
-	}
-
-	void onReconnect(Runnable action)
-	{
-		reconnect.addActionListener(e -> action.run());
-	}
-
-	void onAccountChosen(Runnable action)
-	{
-		onAccountChosen = action;
-	}
-
-	void onWatchlistChosen(Runnable action)
-	{
-		onWatchlistChosen = action;
-	}
-
-	void onOpenItem(IntConsumer action)
-	{
-		onOpenItem = action;
-	}
-
-	void onRemoveItem(IntConsumer action)
-	{
-		onRemoveItem = action;
-	}
-
-	void onFindFlips(Runnable action)
-	{
-		findFlips.addActionListener(e -> action.run());
-	}
-
-	void onClosePosition(PositionClose action)
-	{
-		onClosePosition = action;
-	}
-
-	void onDeletePosition(java.util.function.Consumer<String> action)
-	{
-		onDeletePosition = action;
-	}
-
-	/** Fires when the sidebar opens on this panel. */
-	void onShown(Runnable action)
-	{
-		onShown = action;
-	}
-
-	/** Fires when the sidebar closes or moves off this panel. */
-	void onHidden(Runnable action)
-	{
-		onHidden = action;
+		activity.showing(showing == activityTab);
+		trades.showing(showing == tradesTab);
+		journal.showing(showing == journalTab);
+		watchlist.showing(showing == watchlistTab);
+		account.showing(showing == accountTab);
 	}
 
 	/** RuneLite calls this when the panel becomes the sidebar's content. */
 	@Override
 	public void onActivate()
 	{
-		onShown.run();
+		actions.shown();
 	}
 
 	/** And this when it stops being. */
 	@Override
 	public void onDeactivate()
 	{
-		onHidden.run();
+		actions.hidden();
 	}
 
 	/** A line under a tab's title saying what the tab shows and where it comes from. */
-	private static JPanel hint(String text)
+	static JPanel hint(String text)
 	{
 		final JPanel holder = column();
 		final JLabel label = small(text);
@@ -586,7 +301,7 @@ public class FlippingRsPanel extends PluginPanel
 		return holder;
 	}
 
-	private static JLabel header(String text)
+	static JLabel header(String text)
 	{
 		final JLabel label = new JLabel(text);
 		label.setFont(FontManager.getRunescapeBoldFont());
@@ -595,20 +310,137 @@ public class FlippingRsPanel extends PluginPanel
 		return label;
 	}
 
-	// ---------------------------------------------------------------- account
+	// ------------------------------------------------------------- the tabs
+	//
+	// One line each, on to the tab that owns the widgets. The plugin and its
+	// reads talk to the panel, not to five tabs, so which tab holds what
+	// stays this class's business rather than becoming everybody's.
 
 	/** The connection status, on the Account tab. */
 	void setStatus(String text, Color colour)
 	{
-		setWrappedText(status, text);
-		status.setForeground(colour);
+		account.setStatus(text, colour);
 	}
 
 	/** The plan the key's owner is on, in the server's words, or null if not known. */
 	void setSubscription(@Nullable String text)
 	{
-		setWrappedText(subscription, text == null ? "Plan: not checked yet" : text);
+		account.setSubscription(text);
 	}
+
+	void setAccounts(List<GameAccount> available, @Nullable String selectedId)
+	{
+		account.setAccounts(available, selectedId);
+	}
+
+	@Nullable
+	String selectedAccountId()
+	{
+		return account.selectedAccountId();
+	}
+
+	void setCounts(int recordedCount, int queuedCount)
+	{
+		activity.setCounts(recordedCount, queuedCount);
+	}
+
+	void setLastSync(@Nullable Instant at, @Nullable String problem)
+	{
+		activity.setLastSync(at, problem);
+	}
+
+	void setActivityNotice(@Nullable String text, Color colour)
+	{
+		activity.setActivityNotice(text, colour);
+	}
+
+	void setPending(List<GeTransaction> newestFirst)
+	{
+		activity.setPending(newestFirst);
+	}
+
+	/** How many fills the server refused for good and the plugin filed. */
+	void setSetAside(int count)
+	{
+		activity.setSetAside(count);
+	}
+
+	void setActivity(List<GeTransaction> newestFirst)
+	{
+		resumed();
+		trades.setActivity(newestFirst);
+	}
+
+	void setActivity(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
+	{
+		resumed();
+		trades.setActivity(newestFirst, images);
+	}
+
+	void setActivityProblem(String why)
+	{
+		trades.setActivityProblem(why);
+	}
+
+	void setJournal(Analytics week, Positions open)
+	{
+		resumed();
+		journal.setJournal(week, open);
+	}
+
+	void setJournalNotice(@Nullable String text, Color colour)
+	{
+		journal.setJournalNotice(text, colour);
+	}
+
+	void setJournalProblem(String why)
+	{
+		journal.setJournalProblem(why);
+	}
+
+	void closeAsTyped(Position p, String priceText, String quantityText)
+	{
+		journal.closeAsTyped(p, priceText, quantityText);
+	}
+
+	void closePosition(String positionId, long sellPrice, @Nullable Long sellQty)
+	{
+		journal.closePosition(positionId, sellPrice, sellQty);
+	}
+
+	void setWatchlists(List<Watchlist> available, @Nullable String selectedId)
+	{
+		watchlist.setWatchlists(available, selectedId);
+	}
+
+	@Nullable
+	String selectedWatchlistId()
+	{
+		return watchlist.selectedWatchlistId();
+	}
+
+	void setWatchlistItems(List<WatchedItem> items)
+	{
+		resumed();
+		watchlist.setWatchlistItems(items);
+	}
+
+	void updateWatchedOffer(int itemId, @Nullable String offer)
+	{
+		watchlist.updateWatchedOffer(itemId, offer);
+	}
+
+	void setWatchlistProblem(String why)
+	{
+		watchlist.setWatchlistProblem(why);
+	}
+
+	void setWatchlistNotice(@Nullable String text, Color colour)
+	{
+		watchlist.setWatchlistNotice(text, colour);
+	}
+
+	// ---------------------------------------------------------------- account
 
 	/**
 	 * Nothing is being read from the server, for the reason given. Trades,
@@ -618,18 +450,11 @@ public class FlippingRsPanel extends PluginPanel
 	void setPaused(String why)
 	{
 		paused = why;
-		recent.clear();
-		recentProblem = null;
-		positions = new ArrayList<>();
-		journalLoaded = false;
-		journalProblem = null;
-		watched = new ArrayList<>();
-		watchlistProblem = null;
 		setWatchlists(new ArrayList<>(), null);
 		setSubscription(null);
-		redrawRecent();
-		redrawJournal();
-		redrawWatchlist();
+		trades.paused(why);
+		journal.paused(why);
+		watchlist.paused(why);
 	}
 
 	/**
@@ -651,257 +476,29 @@ public class FlippingRsPanel extends PluginPanel
 			return;
 		}
 		paused = null;
-		redrawRecent();
-		redrawJournal();
-		redrawWatchlist();
-	}
-
-	/**
-	 * Replaces the account list, restoring the current selection if it survives.
-	 *
-	 * <p>With nothing remembered ({@code selectedId} null) the server's default
-	 * is selected, or failing that the first entry, so a fresh account has
-	 * something sensible to adopt. With something remembered that is no longer
-	 * in the list, nothing is selected: showing the first entry there would
-	 * have the panel naming a journal the plugin is not filing under.
-	 *
-	 * <p>The listener is detached while the model is swapped: repopulating a
-	 * combo box fires a selection event, and letting that through would look
-	 * like the user re-picking the account and write the setting back on every
-	 * reconnect.
-	 */
-	void setAccounts(List<FlippingRsApi.GameAccount> available, @Nullable String selectedId)
-	{
-		final Runnable listener = onAccountChosen;
-		onAccountChosen = () -> {
-		};
-		try
-		{
-			final DefaultComboBoxModel<FlippingRsApi.GameAccount> model = new DefaultComboBoxModel<>();
-			FlippingRsApi.GameAccount remembered = null;
-			FlippingRsApi.GameAccount fallback = null;
-			for (FlippingRsApi.GameAccount account : available)
-			{
-				if (account == null || account.id == null)
-				{
-					continue;
-				}
-				model.addElement(account);
-				if (account.id.equals(selectedId))
-				{
-					remembered = account;
-				}
-				if (fallback == null && account.isDefault)
-				{
-					fallback = account;
-				}
-			}
-			accounts.setModel(model);
-			if (remembered != null)
-			{
-				accounts.setSelectedItem(remembered);
-			}
-			else if (selectedId != null)
-			{
-				// Remembered, but gone. The default is not a stand-in for it.
-				accounts.setSelectedIndex(-1);
-			}
-			else if (fallback != null)
-			{
-				accounts.setSelectedItem(fallback);
-			}
-			// Otherwise the model has already selected the first entry.
-			accounts.setEnabled(model.getSize() > 0);
-		}
-		finally
-		{
-			onAccountChosen = listener;
-		}
-	}
-
-	@Nullable
-	String selectedAccountId()
-	{
-		final Object selected = accounts.getSelectedItem();
-		return selected == null ? null : ((FlippingRsApi.GameAccount) selected).id;
+		trades.paused(null);
+		journal.paused(null);
+		watchlist.paused(null);
 	}
 
 	// --------------------------------------------------------------- activity
 
-	void setCounts(int recordedCount, int queuedCount)
-	{
-		recorded.setText("Recorded this session: " + recordedCount);
-		queued.setText("Waiting to send: " + queuedCount);
-		queued.setForeground(queuedCount > 0 ? ColorScheme.BRAND_ORANGE : ColorScheme.LIGHT_GRAY_COLOR);
-	}
-
-	void setLastSync(@Nullable Instant at, @Nullable String problem)
-	{
-		if (problem != null)
-		{
-			setWrappedText(lastSync, "Last send failed: " + problem);
-			lastSync.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-			return;
-		}
-		lastSync.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		lastSync.setText(at == null ? "Last sent: never" : "Last sent: " + TIME.format(at));
-	}
-
-	/**
-	 * A note about capturing or sending: an adopted offer, a refused batch.
-	 * Null clears it; otherwise it clears itself after {@link #NOTICE_SECONDS}.
-	 */
-	void setActivityNotice(@Nullable String text, Color colour)
-	{
-		setNotice(activityNotice, activityNoticeTimer, text, colour);
-	}
-
-	/** Replaces the list of fills still buffered, newest first. */
-	void setPending(List<GeTransaction> newestFirst)
-	{
-		pending.clear();
-		for (GeTransaction tx : newestFirst)
-		{
-			if (pending.size() >= RECENT_SHOWN)
-			{
-				break;
-			}
-			pending.add(line(tx));
-		}
-		redrawPending();
-	}
-
-	private void redrawPending()
-	{
-		if (showing != activityTab)
-		{
-			pendingStale = true;
-			return;
-		}
-		pendingStale = false;
-		pendingList.removeAll();
-		if (pending.isEmpty())
-		{
-			pendingList.add(small("Nothing waiting to send."));
-		}
-		for (String line : pending)
-		{
-			pendingList.add(small(line));
-		}
-		pendingList.revalidate();
-		pendingList.repaint();
-	}
-
 	// ----------------------------------------------------------------- trades
 
-	/**
-	 * Replaces the recent trades with what the server recorded, newest first.
-	 * Only the first {@link #RECENT_SHOWN} are drawn.
-	 */
-	void setActivity(List<GeTransaction> newestFirst)
-	{
-		setActivity(newestFirst, new HashMap<>());
-	}
+	// ---------------------------------------------------------------- journal
 
-	/** As above, with the items' sprites by item id, resolved by the plugin. */
-	void setActivity(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
-	{
-		resumed();
-		recentProblem = null;
-		recent.clear();
-		for (GeTransaction tx : newestFirst)
-		{
-			if (recent.size() >= RECENT_SHOWN)
-			{
-				break;
-			}
-			recent.add(tx);
-		}
-		recentImages = new HashMap<>(images);
-		redrawRecent();
-	}
+	/** Field and row separators for {@link #signatureOf}, kept out of any name. */
+	static final char SEP = (char) 0;
+	static final char ROW = (char) 10;
 
-	/** The recent trades could not be read. Shown in the tab itself. */
-	void setActivityProblem(String why)
-	{
-		recentProblem = why;
-		redrawRecent();
-	}
+	// ------------------------------------------------------------- watchlists
 
-	private void redrawRecent()
-	{
-		if (showing != tradesTab)
-		{
-			recentStale = true;
-			return;
-		}
-		recentStale = false;
-		recentList.removeAll();
-		if (paused != null)
-		{
-			recentList.add(small(paused));
-		}
-		else if (recentProblem != null)
-		{
-			final JLabel problem = small("Couldn't load your recent trades: " + recentProblem);
-			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-			recentList.add(problem);
-		}
-		else if (recent.isEmpty())
-		{
-			recentList.add(small("No trades recorded yet."));
-		}
-		else
-		{
-			for (GeTransaction tx : recent)
-			{
-				recentList.add(tradeRow(tx, recentImages.get(tx.itemId)));
-				recentList.add(Box.createVerticalStrut(4));
-			}
-		}
-		recentList.revalidate();
-		recentList.repaint();
-	}
+	// ------------------------------------------------------------ trades
+	//
+	// The words a trade row is made of. Static and stateless, so the
+	// tab that draws them and the tests that pin them share one copy.
 
-	/**
-	 * One recorded trade, as a card: the sprite beside the item's name, then
-	 * what happened in exact gp with the per-item price, then when.
-	 */
-	private JPanel tradeRow(GeTransaction tx, @Nullable AsyncBufferedImage image)
-	{
-		final JPanel card = card();
-		final String name = nameOf(tx);
-
-		final JPanel head = new JPanel(new BorderLayout(ICON_GAP, 0));
-		head.setOpaque(false);
-		head.setAlignmentX(Component.LEFT_ALIGNMENT);
-		final JLabel icon = new JLabel();
-		icon.setPreferredSize(new Dimension(ICON_WIDTH, 32));
-		icon.setHorizontalAlignment(SwingConstants.CENTER);
-		if (image != null)
-		{
-			image.addTo(icon);
-		}
-		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel();
-		title.setFont(FontManager.getRunescapeBoldFont());
-		title.setForeground(Color.WHITE);
-		setWrappedTextBesideIcon(title, name);
-		head.add(title, BorderLayout.CENTER);
-		card.add(head);
-		card.add(Box.createVerticalStrut(4));
-
-		final boolean buy = "buy".equals(tx.side);
-		final JLabel what = small(whatHappened(tx));
-		what.setForeground(buy ? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.BRAND_ORANGE);
-		card.add(what);
-		card.add(small(when(tx, Instant.now())));
-
-		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
-		return card;
-	}
-
-	/** "Bought 4 for 3,800,000 (950,000 each)", with "(approx)" when the total was estimated. */
+/** "Bought 4 for 3,800,000 (950,000 each)", with "(approx)" when the total was estimated. */
 	static String whatHappened(GeTransaction tx)
 	{
 		final StringBuilder out = new StringBuilder("buy".equals(tx.side) ? "Bought " : "Sold ");
@@ -948,7 +545,7 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	/** One fill as a line: its own time, or "recovered" when it has none, then side, quantity, item and gp. */
-	private static String line(GeTransaction tx)
+	static String line(GeTransaction tx)
 	{
 		return at(tx) + "  "
 			+ ("buy".equals(tx.side) ? "Bought " : "Sold ")
@@ -966,7 +563,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * fill that happened just now, and the whole of this plugin's dealings
 	 * with time rest on never claiming one it does not have.
 	 */
-	private static String at(GeTransaction tx)
+	static String at(GeTransaction tx)
 	{
 		if (tx.occurredAt == null)
 		{
@@ -988,53 +585,18 @@ public class FlippingRsPanel extends PluginPanel
 	 * restored from a queue file an older version wrote -- and the id is a
 	 * good deal more use to anyone reading the line than the word "null".
 	 */
-	private static String nameOf(GeTransaction tx)
+	static String nameOf(GeTransaction tx)
 	{
 		return tx.itemName == null || tx.itemName.isEmpty() ? "Item " + tx.itemId : tx.itemName;
 	}
 
-	// ---------------------------------------------------------------- journal
+	// ----------------------------------------------------------- journal
+	//
+	// The words a journal row is made of. Static and stateless, so the
+	// tab that draws them and the tests that pin them share one copy.
 
-	/** The journal's week and its open positions, as the server has them. */
-	void setJournal(FlippingRsApi.Analytics week, FlippingRsApi.Positions open)
-	{
-		resumed();
-		journalProblem = null;
-		journalLoaded = true;
-		setWrappedText(journalSummary, summarise(week));
-		journalSummary.setForeground(week.getRealisedProfit() < 0
-			? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.LIGHT_GRAY_COLOR);
-		final FlippingRsApi.Positions.Summary totals = open.getSummary();
-		positions = open.getPositions();
-		setWrappedText(journalOpen, positions.isEmpty()
-			? "No open positions."
-			: totals.openPositions + " open · cost " + gp(totals.costBasis) + " · value " + gp(totals.marketValue)
-			+ " · P&L " + signed(totals.unrealisedPnl)
-			+ (totals.marketDataAvailable ? "" : " (no market data)"));
-		redrawJournal();
-	}
-
-	/**
-	 * A note about the last close or delete: done, or refused in the
-	 * server's words. Null clears it; otherwise it clears itself after
-	 * {@link #NOTICE_SECONDS}.
-	 */
-	void setJournalNotice(@Nullable String text, Color colour)
-	{
-		setNotice(journalNotice, journalNoticeTimer, text, colour);
-	}
-
-	/** The journal could not be read. Shown in the tab itself. */
-	void setJournalProblem(String why)
-	{
-		journalProblem = why;
-		journalLoaded = false;
-		positions = new ArrayList<>();
-		redrawJournal();
-	}
-
-	/** "+1.20M from 12 flips · 75.0% wins · 45.0K gp/h", or a quiet week. */
-	static String summarise(FlippingRsApi.Analytics week)
+/** "+1.20M from 12 flips · 75.0% wins · 45.0K gp/h", or a quiet week. */
+	static String summarise(Analytics week)
 	{
 		if (week.getCompletedFlips() == 0)
 		{
@@ -1046,63 +608,6 @@ public class FlippingRsPanel extends PluginPanel
 			+ (week.getGpPerHour() != 0 ? " · " + gp(week.getGpPerHour()) + " gp/h" : "");
 	}
 
-	private void redrawJournal()
-	{
-		// The two summary lines are two labels and cost nothing next to the
-		// cards, so they are kept current whether or not this tab is showing.
-		if (paused != null)
-		{
-			setWrappedText(journalSummary, paused);
-			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-			journalOpen.setText("");
-		}
-		else if (journalProblem != null)
-		{
-			setWrappedText(journalSummary, "Couldn't load your journal: " + journalProblem);
-			journalSummary.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-			journalOpen.setText("");
-		}
-		else if (!journalLoaded)
-		{
-			setWrappedText(journalSummary, "Not loaded yet.");
-			journalSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-			journalOpen.setText("");
-		}
-
-		if (showing != journalTab)
-		{
-			journalStale = true;
-			return;
-		}
-		journalStale = false;
-
-		// Every card is torn down and built again, and a position card is the
-		// dearest kind: a title, four lines and two buttons. Two hundred open
-		// lots measured at 154ms of the Swing thread, which is the client's,
-		// and the journal is redrawn on every read and every time this tab is
-		// picked -- mostly with the same lots at the same prices. So what is
-		// already on screen is left alone when a redraw would not change it.
-		final String signature = signatureOf(positions);
-		if (signature.equals(drawnPositions))
-		{
-			return;
-		}
-		drawnPositions = signature;
-
-		positionList.removeAll();
-		for (FlippingRsApi.Position position : positions)
-		{
-			positionList.add(positionRow(position));
-			positionList.add(Box.createVerticalStrut(4));
-		}
-		positionList.revalidate();
-		positionList.repaint();
-	}
-
-	/** Field and row separators for {@link #signatureOf}, kept out of any name. */
-	private static final char SEP = (char) 0;
-	private static final char ROW = (char) 10;
-
 	/**
 	 * The positions as one string, for telling a redraw that would change
 	 * something from one that would not.
@@ -1112,10 +617,10 @@ public class FlippingRsPanel extends PluginPanel
 	 * never changes again, a lot that stays marked stale after it sold --
 	 * which is a good deal worse than a redraw that was not needed.
 	 */
-	private static String signatureOf(List<FlippingRsApi.Position> positions)
+	static String signatureOf(List<Position> positions)
 	{
 		final StringBuilder out = new StringBuilder(positions.size() * 48);
-		for (FlippingRsApi.Position p : positions)
+		for (Position p : positions)
 		{
 			out.append(p.getId()).append(SEP).append(p.getItemId()).append(SEP)
 				.append(p.getItemName()).append(SEP).append(p.getRemainingQty()).append(SEP)
@@ -1127,127 +632,15 @@ public class FlippingRsPanel extends PluginPanel
 		return out.toString();
 	}
 
-	/** One open position: what is held, what it cost, what it is worth now. */
-	private JPanel positionRow(FlippingRsApi.Position p)
-	{
-		final JPanel card = card();
-		final JLabel title = new JLabel();
-		title.setFont(FontManager.getRunescapeBoldFont());
-		title.setForeground(Color.WHITE);
-		title.setAlignmentX(Component.LEFT_ALIGNMENT);
-		setWrappedText(title, p.getItemName().isEmpty() ? "Item " + p.getItemId() : p.getItemName());
-		card.add(title);
-		card.add(small(p.getRemainingQty() + " left · held " + hours(p.getHoursHeld())));
-		card.add(small(positionPrices(p)));
-		final JLabel now = small("P&L " + signedExact(p.getUnrealisedPnl()) + " (" + pct(p.getUnrealisedRoi()) + ")"
-			+ (p.getBreakEvenSell() > 0 ? " · break even " + exact(p.getBreakEvenSell()) : ""));
-		now.setForeground(p.getUnrealisedPnl() < 0 ? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.PROGRESS_COMPLETE_COLOR);
-		card.add(now);
-		if (p.isStale())
-		{
-			final JLabel stale = small("Stale: you've held this much longer than this item usually takes to flip.");
-			stale.setForeground(ColorScheme.BRAND_ORANGE);
-			card.add(stale);
-		}
-		if (!p.getId().isEmpty())
-		{
-			card.add(Box.createVerticalStrut(5));
-			final JPanel buttons = new JPanel(new GridLayout(1, 2, 4, 0));
-			buttons.setOpaque(false);
-			buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-			buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-			final JButton close = new JButton("Close");
-			close.setToolTipText("Record a sale of this position at a price you enter.");
-			close.addActionListener(e -> promptClose(p));
-			final JButton delete = new JButton("Delete");
-			delete.setToolTipText("Not a flip? Delete this record so later sales of the item are not counted against it.");
-			delete.addActionListener(e -> promptDelete(p));
-			for (JButton button : new JButton[]{close, delete})
-			{
-				button.setFont(FontManager.getRunescapeSmallFont());
-				button.setMargin(new Insets(1, 4, 1, 4));
-				buttons.add(button);
-			}
-			card.add(buttons);
-		}
-		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
-		return card;
-	}
-
 	/**
 	 * What the Close box starts with in its price field: the price a patient
 	 * sale lists at, or what an instant one would get if the site has no
 	 * listing price. Zero when it has neither, which leaves the field empty
 	 * rather than suggesting a sale at nothing.
 	 */
-	static long suggestedSalePrice(FlippingRsApi.Position p)
+	static long suggestedSalePrice(Position p)
 	{
 		return p.getCurrentBuy() > 0 ? p.getCurrentBuy() : p.getCurrentSell();
-	}
-
-	/**
-	 * What Close does with what was typed into it.
-	 *
-	 * <p>Apart from the box itself, which cannot be opened without someone to
-	 * close it. A sale recorded from the wrong field, or for none of the
-	 * position instead of all of it, is a wrong journal entry that the player
-	 * asked for by hand and would have no reason to doubt.
-	 */
-	void closeAsTyped(FlippingRsApi.Position p, String priceText, String quantityText)
-	{
-		final long sellPrice = parseGp(priceText);
-		final long sellQty = parseGp(quantityText);
-		if (sellPrice <= 0)
-		{
-			setJournalNotice("A sale price is needed to close a position.", ColorScheme.BRAND_ORANGE);
-			return;
-		}
-		// Nothing readable in the count means all of what is left, which is
-		// what the box offers and what the site takes a missing count as.
-		closePosition(p.getId(), sellPrice, sellQty > 0 ? sellQty : null);
-	}
-
-	/**
-	 * Asks for the sale price and quantity, prefilled with the price a sale
-	 * lists at and everything still held, then hands the answer to the
-	 * plugin. Nothing is sent unless the user confirms.
-	 */
-	private void promptClose(FlippingRsApi.Position p)
-	{
-		final long suggested = suggestedSalePrice(p);
-		final JTextField price = new JTextField(suggested > 0 ? exact(suggested) : "");
-		final JTextField quantity = new JTextField(Long.toString(p.getRemainingQty()));
-		final JPanel form = new JPanel(new GridLayout(0, 1, 0, 2));
-		form.add(new JLabel("Sale price per item"));
-		form.add(price);
-		form.add(new JLabel("How many sold (" + p.getRemainingQty() + " held)"));
-		form.add(quantity);
-		final int answer = JOptionPane.showConfirmDialog(this, form,
-			"Close " + (p.getItemName().isEmpty() ? "position" : p.getItemName()),
-			JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-		if (answer != JOptionPane.OK_OPTION)
-		{
-			return;
-		}
-		closeAsTyped(p, price.getText(), quantity.getText());
-	}
-
-	private void promptDelete(FlippingRsApi.Position p)
-	{
-		final int answer = JOptionPane.showConfirmDialog(this,
-			"Delete this record? Later sales of " + (p.getItemName().isEmpty() ? "this item" : p.getItemName())
-				+ " will not be counted against it. Your recorded trades are kept.",
-			"Delete position", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
-		if (answer == JOptionPane.OK_OPTION)
-		{
-			onDeletePosition.accept(p.getId());
-		}
-	}
-
-	/** The way a user would close a position, without the dialog. */
-	void closePosition(String positionId, long sellPrice, @Nullable Long sellQty)
-	{
-		onClosePosition.close(positionId, sellPrice, sellQty);
 	}
 
 	/**
@@ -1295,260 +688,12 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
-	// ------------------------------------------------------------- watchlists
-
-	/**
-	 * Replaces the watchlist picker. The selection is the plugin's to decide,
-	 * because it is also the plugin's to remember; an id not in the list
-	 * leaves the first entry selected, since any board is a fine place to add
-	 * to and the picker says which.
-	 */
-	void setWatchlists(List<FlippingRsApi.Watchlist> available, @Nullable String selectedId)
-	{
-		final Runnable listener = onWatchlistChosen;
-		onWatchlistChosen = () -> {
-		};
-		try
-		{
-			final DefaultComboBoxModel<FlippingRsApi.Watchlist> model = new DefaultComboBoxModel<>();
-			FlippingRsApi.Watchlist select = null;
-			for (FlippingRsApi.Watchlist watchlist : available)
-			{
-				// An id is what an edit is addressed to, so a row without one
-				// is a row nothing can be added to or removed from.
-				if (watchlist == null || watchlist.id == null || watchlist.id.isEmpty())
-				{
-					continue;
-				}
-				model.addElement(watchlist);
-				if (watchlist.id.equals(selectedId))
-				{
-					select = watchlist;
-				}
-			}
-			watchlists.setModel(model);
-			if (select != null)
-			{
-				watchlists.setSelectedItem(select);
-			}
-			watchlists.setEnabled(model.getSize() > 0);
-		}
-		finally
-		{
-			onWatchlistChosen = listener;
-		}
-	}
-
-	@Nullable
-	String selectedWatchlistId()
-	{
-		final Object selected = watchlists.getSelectedItem();
-		return selected == null ? null : ((FlippingRsApi.Watchlist) selected).id;
-	}
-
-	/** Replaces the watchlist's rows, in the server's order. */
-	void setWatchlistItems(List<WatchedItem> items)
-	{
-		resumed();
-		watchlistProblem = null;
-		watched = new ArrayList<>(items);
-		redrawWatchlist();
-	}
-
-	/**
-	 * Updates one card's live-offer line, for a fill on a watched item.
-	 *
-	 * <p>Only the line is touched when the card already has one; the card is
-	 * rebuilt only when the line appears or disappears, since that changes
-	 * its height. Everything else on the card is unchanged by a fill.
-	 */
-	void updateWatchedOffer(int itemId, @Nullable String offer)
-	{
-		for (int i = 0; i < watched.size(); i++)
-		{
-			final WatchedItem item = watched.get(i);
-			if (item.itemId != itemId)
-			{
-				continue;
-			}
-			if (java.util.Objects.equals(item.offer, offer))
-			{
-				return;
-			}
-			watched.set(i, new WatchedItem(item.itemId, item.name, item.image, item.price, item.limit, item.alch,
-				offer, item.quote));
-			final JLabel line = offerLines.get(itemId);
-			if (line != null && offer != null && item.offer != null)
-			{
-				setWrappedText(line, offer);
-				return;
-			}
-			redrawWatchlist();
-			return;
-		}
-	}
-
-	/** The watchlists could not be read. Shown in the tab itself. */
-	void setWatchlistProblem(String why)
-	{
-		watchlistProblem = why;
-		watched = new ArrayList<>();
-		redrawWatchlist();
-	}
-
-	/**
-	 * A note about the last edit: added, removed, refused. Null clears it;
-	 * otherwise it clears itself after {@link #NOTICE_SECONDS}.
-	 */
-	void setWatchlistNotice(@Nullable String text, Color colour)
-	{
-		setNotice(watchlistNotice, watchlistNoticeTimer, text, colour);
-	}
-
-	private void redrawWatchlist()
-	{
-		if (showing != watchlistTab)
-		{
-			watchlistStale = true;
-			return;
-		}
-		watchlistStale = false;
-		watchlistItems.removeAll();
-		offerLines.clear();
-		if (paused != null)
-		{
-			watchlistItems.add(small(paused));
-		}
-		else if (watchlistProblem != null)
-		{
-			final JLabel problem = small("Couldn't load your watchlists: " + watchlistProblem);
-			problem.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-			watchlistItems.add(problem);
-		}
-		else if (watched.isEmpty())
-		{
-			watchlistItems.add(small(watchlists.getItemCount() == 0
-				? "No watchlist yet. Right-click an item in the Grand Exchange and choose \"Add to watchlist\" "
-				+ "to start one."
-				: "Nothing on this watchlist. Right-click an item in the Grand Exchange to add one."));
-		}
-		for (WatchedItem item : watched)
-		{
-			watchlistItems.add(watchedRow(item));
-			watchlistItems.add(Box.createVerticalStrut(4));
-		}
-		watchlistItems.revalidate();
-		watchlistItems.repaint();
-	}
-
-	/**
-	 * One watched item, as a card: the sprite beside the name, then the site's
-	 * prices, margin and ROI on their own wrapped lines, then the buttons.
-	 *
-	 * <p>Stacked rather than side by side because the sidebar is narrow;
-	 * nothing here is truncated, the card grows to fit.
-	 */
-	private JPanel watchedRow(WatchedItem item)
-	{
-		final JPanel card = card();
-		final String name = item.name == null || item.name.isEmpty() ? "Item " + item.itemId : item.name;
-
-		final JPanel head = new JPanel(new BorderLayout(ICON_GAP, 0));
-		head.setOpaque(false);
-		head.setAlignmentX(Component.LEFT_ALIGNMENT);
-		final JLabel icon = new JLabel();
-		icon.setPreferredSize(new Dimension(ICON_WIDTH, 32));
-		icon.setHorizontalAlignment(SwingConstants.CENTER);
-		icon.setToolTipText(name);
-		if (item.image != null)
-		{
-			item.image.addTo(icon);
-		}
-		head.add(icon, BorderLayout.WEST);
-		final JLabel title = new JLabel();
-		title.setFont(FontManager.getRunescapeBoldFont());
-		title.setForeground(Color.WHITE);
-		setWrappedTextBesideIcon(title, name);
-		head.add(title, BorderLayout.CENTER);
-		card.add(head);
-		card.add(Box.createVerticalStrut(4));
-
-		if (item.quote != null)
-		{
-			final JLabel prices = small(pricesLine(item.quote));
-			prices.setToolTipText("The price you can buy at and the price you can sell at right now, from flippingrs.com.");
-			card.add(prices);
-			final JLabel margin = small(marginLine(item.quote));
-			margin.setForeground(item.quote.getNetMargin() < 0
-				? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.PROGRESS_COMPLETE_COLOR);
-			margin.setToolTipText("Profit per item after tax, and the return on what you'd pay.");
-			card.add(margin);
-			final String limits = limitLine(item);
-			if (!limits.isEmpty())
-			{
-				card.add(small(limits));
-			}
-		}
-		else
-		{
-			final JLabel facts = small(facts(item));
-			facts.setToolTipText("RuneLite's price, the buy limit and the alch value. flippingrs.com has no prices for this item yet.");
-			card.add(facts);
-		}
-		if (item.offer != null)
-		{
-			final JLabel offer = small(item.offer);
-			offer.setForeground(ColorScheme.BRAND_ORANGE);
-			card.add(offer);
-			offerLines.put(item.itemId, offer);
-		}
-		card.add(Box.createVerticalStrut(5));
-
-		final JPanel buttons = new JPanel(new GridLayout(1, 2, 4, 0));
-		buttons.setOpaque(false);
-		buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-		buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-		final JButton open = new JButton("Open");
-		open.setToolTipText("Open " + name + " in your browser.");
-		open.addActionListener(e -> onOpenItem.accept(item.itemId));
-		final JButton remove = new JButton("Remove");
-		remove.setToolTipText("Remove from the watchlist.");
-		remove.addActionListener(e -> onRemoveItem.accept(item.itemId));
-		for (JButton button : new JButton[]{open, remove})
-		{
-			button.setFont(FontManager.getRunescapeSmallFont());
-			button.setMargin(new Insets(1, 4, 1, 4));
-			buttons.add(button);
-		}
-		card.add(buttons);
-
-		// As tall as its content and no taller, so a short card does not get
-		// stretched to share space with a long one.
-		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
-		return card;
-	}
-
-	/**
-	 * "Buy 1,480,000 · Sell 1,520,000". To the coin, because this is the
-	 * number that gets typed into the offer.
-	 */
-	static String pricesLine(FlippingRsApi.Quote q)
-	{
-		return "Buy " + exact(q.getBuyAt()) + " · Sell " + exact(q.getSellAt());
-	}
-
-	/** "Margin +9,600 · ROI 0.7%" */
-	static String marginLine(FlippingRsApi.Quote q)
-	{
-		return "Margin " + signedExact(q.getNetMargin()) + " · ROI " + pct(q.getRoi());
-	}
-
 	/**
 	 * "Bought 1,480,000 · Sell 1,520,000 (now 1,500,000)": what was paid, the
 	 * price a sale lists at, and what an instant sale would get. The site's
 	 * profit figure is worked on the instant figure, the cautious one.
 	 */
-	static String positionPrices(FlippingRsApi.Position p)
+	static String positionPrices(Position p)
 	{
 		final StringBuilder out = new StringBuilder("Bought " + exact(p.getBuyPrice()));
 		if (p.getCurrentBuy() > 0)
@@ -1566,10 +711,30 @@ public class FlippingRsPanel extends PluginPanel
 		return out.toString();
 	}
 
+	// -------------------------------------------------------- watchlists
+	//
+	// The words a watchlist row is made of. Static and stateless, so the
+	// tab that draws them and the tests that pin them share one copy.
+
+/**
+	 * "Buy 1,480,000 · Sell 1,520,000". To the coin, because this is the
+	 * number that gets typed into the offer.
+	 */
+	static String pricesLine(Quote q)
+	{
+		return "Buy " + exact(q.getBuyAt()) + " · Sell " + exact(q.getSellAt());
+	}
+
+	/** "Margin +9,600 · ROI 0.7%" */
+	static String marginLine(Quote q)
+	{
+		return "Margin " + signedExact(q.getNetMargin()) + " · ROI " + pct(q.getRoi());
+	}
+
 	/** "Limit 70 · +2.10M per limit · 1.2K traded/24h", leaving out what is unknown. */
 	static String limitLine(WatchedItem item)
 	{
-		final FlippingRsApi.Quote q = item.quote;
+		final Quote q = item.quote;
 		final StringBuilder out = new StringBuilder();
 		final int limit = q != null && q.getBuyLimit() > 0 ? q.getBuyLimit() : item.limit;
 		if (limit > 0)
@@ -1608,7 +773,7 @@ public class FlippingRsPanel extends PluginPanel
 
 	// ---------------------------------------------------------------- helpers
 
-	private static JPanel card()
+	static JPanel card()
 	{
 		final JPanel card = new JPanel();
 		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
@@ -1627,7 +792,7 @@ public class FlippingRsPanel extends PluginPanel
 	 *
 	 * @param text null to clear the notice and stop the clock
 	 */
-	private static void setNotice(JLabel label, Timer clock, @Nullable String text, Color colour)
+	static void setNotice(JLabel label, Timer clock, @Nullable String text, Color colour)
 	{
 		setWrappedText(label, text);
 		label.setForeground(colour);
@@ -1640,7 +805,7 @@ public class FlippingRsPanel extends PluginPanel
 		}
 	}
 
-	private static JLabel small(String text)
+	static JLabel small(String text)
 	{
 		final JLabel label = new JLabel();
 		label.setFont(FontManager.getRunescapeSmallFont());
@@ -1658,7 +823,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * into the HTML is not a width on the screen, and the two have to be kept
 	 * apart or the sums come out a third too wide.
 	 */
-	private static final double CSS_PIXEL = 1.3;
+	static final double CSS_PIXEL = 1.3;
 
 	/**
 	 * How much room a line of text has, in real pixels, worked out from the
@@ -1674,20 +839,20 @@ public class FlippingRsPanel extends PluginPanel
 	 * line that could have run wider only costs a wrap, while one that runs
 	 * wider than its row loses its end -- and these lines end in a price.
 	 */
-	private static final int TEXT_WIDTH =
+	static final int TEXT_WIDTH =
 		PluginPanel.PANEL_WIDTH - 2 * PANEL_PADDING - 2 * CARD_PADDING;
 
 	/** And beside a card's sprite, which takes its width off the front. */
-	private static final int TITLE_WIDTH = TEXT_WIDTH - ICON_WIDTH - ICON_GAP;
+	static final int TITLE_WIDTH = TEXT_WIDTH - ICON_WIDTH - ICON_GAP;
 
 	/** Sets a label's text, wrapping it only if it will not fit its row. */
-	private static void setWrappedText(JLabel label, String text)
+	static void setWrappedText(JLabel label, String text)
 	{
 		setWrappedText(label, text, TEXT_WIDTH);
 	}
 
 	/** The same, for the title that sits beside a card's sprite. */
-	private static void setWrappedTextBesideIcon(JLabel label, String text)
+	static void setWrappedTextBesideIcon(JLabel label, String text)
 	{
 		setWrappedText(label, text, TITLE_WIDTH);
 	}
@@ -1707,7 +872,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * their row pay for it. The label's font must already be set, since that is
 	 * what the text is measured in.
 	 */
-	private static void setWrappedText(JLabel label, String text, int pixels)
+	static void setWrappedText(JLabel label, String text, int pixels)
 	{
 		final String plain = text == null ? "" : text;
 		final boolean fits = label.getFontMetrics(label.getFont()).stringWidth(plain) <= pixels;
@@ -1722,7 +887,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * @param pixels how much room the line has on screen, not the figure to
 	 *               write into the HTML -- see {@link #CSS_PIXEL}
 	 */
-	private static String wrap(String text, int pixels)
+	static String wrap(String text, int pixels)
 	{
 		final int css = (int) (pixels / CSS_PIXEL);
 		return "<html><body style='width:" + css + "px'>" + escape(text) + "</body></html>";
@@ -1737,42 +902,25 @@ public class FlippingRsPanel extends PluginPanel
 	/** The recent trades as one line each, the way the buffer list shows them. */
 	List<String> recentForTest()
 	{
-		final List<String> lines = new ArrayList<>(recent.size());
-		for (GeTransaction tx : recent)
-		{
-			lines.add(line(tx));
-		}
-		return lines;
+		return trades.recentForTest();
 	}
 
 	List<String> pendingForTest()
 	{
-		return new ArrayList<>(pending);
+		return activity.pendingForTest();
 	}
 
 	/** The watched item ids as rendered, in order. */
 	List<Integer> watchlistForTest()
 	{
-		final List<Integer> ids = new ArrayList<>();
-		for (WatchedItem item : watched)
-		{
-			ids.add(item.itemId);
-		}
-		return ids;
+		return watchlist.watchedForTest();
 	}
 
 	/** The live-offer line of a watched item's card, or null if it has none. */
 	@Nullable
 	String watchlistOfferForTest(int itemId)
 	{
-		for (WatchedItem item : watched)
-		{
-			if (item.itemId == itemId)
-			{
-				return item.offer;
-			}
-		}
-		return null;
+		return watchlist.offerForTest(itemId);
 	}
 
 	@Nullable
@@ -1785,91 +933,89 @@ public class FlippingRsPanel extends PluginPanel
 	@Nullable
 	String watchlistPricesForTest(int itemId)
 	{
-		for (WatchedItem item : watched)
-		{
-			if (item.itemId == itemId)
-			{
-				return item.quote == null ? null : pricesLine(item.quote);
-			}
-		}
-		return null;
+		return watchlist.pricesForTest(itemId);
 	}
 
 	/** The open positions' item ids as rendered, in order. */
 	List<Integer> positionsForTest()
 	{
-		final List<Integer> ids = new ArrayList<>();
-		for (FlippingRsApi.Position p : positions)
-		{
-			ids.add(p.getItemId());
-		}
-		return ids;
+		return journal.positionsForTest();
 	}
 
 	String journalSummaryForTest()
 	{
-		return journalSummary.getText();
+		return journal.summaryForTest();
 	}
 
 	String journalNoticeForTest()
 	{
-		return journalNotice.getText();
+		return journal.noticeForTest();
 	}
 
 	@Nullable
 	String journalProblemForTest()
 	{
-		return journalProblem;
+		return journal.problemForTest();
 	}
 
 	/** The "Recorded this session" line, which a new session starts over. */
 	String recordedTextForTest()
 	{
-		return recorded.getText();
+		return activity.recordedTextForTest();
 	}
 
 	String lastSyncTextForTest()
 	{
-		return lastSync.getText();
+		return activity.lastSyncTextForTest();
 	}
 
 	String statusTextForTest()
 	{
-		return status.getText();
+		return account.statusTextForTest();
 	}
 
 	String subscriptionTextForTest()
 	{
-		return subscription.getText();
+		return account.subscriptionTextForTest();
 	}
 
 	String activityNoticeForTest()
 	{
-		return activityNotice.getText();
+		return activity.noticeForTest();
 	}
 
 	/** Whether a notice is still up, i.e. it has not been cleared or expired. */
 	boolean activityNoticeShowingForTest()
 	{
-		return activityNotice.isVisible() && !activityNotice.getText().isEmpty();
+		return activity.noticeShowingForTest();
 	}
 
 	boolean watchlistNoticeShowingForTest()
 	{
-		return watchlistNotice.isVisible() && !watchlistNotice.getText().isEmpty();
+		return watchlist.noticeShowingForTest();
 	}
 
 	/** Whether the notice is still counting down to clearing itself. */
 	boolean activityNoticeTimerArmedForTest()
 	{
-		return activityNoticeTimer.isRunning();
+		return activity.noticeTimerForTest().isRunning();
+	}
+
+	/** The three notice clocks, one per tab that has one. */
+	private Timer[] noticeTimers()
+	{
+		return new Timer[]{
+			activity.noticeTimerForTest(),
+			watchlist.noticeTimerForTest(),
+			journal.noticeTimerForTest(),
+		};
 	}
 
 	/** How many of the three notice clocks are running. */
 	int armedNoticeTimersForTest()
 	{
 		int armed = 0;
-		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer, journalNoticeTimer})
+		for (Timer timer : noticeTimers())
 		{
 			if (timer.isRunning())
 			{
@@ -1882,7 +1028,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** Fires the notice timers now, as if the interval had passed. */
 	void expireNoticesForTest()
 	{
-		for (Timer timer : new Timer[]{activityNoticeTimer, watchlistNoticeTimer, journalNoticeTimer})
+		for (Timer timer : noticeTimers())
 		{
 			if (!timer.isRunning())
 			{
@@ -1907,35 +1053,41 @@ public class FlippingRsPanel extends PluginPanel
 
 	String watchlistNoticeForTest()
 	{
-		return watchlistNotice.getText();
+		return watchlist.noticeForTest();
 	}
 
 	@Nullable
 	String watchlistProblemForTest()
 	{
-		return watchlistProblem;
+		return watchlist.problemForTest();
 	}
 
 	@Nullable
 	String activityProblemForTest()
 	{
-		return recentProblem;
+		return trades.problemForTest();
+	}
+
+	/** The list a tab draws its rows into. */
+	private JPanel listOf(String tab)
+	{
+		switch (tab)
+		{
+			case "Trades":
+				return trades.listForTest();
+			case "Journal":
+				return journal.listForTest();
+			case "Watchlists":
+				return watchlist.listForTest();
+			default:
+				return activity.listForTest();
+		}
 	}
 
 	/** How many rows a tab's list has actually built. */
 	int drawnRowsForTest(String tab)
 	{
-		switch (tab)
-		{
-			case "Trades":
-				return recentList.getComponentCount();
-			case "Journal":
-				return positionList.getComponentCount();
-			case "Watchlists":
-				return watchlistItems.getComponentCount();
-			default:
-				return pendingList.getComponentCount();
-		}
+		return listOf(tab).getComponentCount();
 	}
 
 	/**
@@ -1947,11 +1099,11 @@ public class FlippingRsPanel extends PluginPanel
 		switch (tab)
 		{
 			case "Trades":
-				return recentList.getComponents();
+				return trades.listForTest().getComponents();
 			case "Watchlists":
-				return watchlistItems.getComponents();
+				return watchlist.listForTest().getComponents();
 			default:
-				return positionList.getComponents();
+				return journal.listForTest().getComponents();
 		}
 	}
 
@@ -2008,35 +1160,35 @@ public class FlippingRsPanel extends PluginPanel
 	/** Selects by id the way a user clicking the combo box would. */
 	void setSelectedForTest(String id)
 	{
-		for (int i = 0; i < accounts.getItemCount(); i++)
-		{
-			if (accounts.getItemAt(i).id.equals(id))
-			{
-				accounts.setSelectedIndex(i);
-				return;
-			}
-		}
-		throw new IllegalArgumentException("no such account in the list: " + id);
+		account.setSelectedForTest(id);
 	}
 
 	/** The user pressing "Send now", listener and all. */
 	void pressSendNowForTest()
 	{
-		syncNow.doClick();
+		activity.pressSendNowForTest();
+	}
+
+	/** The user pressing "Try set-aside trades again", listener and all. */
+	void pressRetrySetAsideForTest()
+	{
+		activity.pressRetrySetAsideForTest();
+	}
+
+	boolean retryOfferedForTest()
+	{
+		return activity.retryOfferedForTest();
+	}
+
+	String setAsideTextForTest()
+	{
+		return activity.setAsideTextForTest();
 	}
 
 	/** The user picking a watchlist from the dropdown, listener and all. */
 	void setSelectedWatchlistForTest(String id)
 	{
-		for (int i = 0; i < watchlists.getItemCount(); i++)
-		{
-			if (id.equals(watchlists.getItemAt(i).id))
-			{
-				watchlists.setSelectedIndex(i);
-				return;
-			}
-		}
-		throw new IllegalArgumentException("no such watchlist in the list: " + id);
+		watchlist.setSelectedForTest(id);
 	}
 
 	/**
@@ -2130,7 +1282,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * The labels render HTML so they can wrap, which means server messages and
 	 * item names have to be escaped rather than interpreted.
 	 */
-	private static String escape(String text)
+	static String escape(String text)
 	{
 		return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 	}

@@ -56,6 +56,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -80,18 +81,18 @@ public class FlippingRsPluginBehaviourTest
 		support = new FlippingRsPluginTestSupport(queueDir);
 	}
 
-	private static FlippingRsApi.GameAccount account(String id, boolean isDefault)
+	private static GameAccount account(String id, boolean isDefault)
 	{
-		final FlippingRsApi.GameAccount a = new FlippingRsApi.GameAccount();
+		final GameAccount a = new GameAccount();
 		a.id = id;
 		a.label = id;
 		a.isDefault = isDefault;
 		return a;
 	}
 
-	private static FlippingRsApi.Watchlist watchlist(String id, String name, Integer... itemIds)
+	private static Watchlist watchlist(String id, String name, Integer... itemIds)
 	{
-		final FlippingRsApi.Watchlist w = new FlippingRsApi.Watchlist();
+		final Watchlist w = new Watchlist();
 		w.id = id;
 		w.name = name;
 		w.itemIds = new java.util.ArrayList<>(Arrays.asList(itemIds));
@@ -102,32 +103,32 @@ public class FlippingRsPluginBehaviourTest
 	 * What the server holds, for any context; set its parts. Each tab's
 	 * endpoint answers with only its own parts, as the real ones do.
 	 */
-	private FlippingRsApi.Panel serverPanel() throws Exception
+	private PanelData serverPanel() throws Exception
 	{
-		final FlippingRsApi.Panel full = new FlippingRsApi.Panel();
+		final PanelData full = new PanelData();
 		when(support.api.account(anyString())).thenAnswer(inv ->
 		{
-			final FlippingRsApi.Panel part = new FlippingRsApi.Panel();
+			final PanelData part = new PanelData();
 			part.me = full.me;
 			part.accounts = full.accounts;
 			return part;
 		});
 		when(support.api.trades(anyString(), any())).thenAnswer(inv ->
 		{
-			final FlippingRsApi.Panel part = new FlippingRsApi.Panel();
+			final PanelData part = new PanelData();
 			part.recentTransactions = full.recentTransactions;
 			return part;
 		});
 		when(support.api.journal(anyString(), any(), anyInt())).thenAnswer(inv ->
 		{
-			final FlippingRsApi.Panel part = new FlippingRsApi.Panel();
+			final PanelData part = new PanelData();
 			part.week = full.week;
 			part.positions = full.positions;
 			return part;
 		});
-		when(support.api.watchlists(anyString(), any())).thenAnswer(inv ->
+		when(support.api.watchlists(anyString(), any(), any())).thenAnswer(inv ->
 		{
-			final FlippingRsApi.Panel part = new FlippingRsApi.Panel();
+			final PanelData part = new PanelData();
 			part.watchlists = full.watchlists;
 			part.quotes = full.quotes;
 			return part;
@@ -401,7 +402,7 @@ public class FlippingRsPluginBehaviourTest
 	{
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
-		// profileConfig has no gameAccountId entry.
+		// No journal has been chosen for this character.
 
 		support.drain();
 
@@ -440,8 +441,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theAdoptedOfferNoticeSurvivesTheSendThatCarriesIt() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 
 		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
 		support.settleSwing();
@@ -457,12 +458,12 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSuccessfulSendClearsTheBatch() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 
 		support.drain();
 
@@ -477,8 +478,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSuccessfulSendMovesTheLastSentTime() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -493,7 +494,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aTemporaryFailureLeavesTheBatchQueued() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -518,7 +519,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void onlyTheRefusedBatchIsDropped() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -551,7 +552,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aRefusedBatchIsSetAsideOnDiskNotDeleted() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		final String id = support.queue().peek(1).get(0).id;
@@ -579,9 +580,9 @@ public class FlippingRsPluginBehaviourTest
 		return tx;
 	}
 
-	private static FlippingRsApi.IngestResult accepted(int rows)
+	private static IngestResult accepted(int rows)
 	{
-		final FlippingRsApi.IngestResult result = new FlippingRsApi.IngestResult();
+		final IngestResult result = new IngestResult();
 		result.accepted = rows;
 		return result;
 	}
@@ -595,7 +596,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void oneBadRowInABatchIsFoundAndTheRestGoThrough() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		for (String id : new String[]{"a", "b", "bad", "c", "d"})
 		{
 			support.queue().add(fill(id));
@@ -651,7 +652,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void everyRowOfARefusedBatchIsAccountedForExactlyOnce() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final File dropped = new File(queueDir, "dropped-1234.json");
 		final Random random = new Random(20260904L);
 		final Set<String> confirmed = new HashSet<>();
@@ -716,14 +717,16 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
-	 * When both halves of a refused batch are refused too, the fault is the
-	 * batch as a whole and no split will help. Stop there, at three requests,
-	 * rather than probing every row.
+	 * When both halves of a refused batch are refused too, one row is sent on
+	 * its own to decide what that means. Refused, it means nothing here will be
+	 * taken -- a journal id that is not this owner's, a lapsed plan -- and the
+	 * batch is set aside without asking about every row, which would spend the
+	 * whole rate limit every sync for as long as the setting stays wrong.
 	 */
 	@Test
-	public void aBatchRefusedInBothHalvesIsSetAsideWithoutProbingEveryRow() throws Exception
+	public void aBatchNothingWillTakeIsSetAsideAfterOneProbe() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		for (String id : new String[]{"a", "b", "c", "d", "e", "f", "g", "h"})
 		{
 			support.queue().add(fill(id));
@@ -739,44 +742,192 @@ public class FlippingRsPluginBehaviourTest
 		support.drain();
 		support.settleSwing();
 
-		assertEquals("the batch, then each half, and no further", 3, calls[0]);
+		assertEquals("the batch, each half, then one row alone, and no further", 4, calls[0]);
 		assertTrue("everything was set aside", support.queue().isEmpty());
 		assertTrue(support.panel.activityNoticeForTest().contains("8 trade(s)"));
 	}
 
 	/**
-	 * The queue is chosen from the account hash and the journal from whichever
-	 * RuneScape profile is active. A hop between those two reads would post one
-	 * account's trades into the other's journal -- and ingestion being
-	 * idempotent by id means re-sending would not undo it.
+	 * The sidebar is where the plugin explains itself, and a flipper keeps it
+	 * shut. A trade that did not reach the journal is the one thing here that
+	 * silence actively harms -- the numbers are wrong from then on and nothing
+	 * on screen says why -- so it is said out loud as well.
 	 */
 	@Test
-	public void aBatchIsNotSentIfTheAccountChangedWhilePreparingIt() throws Exception
+	public void aTradeThatCouldNotBeRecordedIsSaidOutLoud() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
+		support.queue().add(fill("a"));
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenThrow(new FlippingRsApi.PermanentException("that journal is not one of yours"));
+
+		support.drain();
+		support.settleSwing();
+
+		assertEquals(1, support.notifications.size());
+		assertTrue(support.notifications.get(0),
+			support.notifications.get(0).contains("couldn't record 1 trade(s)"));
+	}
+
+	/**
+	 * And a send that went fine says nothing. A notification per sync would be
+	 * one every thirty seconds for as long as somebody is flipping, which is
+	 * the fastest way to have every notification from this plugin ignored.
+	 */
+	@Test
+	public void anOrdinarySendSaysNothingOutLoud() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
+		support.queue().add(fill("a"));
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue(support.notifications.toString(), support.notifications.isEmpty());
+	}
+
+	/**
+	 * A batch is set aside when the plugin cannot tell a bad row from a bad
+	 * setting, and the likelier of those two is the one the user then goes and
+	 * fixes. So the file is not a grave: the trades go back in the queue and
+	 * out to the journal, and the ids they carry mean a row that did land the
+	 * first time is dropped as a repeat rather than doubled.
+	 */
+	@Test
+	public void fixingWhatTheServerObjectedToLetsTheSetAsideTradesThrough() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		for (String id : new String[]{"a", "b", "c", "d"})
+		{
+			support.queue().add(fill(id));
+		}
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenThrow(new FlippingRsApi.PermanentException("accountId is not one of yours"));
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue("the queue is clear", support.queue().isEmpty());
+		assertEquals("and all four are filed", 4, support.queue().setAsideCount());
+		assertTrue("the sidebar offers to try them again", support.panel.retryOfferedForTest());
+
+		// The user picks the journal that was actually theirs.
+		org.mockito.Mockito.reset(support.api);
+		final java.util.List<String> sent = new java.util.ArrayList<>();
+		when(support.api.submit(anyString(), anyString(), anyList())).thenAnswer(inv ->
+		{
+			for (GeTransaction tx : inv.<java.util.List<GeTransaction>>getArgument(2))
+			{
+				sent.add(tx.id);
+			}
+			return new IngestResult();
+		});
+
+		support.retrySetAside();
+
+		assertEquals("every filed trade goes to the journal",
+			Arrays.asList("a", "b", "c", "d"), sent);
+		assertEquals("and the file is empty", 0, support.queue().setAsideCount());
+		assertFalse("so the offer goes away", support.panel.retryOfferedForTest());
+	}
+
+	/**
+	 * The other reading of both halves being refused: a bad row in each. The
+	 * probe row goes through, which proves the server is not refusing
+	 * everything, so the search carries on and every good row still reaches
+	 * the journal instead of the set-aside file.
+	 */
+	@Test
+	public void aBadRowInEachHalfDoesNotCostTheGoodRowsAroundThem() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		final String[] ids = {"a", "bad1", "c", "d", "e", "bad2", "g", "h"};
+		for (String id : ids)
+		{
+			support.queue().add(fill(id));
+		}
+		final java.util.List<String> confirmed = new java.util.ArrayList<>();
+		when(support.api.submit(anyString(), anyString(), anyList()))
+			.thenAnswer(inv ->
+			{
+				final java.util.List<GeTransaction> batch = inv.getArgument(2);
+				for (GeTransaction tx : batch)
+				{
+					if (tx.id.startsWith("bad"))
+					{
+						throw new FlippingRsApi.PermanentException("row " + tx.id + " is malformed");
+					}
+				}
+				for (GeTransaction tx : batch)
+				{
+					confirmed.add(tx.id);
+				}
+				return new IngestResult();
+			});
+
+		support.drain();
+		support.settleSwing();
+
+		assertTrue("nothing may be left queued", support.queue().isEmpty());
+		for (String id : ids)
+		{
+			if (id.startsWith("bad"))
+			{
+				assertFalse("a bad row must never count as sent: " + id, confirmed.contains(id));
+			}
+			else
+			{
+				assertTrue("a good row beside two bad ones still goes through: " + id,
+					confirmed.contains(id));
+			}
+		}
+		assertTrue(support.panel.activityNoticeForTest().contains("2 trade(s)"));
+	}
+
+	/**
+	 * A batch is filed under its own account's journal, whoever is logged in
+	 * by the time it is sent.
+	 *
+	 * <p>This used to be a race worth guarding: the queue was chosen from the
+	 * account hash and the journal read from whichever RuneScape profile was
+	 * active, so a hop between the two reads would post one account's trades
+	 * into the other's journal -- and ingestion being idempotent by id means
+	 * re-sending would not undo it. Storing the choice against the account
+	 * removes the second read, and with it the race: there is now one answer
+	 * to which journal a queue belongs to, and it does not depend on who is
+	 * logged in.
+	 */
+	@Test
+	public void aBatchIsFiledUnderItsOwnAccountsJournal() throws Exception
+	{
+		support.chooseJournalFor(1234L, "main-journal");
+		support.chooseJournalFor(9999L, "alt-journal");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
-		// Captured while the hash is still the original, because the lookup
-		// itself is keyed by it.
-		final TransactionQueue queue = support.queue();
-
-		// drain reads the hash twice: once to choose the queue, once to check
-		// it still matches the journal it just resolved. The second read sees a
-		// different account -- the player hopped or relogged in between.
-		when(support.client.getAccountHash()).thenReturn(1234L, 9999L);
+		// The player hopped or relogged between the fill and the send.
+		when(support.client.getAccountHash()).thenReturn(9999L);
 
 		support.drain();
 
-		verify(support.api, never()).submit(anyString(), anyString(), anyList());
-		assertEquals("the trade waits for the next tick rather than being misfiled",
-			1, queue.size());
+		verify(support.api, never()).submit(anyString(), eq("alt-journal"), anyList());
+		verify(support.api).submit(anyString(), eq("main-journal"), anyList());
 	}
 
+	/**
+	 * Nobody logged in is not a reason to sit on trades that have already
+	 * happened. The journal each queue files under is remembered against the
+	 * account rather than the RuneScape profile, so it is still answerable
+	 * with the client at the login screen, and the evening's last fills go out
+	 * rather than waiting for the next session.
+	 */
 	@Test
-	public void nothingIsSentWhileLoggedOut() throws Exception
+	public void aBacklogGoesOutEvenWithNobodyLoggedIn() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -784,7 +935,8 @@ public class FlippingRsPluginBehaviourTest
 
 		support.drain();
 
-		verify(support.api, never()).submit(anyString(), anyString(), any());
+		verify(support.api).submit(anyString(), eq("acct-1"), anyList());
+		assertTrue("and it leaves the queue", support.queueFor(1234L).isEmpty());
 	}
 
 	/**
@@ -796,7 +948,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void recordingOffSendsNothingButKeepsWhatIsQueued() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -810,7 +962,7 @@ public class FlippingRsPluginBehaviourTest
 		// And it goes out once recording is switched back on.
 		when(support.config.enabled()).thenReturn(true);
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 
 		support.drain();
 
@@ -826,7 +978,7 @@ public class FlippingRsPluginBehaviourTest
 		support.connect();
 
 		verify(support.api, never()).account(anyString());
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	// ------------------------------------------------------------ the picker
@@ -840,19 +992,52 @@ public class FlippingRsPluginBehaviourTest
 	public void loggingIntoAnotherAccountRepointsThePicker() throws Exception
 	{
 		serverPanel().accounts = Arrays.asList(account("a1", true), account("a2", false));
-		support.profileConfig.put("gameAccountId", "a2");
+		support.chooseJournal("a2");
 
 		support.connect();
 		assertEquals("a2", support.panel.selectedAccountId());
 
 		// The alt: remembered journal a1.
-		support.profileConfig.put("gameAccountId", "a1");
+		support.chooseJournal("a1");
 		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged("main", "alt"));
 		support.settleSwing();
 
 		assertEquals("a1", support.panel.selectedAccountId());
 		assertEquals("re-pointing the picker is not the user choosing; nothing is rewritten",
-			"a1", support.profileConfig.get("gameAccountId"));
+			"a1", support.chosenJournal());
+	}
+
+	/**
+	 * An install upgrading from a version that kept the journal choice in the
+	 * RuneScape profile.
+	 *
+	 * <p>The client is normally started before anyone logs in, so the first
+	 * connect has no character to read a profile setting for and the choice
+	 * cannot be moved then. It has to move on login instead -- because the very
+	 * next thing that happens on login is the picker being re-pointed, and a
+	 * choice that has not been moved yet reads as no choice at all. Adopting
+	 * the server's default over it would file this character's trades into
+	 * another journal without saying so, which is the one mix-up storing the
+	 * choice per character exists to prevent.
+	 */
+	@Test
+	public void anUpgradeKeepsTheJournalTheCharacterAlreadyHad() throws Exception
+	{
+		serverPanel().accounts = Arrays.asList(account("a1", false), account("a2", true));
+		// What the old version wrote: in the RuneScape profile, not against
+		// the account.
+		support.profileConfig.put("gameAccountId", "a1");
+		when(support.client.getAccountHash()).thenReturn(-1L);
+
+		support.connect();
+
+		when(support.client.getAccountHash()).thenReturn(1234L);
+		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged(null, "main"));
+		support.settleSwing();
+
+		assertEquals("the journal this character already had, not the server's default",
+			"a1", support.chosenJournal());
+		assertEquals("a1", support.panel.selectedAccountId());
 	}
 
 	/**
@@ -868,13 +1053,13 @@ public class FlippingRsPluginBehaviourTest
 		when(support.client.getAccountHash()).thenReturn(-1L);
 
 		support.connect();
-		assertNull("nothing to attach it to yet", support.profileConfig.get("gameAccountId"));
+		assertNull("nothing to attach it to yet", support.chosenJournal());
 
 		when(support.client.getAccountHash()).thenReturn(1234L);
 		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged(null, "main"));
 		support.settleSwing();
 
-		assertEquals("a2", support.profileConfig.get("gameAccountId"));
+		assertEquals("a2", support.chosenJournal());
 		assertEquals("a2", support.panel.selectedAccountId());
 	}
 
@@ -889,8 +1074,8 @@ public class FlippingRsPluginBehaviourTest
 	public void pickingAJournalRereadsTheTabsAndSendsWhatWasHeld() throws Exception
 	{
 		serverPanel().accounts = Arrays.asList(account("a1", true), account("a2", false));
-		support.profileConfig.put("gameAccountId", "a1");
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.chooseJournal("a1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		support.connect();
 		support.settleNet();
 
@@ -899,7 +1084,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.chooseAccount("a2");
 
-		assertEquals("a2", support.profileConfig.get("gameAccountId"));
+		assertEquals("a2", support.chosenJournal());
 		verify(support.api).trades(anyString(), eq("a2"));
 		verify(support.api).journal(anyString(), eq("a2"), anyInt());
 		verify(support.api).submit(anyString(), eq("a2"), anyList());
@@ -916,7 +1101,7 @@ public class FlippingRsPluginBehaviourTest
 	public void reSelectingTheSameJournalReadsNothing() throws Exception
 	{
 		serverPanel().accounts = Arrays.asList(account("a1", true), account("a2", false));
-		support.profileConfig.put("gameAccountId", "a2");
+		support.chooseJournal("a2");
 		support.connect();
 		support.settleNet();
 
@@ -936,12 +1121,12 @@ public class FlippingRsPluginBehaviourTest
 	public void anEmptyJournalListDoesNotForgetTheOneInUse() throws Exception
 	{
 		serverPanel().accounts = Collections.emptyList();
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 
 		support.connect();
 
 		assertEquals("a reply with no journals in it is not a deletion",
-			"acct-1", support.profileConfig.get("gameAccountId"));
+			"acct-1", support.chosenJournal());
 	}
 
 	/**
@@ -953,11 +1138,11 @@ public class FlippingRsPluginBehaviourTest
 	public void aJournalThatNoLongerExistsIsForgottenAndTradesAreHeld() throws Exception
 	{
 		serverPanel().accounts = Collections.singletonList(account("a1", true));
-		support.profileConfig.put("gameAccountId", "deleted");
+		support.chooseJournal("deleted");
 
 		support.connect();
 
-		assertNull(support.profileConfig.get("gameAccountId"));
+		assertNull(support.chosenJournal());
 		assertNull("the panel must not name a journal the plugin is not filing under",
 			support.panel.selectedAccountId());
 
@@ -977,13 +1162,13 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void refreshesAfterSendsAreCoalesced() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		// The tabs are only read while somebody can see them, and opening the
 		// sidebar reads them once; the sends are what is under test here.
 		support.showSidebar();
 		support.tabsLastReadLongAgo();
 		org.mockito.Mockito.clearInvocations(support.api);
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		for (int i = 0; i < 3; i++)
 		{
 			fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
@@ -1007,16 +1192,16 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theJournalTabLoadsOnConnectAndAfterASend() throws Exception
 	{
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
-		support.profileConfig.put("gameAccountId", "acct-1");
-		final FlippingRsApi.Positions open = new FlippingRsApi.Positions();
-		final FlippingRsApi.Position whip = new FlippingRsApi.Position();
+		support.chooseJournal("acct-1");
+		final Positions open = new Positions();
+		final Position whip = new Position();
 		whip.itemId = 4151;
 		whip.itemName = "Abyssal whip";
 		open.positions = Collections.singletonList(whip);
 		server.positions = open;
-		server.week = new FlippingRsApi.Analytics();
+		server.week = new Analytics();
 
 		support.connect();
 
@@ -1057,7 +1242,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void anUnexpectedFailureIsReportedOnTheTabThatAskedForIt() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
 		support.connect();
 		when(support.api.updateWatchlist(anyString(), anyString(), anyList()))
@@ -1092,7 +1277,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSettingsReadThatThrowsIsStillAnsweredOnItsTab() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
 		support.connect();
 		when(support.config.enabled()).thenThrow(new IllegalStateException("the config proxy fell over"));
@@ -1112,7 +1297,7 @@ public class FlippingRsPluginBehaviourTest
 	{
 		when(support.api.account(anyString()))
 			.thenThrow(new java.io.IOException("This API key is scoped to the RuneLite plugin."));
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 
 		support.connect();
 
@@ -1131,8 +1316,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void sendsWithTheSidebarShutDoNotReadTheAccountTabs() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
@@ -1161,12 +1346,12 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aRefusedPartialRefreshIsShownOnItsTabs() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		support.showSidebar();
 		support.tabsLastReadLongAgo();
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		when(support.api.trades(anyString(), any()))
 			.thenThrow(new java.io.IOException("This API key is scoped to the RuneLite plugin."));
 		when(support.api.journal(anyString(), any(), anyInt()))
@@ -1185,7 +1370,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void closingAPositionSendsTheSaleAndReloadsTheJournal() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 
 		support.closePosition("f1", 1_520_000, 4L);
 
@@ -1197,7 +1382,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aRefusedCloseIsShownInTheServersWords() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		org.mockito.Mockito.doThrow(new java.io.IOException("Every item in this flip has already been sold."))
 			.when(support.api).closePosition(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(), any());
 
@@ -1209,7 +1394,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void deletingAPositionRemovesItAndReloadsTheJournal() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 
 		support.deletePosition("f1");
 
@@ -1236,9 +1421,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theAccountTabShowsThePlanTheKeyIsOn() throws Exception
 	{
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
-		final FlippingRsApi.Me me = new FlippingRsApi.Me();
+		final Me me = new Me();
 		me.effectiveTier = "pro";
 		me.onTrial = true;
 		me.trialDaysLeft = 5;
@@ -1253,7 +1438,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void bufferedFillsShowOnTheActivityTabUntilSent() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		support.settleSwing();
@@ -1261,7 +1446,7 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(1, support.panel.pendingForTest().size());
 		assertTrue(support.panel.pendingForTest().get(0).contains("Bought 4"));
 
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		support.drain();
 		support.settleSwing();
 
@@ -1282,10 +1467,10 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void rowsRefusedInsideAGoodReplyAreReportedAsGone() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
-		final FlippingRsApi.IngestResult refused = new FlippingRsApi.IngestResult();
+		final IngestResult refused = new IngestResult();
 		refused.accepted = 0;
 		refused.rejected = 1;
 		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(refused);
@@ -1304,7 +1489,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aRefusedBatchIsReportedOnTheActivityTab() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		when(support.api.submit(anyString(), anyString(), anyList()))
@@ -1329,7 +1514,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void recentTradesAreWhatTheServerRecordedNotWhatWasSent() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		support.showSidebar();
 		support.tabsLastReadLongAgo();
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
@@ -1337,8 +1522,8 @@ public class FlippingRsPluginBehaviourTest
 		support.settleSwing();
 		assertTrue("nothing is shown until the server has it", support.panel.recentForTest().isEmpty());
 
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
-		final FlippingRsApi.Panel server = new FlippingRsApi.Panel();
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
+		final PanelData server = new PanelData();
 		server.recentTransactions = Arrays.asList(recorded("t2", "sell", 1), recorded("t1", "buy", 4));
 		when(support.api.trades(eq("frs_key"), eq("acct-1"))).thenReturn(server);
 
@@ -1355,12 +1540,12 @@ public class FlippingRsPluginBehaviourTest
 	public void recentTradesFollowTheAccountOnLogin() throws Exception
 	{
 		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
-		final FlippingRsApi.Panel alt = new FlippingRsApi.Panel();
+		final PanelData alt = new PanelData();
 		alt.recentTransactions = Collections.singletonList(recorded("t9", "buy", 2));
 		when(support.api.trades(eq("frs_key"), eq("acct-2"))).thenReturn(alt);
 		support.connect();
 
-		support.profileConfig.put("gameAccountId", "acct-2");
+		support.chooseJournal("acct-2");
 		support.plugin.onRuneScapeProfileChanged(new RuneScapeProfileChanged("main", "alt"));
 		support.settleNet();
 		support.settleSwing();
@@ -1377,10 +1562,10 @@ public class FlippingRsPluginBehaviourTest
 	{
 		// The cards are only built while the sidebar is open.
 		support.showSidebar();
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
-		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		final Quote whip = new Quote();
 		whip.id = 4151;
 		whip.instantSell = 1_480_000;
 		whip.instantBuy = 1_520_000;
@@ -1399,10 +1584,10 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theOfferScreenQuoteFollowsTheWatchlist() throws Exception
 	{
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
-		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		final Quote whip = new Quote();
 		whip.id = 4151;
 		whip.instantSell = 1_480_000;
 		whip.instantBuy = 1_520_000;
@@ -1431,6 +1616,27 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * Both price reads name the journal.
+	 *
+	 * <p>A buy limit is how much of it <em>this journal</em> has spent, so the
+	 * server has nothing to count without one and leaves the limit off
+	 * entirely. Sending it is the whole difference between the offer screen
+	 * saying how much of a limit is left and saying nothing about it, and
+	 * neither the sidebar nor the log would show that it had stopped.
+	 */
+	@Test
+	public void bothPriceReadsNameTheJournalSoBuyLimitsCanBeCounted() throws Exception
+	{
+		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
+		support.chooseJournal("acct-1");
+		support.showSidebar();
+
+		support.connect();
+
+		verify(support.api, atLeastOnce()).watchlists(anyString(), any(), eq("acct-1"));
+	}
+
+	/**
 	 * Picking a different watchlist re-points the offer screen at it. The
 	 * overlay asks this on every frame it draws, so the answer is held ready
 	 * rather than resolved each time -- and something held has to be put down
@@ -1439,14 +1645,14 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theOfferScreenQuoteFollowsAChangeOfWatchlist() throws Exception
 	{
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Arrays.asList(
 			watchlist("wl_1", "Plan", 4151),
 			watchlist("wl_2", "Bonds", 13190));
-		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		final Quote whip = new Quote();
 		whip.id = 4151;
-		final FlippingRsApi.Quote bond = new FlippingRsApi.Quote();
+		final Quote bond = new Quote();
 		bond.id = 13190;
 		server.quotes = Arrays.asList(whip, bond);
 		// Open, because the picker is only filled in while it is, which is also
@@ -1497,9 +1703,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void switchingRecordingOffTakesTheQuotesOffTheOfferScreen() throws Exception
 	{
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
-		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		final Quote whip = new Quote();
 		whip.id = 4151;
 		whip.instantSell = 1_480_000;
 		server.quotes = Collections.singletonList(whip);
@@ -1518,7 +1724,7 @@ public class FlippingRsPluginBehaviourTest
 	{
 		// The cards are only built while the sidebar is open.
 		support.showSidebar();
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.accounts = Collections.singletonList(account("acct-1", true));
 		server.watchlists = Arrays.asList(
 			watchlist("wl_1", "Plan", 4151),
@@ -1586,7 +1792,7 @@ public class FlippingRsPluginBehaviourTest
 		support.showSidebar();
 		// The server's list changes when it is edited, and the re-read after
 		// an edit sees the change, as it would on the real server.
-		final FlippingRsApi.Panel server = serverPanel();
+		final PanelData server = serverPanel();
 		server.watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
 		when(support.api.updateWatchlist(eq("frs_key"), eq("wl_1"), eq(Arrays.asList(4151, 11802))))
 			.thenAnswer(inv ->
@@ -1693,7 +1899,7 @@ public class FlippingRsPluginBehaviourTest
 		support.addToWatchlist(4151);
 
 		verify(support.api, never()).account(anyString());
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 		verify(support.api, never()).createWatchlist(anyString(), anyString(), anyList());
 	}
 
@@ -1728,12 +1934,12 @@ public class FlippingRsPluginBehaviourTest
 	@SuppressWarnings("unchecked")
 	public void openingTheExchangeSendsTheOpenOffersForReconciliation() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
-		final FlippingRsApi.Reconciliation result = new FlippingRsApi.Reconciliation();
+		final Reconciliation result = new Reconciliation();
 		result.recovered = 1;
 		when(support.api.submitOffers(eq("frs_key"), eq("acct-1"), anyList())).thenReturn(result);
 
@@ -1745,7 +1951,7 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 		support.settleSwing();
 
-		final ArgumentCaptor<List<FlippingRsApi.OfferState>> sent = ArgumentCaptor.forClass(List.class);
+		final ArgumentCaptor<List<OfferState>> sent = ArgumentCaptor.forClass(List.class);
 		verify(support.api).submitOffers(eq("frs_key"), eq("acct-1"), sent.capture());
 		assertEquals(1, sent.getValue().size());
 		assertEquals(3, sent.getValue().get(0).slot);
@@ -1767,7 +1973,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void anOfferSnapshotIsNotSentUnderAnotherCharactersJournal() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		// Answered from a field rather than restubbed later: the net thread
 		// asks the same mock, and stubbing one while another thread calls it
 		// is not something Mockito supports.
@@ -1807,7 +2013,7 @@ public class FlippingRsPluginBehaviourTest
 	@SuppressWarnings("unchecked")
 	public void emptySlotsAreNotSentAsOpenOffers() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
@@ -1822,7 +2028,7 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 		support.settleSwing();
 
-		final ArgumentCaptor<List<FlippingRsApi.OfferState>> sent = ArgumentCaptor.forClass(List.class);
+		final ArgumentCaptor<List<OfferState>> sent = ArgumentCaptor.forClass(List.class);
 		verify(support.api).submitOffers(anyString(), anyString(), sent.capture());
 		assertEquals("only the slot with an offer in it", 1, sent.getValue().size());
 		assertEquals(3, sent.getValue().get(0).slot);
@@ -1836,7 +2042,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aWatchlistWithoutAnIdDoesNotBreakTheTab() throws Exception
 	{
-		final FlippingRsApi.Watchlist broken = new FlippingRsApi.Watchlist();
+		final Watchlist broken = new Watchlist();
 		broken.name = "No id";
 		serverPanel().watchlists = Arrays.asList(broken, watchlist("wl_1", "Plan", 4151));
 		support.pluginConfig.put("watchlistId", "wl_1");
@@ -1858,7 +2064,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void anIdLessWatchlistIsNeverTheOneOnShow() throws Exception
 	{
-		final FlippingRsApi.Watchlist broken = new FlippingRsApi.Watchlist();
+		final Watchlist broken = new Watchlist();
 		broken.name = "No id";
 		broken.itemIds = Collections.singletonList(11802);
 		serverPanel().watchlists = Arrays.asList(broken, watchlist("wl_1", "Plan", 4151));
@@ -1875,7 +2081,7 @@ public class FlippingRsPluginBehaviourTest
 	@SuppressWarnings("unchecked")
 	public void openingTheHistorySendsWhatItShows() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final Widget icon = mock(Widget.class);
 		when(icon.getItemId()).thenReturn(4151);
 		when(icon.getItemQuantity()).thenReturn(10);
@@ -1889,7 +2095,7 @@ public class FlippingRsPluginBehaviourTest
 		final Widget list = mock(Widget.class);
 		when(list.getDynamicChildren()).thenReturn(new Widget[]{icon, side, price});
 		when(support.client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(list);
-		final FlippingRsApi.Reconciliation result = new FlippingRsApi.Reconciliation();
+		final Reconciliation result = new Reconciliation();
 		result.added = 1;
 		when(support.api.submitHistory(eq("frs_key"), eq("acct-1"), anyList())).thenReturn(result);
 
@@ -1901,7 +2107,7 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 		support.settleSwing();
 
-		final ArgumentCaptor<List<FlippingRsApi.HistoryRow>> sent = ArgumentCaptor.forClass(List.class);
+		final ArgumentCaptor<List<HistoryRow>> sent = ArgumentCaptor.forClass(List.class);
 		verify(support.api).submitHistory(eq("frs_key"), eq("acct-1"), sent.capture());
 		assertEquals(1, sent.getValue().size());
 		assertEquals("buy", sent.getValue().get(0).side);
@@ -1937,7 +2143,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void anEmptyHistoryScreenIsLookedAtAgainThenLetGo() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		// Everything the plugin reads off the client comes through a holder, so
 		// that nothing is stubbed while it is running. Once a read succeeds the
 		// net thread is calling this same mock, and stubbing one from the test
@@ -2005,7 +2211,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aRefusedOfferSnapshotIsShownOnActivity() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
 		when(support.api.submitOffers(anyString(), anyString(), anyList()))
 			.thenThrow(new java.io.IOException("This feature requires the Pro plan."));
@@ -2035,7 +2241,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void recordingOffSendsNoSnapshots() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
@@ -2183,12 +2389,12 @@ public class FlippingRsPluginBehaviourTest
 		support.plugin.onWidgetLoaded(opened);
 
 		support.quotesTick();
-		verify(support.api, times(2)).watchlists(anyString(), any());
+		verify(support.api, times(2)).watchlists(anyString(), any(), any());
 
 		support.plugin.onGameStateChanged(state(GameState.LOGIN_SCREEN));
 		support.quotesTick();
 
-		verify(support.api, times(2)).watchlists(anyString(), any());
+		verify(support.api, times(2)).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2199,10 +2405,10 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theBufferIsSentBeforeAnOfferSnapshot() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
 		assertEquals("the adopted fill is waiting", 1, support.queue().size());
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
 
 		final WidgetLoaded opened = new WidgetLoaded();
@@ -2239,7 +2445,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void closingTheClientFlushesAndSendsWhatIsWaiting() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		// The sidebar is open, as it would be for someone who was looking at it
 		// when they closed the client -- otherwise the tabs are not read anyway
 		// and this would prove nothing.
@@ -2249,7 +2455,7 @@ public class FlippingRsPluginBehaviourTest
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 
 		final ClientShutdown exit = new ClientShutdown();
 		support.plugin.onClientShutdown(exit);
@@ -2274,7 +2480,7 @@ public class FlippingRsPluginBehaviourTest
 	@SuppressWarnings("unchecked")
 	public void aSlotWhoseRunningTotalHasWrappedIsReportedAsAnEstimate() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[2] = offer(GrandExchangeOfferState.BUYING, 3, Integer.MIN_VALUE + 1000);
@@ -2289,7 +2495,7 @@ public class FlippingRsPluginBehaviourTest
 		support.settleNet();
 		support.settleSwing();
 
-		final ArgumentCaptor<List<FlippingRsApi.OfferState>> sent = ArgumentCaptor.forClass(List.class);
+		final ArgumentCaptor<List<OfferState>> sent = ArgumentCaptor.forClass(List.class);
 		verify(support.api).submitOffers(anyString(), anyString(), sent.capture());
 		assertTrue("the wrapped slot must be flagged", reported(sent.getValue(), 2).spentEstimated);
 		assertTrue("and one that fits must not be", !reported(sent.getValue(), 3).spentEstimated);
@@ -2307,7 +2513,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSnapshotThatRecoveredNothingSaysNothing() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
@@ -2327,9 +2533,9 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/** The state reported for one slot. */
-	private static FlippingRsApi.OfferState reported(List<FlippingRsApi.OfferState> sent, int slot)
+	private static OfferState reported(List<OfferState> sent, int slot)
 	{
-		for (FlippingRsApi.OfferState state : sent)
+		for (OfferState state : sent)
 		{
 			if (state.slot == slot)
 			{
@@ -2352,7 +2558,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theSnapshotAfterLoginWaitsForTheOfferBurstToSettle() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
@@ -2387,7 +2593,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void openingTheExchangeAgainStraightAwayDoesNotSnapshotAgain() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
@@ -2419,7 +2625,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSnapshotOnlyHappensWhenSomethingAskedForOne() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
@@ -2456,8 +2662,8 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aSendSoonAfterASnapshotDoesNotTakeAnother() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
-		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.IngestResult());
+		support.chooseJournal("acct-1");
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
@@ -2500,15 +2706,15 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theSameHistoryScreenIsSentAgainToADifferentJournal() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		historyScreen("15,000,000 coins");
 		when(support.api.submitHistory(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.Reconciliation());
+			.thenReturn(new Reconciliation());
 
 		openHistory(5);
 		verify(support.api).submitHistory(eq("frs_key"), eq("acct-1"), anyList());
 
-		support.profileConfig.put("gameAccountId", "acct-2");
+		support.chooseJournal("acct-2");
 		openHistory(10);
 
 		verify(support.api).submitHistory(eq("frs_key"), eq("acct-2"), anyList());
@@ -2522,12 +2728,13 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void theSameHistoryScreenIsSentAgainOnAnotherCharacter() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournalFor(1111L, "acct-1");
+		support.chooseJournalFor(2222L, "acct-1");
 		final AtomicLong account = new AtomicLong(1111L);
 		when(support.client.getAccountHash()).thenAnswer(inv -> account.get());
 		historyScreen("15,000,000 coins");
 		when(support.api.submitHistory(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.Reconciliation());
+			.thenReturn(new Reconciliation());
 
 		openHistory(5);
 		verify(support.api, times(1)).submitHistory(anyString(), anyString(), anyList());
@@ -2551,7 +2758,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aHistoryScreenIsNotSentForACharacterWhoDidNotShowIt() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final AtomicLong account = new AtomicLong(1234L);
 		when(support.client.getAccountHash()).thenAnswer(inv -> account.get());
 		historyScreen("15,000,000 coins");
@@ -2584,10 +2791,10 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aHistorySendThatRecoveredNothingSaysNothing() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		historyScreen("15,000,000 coins");
 		when(support.api.submitHistory(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.Reconciliation());
+			.thenReturn(new Reconciliation());
 
 		openHistory(5);
 
@@ -2608,7 +2815,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void recordingOffSendsNoHistory() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		historyScreen("15,000,000 coins");
 		when(support.config.enabled()).thenReturn(false);
 
@@ -2630,7 +2837,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void anEmptyStoredJournalIdIsTreatedAsNoJournal() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "");
+		support.chooseJournal("");
 		fire(offer(GrandExchangeOfferState.BUYING, 6, 5_900_000));
 		support.drain();
 		support.settleNet();
@@ -2692,7 +2899,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.chooseWatchlist("wl_2");
 
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2713,7 +2920,7 @@ public class FlippingRsPluginBehaviourTest
 
 		support.quotesTick();
 
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2806,14 +3013,14 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void openingTheSidebarWhileRecordingIsOffReadsNothing() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.config.enabled()).thenReturn(false);
 
 		support.showSidebar();
 
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2835,7 +3042,7 @@ public class FlippingRsPluginBehaviourTest
 
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
-		verify(support.api).watchlists(anyString(), any());
+		verify(support.api).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2847,14 +3054,14 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void withNoKeyNothingIsRead() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.config.apiKey()).thenReturn("   ");
 
 		support.showSidebar();
 
 		verify(support.api, never()).trades(anyString(), any());
 		verify(support.api, never()).journal(anyString(), any(), anyInt());
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -2869,7 +3076,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void closingTheClientDoesNotHangWhenTheSenderIsAlreadyStopped() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		support.stopSendThread();
 
@@ -2893,9 +3100,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void disablingThePluginTriesOneLastSend() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		support.settleNet();
 		clearInvocations(support.api);
@@ -2917,7 +3124,7 @@ public class FlippingRsPluginBehaviourTest
 	public void theWaitingBufferFollowsTheCharacter() throws Exception
 	{
 		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		support.connect();
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 
@@ -2951,7 +3158,7 @@ public class FlippingRsPluginBehaviourTest
 	{
 		serverPanel().accounts = Collections.singletonList(account("acct-1", true));
 		// Remembered for this character, and no longer on the site.
-		support.profileConfig.put("gameAccountId", "acct-9");
+		support.chooseJournal("acct-9");
 
 		support.connect();
 
@@ -2974,9 +3181,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void closingTheSidebarStopsTheTabsBeingReadAfterEverySend() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		support.showSidebar();
 		support.hideSidebar();
 		support.tabsLastReadLongAgo();
@@ -3087,9 +3294,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void sendNowSendsWhatIsWaiting() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		assertEquals("a fill is waiting", 1, support.queue().size());
 		clearInvocations(support.api);
@@ -3194,7 +3401,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aPluginTurnedOffAndOnAgainStillCoalescesItsTabReads() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		support.showSidebar();
 		// Two reads inside the window: the second is deferred, and the flag is
 		// left set because the deferred read is on a thread about to stop.
@@ -3224,9 +3431,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aPluginTurnedOffAndOnAgainForgetsTheLastSession() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		support.showSidebar();
 		fire(offer(GrandExchangeOfferState.BUYING, 4, 4_000_000));
 		support.drain();
@@ -3259,9 +3466,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aReEnabledPluginSnapshotsAgainAndLeavesTheShutTabsAlone() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		when(support.client.getGrandExchangeOffers()).thenReturn(new GrandExchangeOffer[8]);
 		// The state the last run ended in: sidebar open, client closing.
 		support.showSidebar();
@@ -3294,7 +3501,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aReEnabledPluginStillNoticesTheNextLogin() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		// A login in the run that ended, which is what leaves the flag down.
 		when(support.client.getTickCount()).thenReturn(10);
 		support.plugin.onGameStateChanged(state(GameState.LOGGED_IN));
@@ -3326,7 +3533,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void everySlotIsItsOwnOffer() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final int[] slots = {0, 1, 7};
 		final int[] items = {4151, 11802, 13190};
 
@@ -3389,7 +3596,7 @@ public class FlippingRsPluginBehaviourTest
 		clearInvocations(support.api);
 		support.quotesTick();
 
-		verify(support.api).watchlists(anyString(), any());
+		verify(support.api).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -3403,7 +3610,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aFillIsRecordedEvenWhenTheClientWillNotNameTheItem() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.itemManager.getItemComposition(anyInt()))
 			.thenThrow(new IllegalStateException("no such item"));
 
@@ -3468,9 +3675,9 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void aBacklogGoesOutInBatchesOldestFirst() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.api.submit(anyString(), anyString(), anyList()))
-			.thenReturn(new FlippingRsApi.IngestResult());
+			.thenReturn(new IngestResult());
 		for (int i = 0; i < 501; i++)
 		{
 			support.queue().add(fill("q" + i));
@@ -3524,20 +3731,20 @@ public class FlippingRsPluginBehaviourTest
 		support.plugin.onWidgetLoaded(opened);
 		clearInvocations(support.api);
 		support.quotesTick();
-		verify(support.api).watchlists(anyString(), any());
+		verify(support.api).watchlists(anyString(), any(), any());
 
 		// Some other interface closing is not the exchange closing: the offer
 		// screen is still up and its overlay still wants prices.
 		support.plugin.onWidgetClosed(new WidgetClosed(InterfaceID.GE_HISTORY, 0, true));
 		clearInvocations(support.api);
 		support.quotesTick();
-		verify(support.api).watchlists(anyString(), any());
+		verify(support.api).watchlists(anyString(), any(), any());
 
 		support.plugin.onWidgetClosed(new WidgetClosed(InterfaceID.GE_OFFERS, 0, true));
 		clearInvocations(support.api);
 		support.quotesTick();
 
-		verify(support.api, never()).watchlists(anyString(), any());
+		verify(support.api, never()).watchlists(anyString(), any(), any());
 	}
 
 	/**
@@ -3594,7 +3801,7 @@ public class FlippingRsPluginBehaviourTest
 		serverPanel().watchlists = Collections.singletonList(watchlist("wl_1", "Plan", 4151));
 		support.showSidebar();
 		support.connect();
-		when(support.api.watchlists(anyString(), any()))
+		when(support.api.watchlists(anyString(), any(), any()))
 			.thenThrow(new java.io.IOException("flippingrs.com is having a moment."));
 
 		support.quotesTick();
@@ -3628,7 +3835,7 @@ public class FlippingRsPluginBehaviourTest
 			.thenReturn(watchlist("wl_1", "Plan", 4151, 11802));
 		when(support.api.updateWatchlist(anyString(), eq("wl_2"), anyList()))
 			.thenReturn(watchlist("wl_2", "Bonds", 13190, 4151));
-		when(support.api.watchlists(anyString(), any()))
+		when(support.api.watchlists(anyString(), any(), any()))
 			.thenThrow(new java.io.IOException("flippingrs.com is having a moment."));
 
 		support.addToWatchlist(11802);
@@ -3657,7 +3864,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void nothingIsRecordedWhileNobodyIsLoggedIn() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		when(support.client.getAccountHash()).thenReturn(-1L);
 
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
@@ -3696,7 +3903,7 @@ public class FlippingRsPluginBehaviourTest
 	@Test
 	public void fillsArrivingDuringASendAreNeitherLostNorSentTwice() throws Exception
 	{
-		support.profileConfig.put("gameAccountId", "acct-1");
+		support.chooseJournal("acct-1");
 		final List<String> sentIds = Collections.synchronizedList(new ArrayList<>());
 		when(support.api.submit(anyString(), anyString(), anyList())).thenAnswer(inv ->
 		{
@@ -3705,7 +3912,7 @@ public class FlippingRsPluginBehaviourTest
 			{
 				sentIds.add(tx.id);
 			}
-			return new FlippingRsApi.IngestResult();
+			return new IngestResult();
 		});
 
 		final int slots = 4;

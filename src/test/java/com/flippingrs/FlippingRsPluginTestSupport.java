@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -114,6 +115,16 @@ final class FlippingRsPluginTestSupport
 
 	private final Net sendExecutor = new Net();
 
+	/**
+	 * The client's notifier. Real enough to record what the plugin asked for,
+	 * so a test can say that a trade nobody would otherwise hear about was
+	 * said out loud.
+	 */
+	final net.runelite.client.Notifier notifier = mock(net.runelite.client.Notifier.class);
+
+	/** What the plugin has raised a notification about, in order. */
+	final java.util.List<String> notifications = new java.util.ArrayList<>();
+
 	FlippingRsPluginTestSupport(java.io.File queueDir) throws Exception
 	{
 		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
@@ -126,15 +137,22 @@ final class FlippingRsPluginTestSupport
 		when(config.enabled()).thenReturn(true);
 		when(config.setupOverlay()).thenReturn(true);
 		when(config.syncSeconds()).thenReturn(30);
+		when(config.notifyProblems()).thenReturn(net.runelite.client.config.Notification.ON);
+		when(config.notifyOfferComplete()).thenReturn(net.runelite.client.config.Notification.OFF);
+		doAnswer(inv ->
+		{
+			notifications.add(inv.getArgument(1, String.class));
+			return null;
+		}).when(notifier).notify(any(net.runelite.client.config.Notification.class), anyString());
 
 		// Nothing on the server until a test says otherwise: a reply with
 		// every part absent, which the plugin treats as "leave it alone".
-		when(api.account(anyString())).thenReturn(new FlippingRsApi.Panel());
-		when(api.trades(anyString(), any())).thenReturn(new FlippingRsApi.Panel());
-		when(api.journal(anyString(), any(), anyInt())).thenReturn(new FlippingRsApi.Panel());
-		when(api.watchlists(anyString(), any())).thenReturn(new FlippingRsApi.Panel());
-		when(api.submitOffers(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.Reconciliation());
-		when(api.submitHistory(anyString(), anyString(), anyList())).thenReturn(new FlippingRsApi.Reconciliation());
+		when(api.account(anyString())).thenReturn(new PanelData());
+		when(api.trades(anyString(), any())).thenReturn(new PanelData());
+		when(api.journal(anyString(), any(), anyInt())).thenReturn(new PanelData());
+		when(api.watchlists(anyString(), any(), any())).thenReturn(new PanelData());
+		when(api.submitOffers(anyString(), anyString(), anyList())).thenReturn(new Reconciliation());
+		when(api.submitHistory(anyString(), anyString(), anyList())).thenReturn(new Reconciliation());
 
 		// Item names are looked up on the client thread. Run that inline.
 		doAnswer(inv ->
@@ -151,6 +169,11 @@ final class FlippingRsPluginTestSupport
 			pluginConfig.put(inv.getArgument(1, String.class), value == null ? null : value.toString());
 			return null;
 		}).when(configManager).setConfiguration(eq(FlippingRsConfig.GROUP), anyString(), any());
+		doAnswer(inv ->
+		{
+			pluginConfig.remove(inv.getArgument(1, String.class));
+			return null;
+		}).when(configManager).unsetConfiguration(eq(FlippingRsConfig.GROUP), anyString());
 
 		// A real read/write store, so baselines actually persist between events
 		// the way they do in the client. Without this every event looks like the
@@ -172,11 +195,7 @@ final class FlippingRsPluginTestSupport
 			return null;
 		}).when(configManager).unsetRSProfileConfiguration(eq(FlippingRsConfig.GROUP), anyString());
 
-		final FlippingRsPanel[] built = new FlippingRsPanel[1];
-		SwingUtilities.invokeAndWait(() -> built[0] = new FlippingRsPanel());
-		panel = built[0];
-		set("panel", panel);
-
+		set("notifier", notifier);
 		set("client", client);
 		set("clientThread", clientThread);
 		set("configManager", configManager);
@@ -193,10 +212,15 @@ final class FlippingRsPluginTestSupport
 		// What startUp does after the fields are in place: build the
 		// collaborators that hold them. startUp itself is still not called.
 		plugin.wire();
-		// The sidebar's buttons and dropdowns, wired to the plugin the way
-		// startUp does it, so a test that drives the panel goes the way a user
-		// does rather than reaching past it.
-		SwingUtilities.invokeAndWait(plugin::wirePanel);
+
+		// The panel, wired to the plugin the way startUp does it, so a test
+		// that drives the sidebar goes the way a user does rather than
+		// reaching past it. After wire(), because the actions it is given
+		// reach the collaborators that call built there.
+		final FlippingRsPanel[] built = new FlippingRsPanel[1];
+		SwingUtilities.invokeAndWait(() -> built[0] = new FlippingRsPanel(plugin.new SidebarActions()));
+		panel = built[0];
+		set("panel", panel);
 	}
 
 	private void set(String name, Object value) throws Exception
@@ -206,18 +230,66 @@ final class FlippingRsPluginTestSupport
 		f.set(plugin, value);
 	}
 
+	/**
+	 * The journal the logged-in character files under, the way the plugin
+	 * stores it: keyed by account hash, so it can be read for an account
+	 * nobody is logged into.
+	 */
+	void chooseJournal(String id)
+	{
+		pluginConfig.put(ProfileStore.ACCOUNT_KEY + "." + client.getAccountHash(), id);
+	}
+
+	/** And the same for another character. */
+	void chooseJournalFor(long accountHash, String id)
+	{
+		pluginConfig.put(ProfileStore.ACCOUNT_KEY + "." + accountHash, id);
+	}
+
+	@Nullable
+	String chosenJournal()
+	{
+		return pluginConfig.get(ProfileStore.ACCOUNT_KEY + "." + client.getAccountHash());
+	}
+
 	/** The queue the plugin is using for the logged-in account. */
 	TransactionQueue queue() throws Exception
 	{
-		final java.lang.reflect.Method m = FlippingRsPlugin.class
-			.getDeclaredMethod("queueFor", long.class);
-		m.setAccessible(true);
-		return (TransactionQueue) m.invoke(plugin, client.getAccountHash());
+		return queueFor(client.getAccountHash());
+	}
+
+	/** And the queue for any account, logged in or not. */
+	TransactionQueue queueFor(long accountHash) throws Exception
+	{
+		return sender().queueFor(accountHash);
 	}
 
 	void drain() throws Exception
 	{
-		invoke("drain");
+		sender().drain();
+	}
+
+	/** The user pressing "Try set-aside trades again". */
+	void retrySetAside() throws Exception
+	{
+		sender().retrySetAside();
+		settleSwing();
+	}
+
+	/** The panel reads the plugin built in wire(). */
+	private PanelReads reads() throws Exception
+	{
+		final Field f = FlippingRsPlugin.class.getDeclaredField("reads");
+		f.setAccessible(true);
+		return (PanelReads) f.get(plugin);
+	}
+
+	/** The sender the plugin built in wire(). */
+	private TransactionSender sender() throws Exception
+	{
+		final Field f = FlippingRsPlugin.class.getDeclaredField("sender");
+		f.setAccessible(true);
+		return (TransactionSender) f.get(plugin);
 	}
 
 	/**
@@ -236,7 +308,7 @@ final class FlippingRsPluginTestSupport
 	 */
 	void connect() throws Exception
 	{
-		invoke("connect");
+		reads().connect();
 		settleSwing();
 		settleNet();
 		settleSwing();
@@ -245,16 +317,16 @@ final class FlippingRsPluginTestSupport
 	/** One firing of the timer that keeps the watchlist quotes current. */
 	void quotesTick() throws Exception
 	{
-		invoke("quotesTick");
+		reads().quotesTick();
 		settleSwing();
 	}
 
 	/** What the offer-screen overlay would draw for an item right now. */
-	FlippingRsApi.Quote watchedQuote(int itemId) throws Exception
+	Quote watchedQuote(int itemId) throws Exception
 	{
 		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("watchedQuote", int.class);
 		m.setAccessible(true);
-		return (FlippingRsApi.Quote) m.invoke(plugin, itemId);
+		return (Quote) m.invoke(plugin, itemId);
 	}
 
 	void addToWatchlist(int itemId) throws Exception
@@ -347,7 +419,7 @@ final class FlippingRsPluginTestSupport
 	/** Pushes the session counts and the waiting buffer to the sidebar. */
 	void refreshPending() throws Exception
 	{
-		invoke("refreshPending");
+		reads().refreshPending();
 		settle();
 		settleSwing();
 	}
@@ -355,15 +427,15 @@ final class FlippingRsPluginTestSupport
 	/** The offset the plugin would tell the site this machine is at. */
 	int timezoneOffsetMinutes() throws Exception
 	{
-		final java.lang.reflect.Method m = FlippingRsPlugin.class.getDeclaredMethod("tzOffsetMinutes");
+		final java.lang.reflect.Method m = PanelReads.class.getDeclaredMethod("tzOffsetMinutes");
 		m.setAccessible(true);
-		return (int) m.invoke(plugin);
+		return (int) m.invoke(null);
 	}
 
 	/** One read of the two account tabs, throttling and coalescing and all. */
 	void refreshAccountTabs() throws Exception
 	{
-		invoke("refreshAccountTabs");
+		reads().refreshAccountTabs();
 		settleNet();
 		settleSwing();
 	}
@@ -401,9 +473,9 @@ final class FlippingRsPluginTestSupport
 	 */
 	void tabsLastReadLongAgo() throws Exception
 	{
-		final Field f = FlippingRsPlugin.class.getDeclaredField("accountTabsRefreshedAt");
+		final Field f = PanelReads.class.getDeclaredField("accountTabsRefreshedAt");
 		f.setAccessible(true);
-		f.setLong(plugin, System.nanoTime() - TimeUnit.MINUTES.toNanos(1));
+		f.setLong(reads(), System.nanoTime() - TimeUnit.MINUTES.toNanos(1));
 	}
 
 	/**

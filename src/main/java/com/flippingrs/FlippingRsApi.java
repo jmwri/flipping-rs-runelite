@@ -6,10 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
@@ -63,6 +61,25 @@ public class FlippingRsApi
 	}
 
 	/**
+	 * Thrown when the server has no such route.
+	 *
+	 * <p>Separate from a plain IOException because it is the one failure a
+	 * caller can do something sensible about: an older flippingrs.com that
+	 * predates a call this plugin makes will answer every one of them the same
+	 * way forever, so the caller can stop asking rather than spend a request
+	 * every thirty seconds finding out again. Everything the plugin needs to
+	 * do its job goes through routes that have always been there; this is only
+	 * reached by the extras.
+	 */
+	public static class NotHereException extends IOException
+	{
+		NotHereException(String message)
+		{
+			super(message);
+		}
+	}
+
+	/**
 	 * The one instance this plugin talks to, over TLS, and not configurable in
 	 * a normal install. The exception is a client started in developer mode,
 	 * which is how the plugin is run against a local server; the plugin
@@ -110,560 +127,17 @@ public class FlippingRsApi
 
 	// ------------------------------------------------------------ the shapes
 	//
-	// These mirror the server's replies rather than the sidebar's needs, so a
+	// One class each, beside this one: Watchlist, Quote, Position, Positions,
+	// Analytics, Me, GameAccount, PanelData, OfferState, HistoryRow,
+	// Reconciliation and IngestResult, with Wire holding what they share.
+	// They mirror the server's replies rather than the sidebar's needs, so a
 	// field with no getter and no reader is not dead code -- it is the wire
-	// contract written down, and Gson would drop it silently if it went. There
-	// are ten of them today: a quote's spread, tax and data age; a position's
-	// bought and sold quantities; the week's total flips and tax paid; the key
-	// owner's display name; and what a reconciliation already had, matched and
-	// ignored. Anything the panel actually draws has a getter.
+	// contract written down, and Gson would drop it silently if it went.
+	// Anything the panel actually draws has a getter. Keeping the unread ones
+	// has already paid for itself: the server was found not to be sending a
+	// quote's spread, tax or volume at all, which was only noticeable because
+	// the fields were here to be compared against.
 
-	/**
-	 * One of the owner's watchlists. The side panel shows one of these as the
-	 * player's plan, and keeps no copy: it is read from here, changed here and
-	 * read back.
-	 */
-	public static class Watchlist
-	{
-		String id;
-		String name;
-		List<Integer> itemIds;
-
-		public String getId()
-		{
-			return id;
-		}
-
-		public String getName()
-		{
-			return name == null ? "" : name;
-		}
-
-		/** Never null. */
-		public List<Integer> getItemIds()
-		{
-			return itemIds == null ? Collections.emptyList() : itemIds;
-		}
-
-		@Override
-		public String toString()
-		{
-			// This is what the combo box renders.
-			return plain(getName().isEmpty() ? id : getName());
-		}
-	}
-
-	/**
-	 * A name for a Swing label, shown as typed. A JLabel treats any string
-	 * that begins with {@code <html>} as markup, so a watchlist or journal
-	 * named that way would render as a formatted fragment rather than its
-	 * name. A leading space defeats the check and is invisible in a combo
-	 * box. Only the owner can name their own lists, so this is a display
-	 * oddity rather than an attack, but it is a cheap one to close.
-	 */
-	static String plain(String text)
-	{
-		return text != null && text.regionMatches(true, 0, "<html", 0, 5) ? " " + text : text;
-	}
-
-	/**
-	 * The site's post-tax market picture for one item, as the watchlist
-	 * shows it. Every number here is the server's: the plugin never works out
-	 * a margin or a tax itself, so what it shows is what the site shows.
-	 */
-	public static class Quote
-	{
-		int id;
-		String name;
-		/** What you pay to buy now: the API's "high", and what a flip sells into. */
-		long instantBuy;
-		/** What you get selling now: the API's "low", and what a flip buys at. */
-		long instantSell;
-		long spread;
-		long tax;
-		/** Profit per item after tax, buying at instantSell and selling at instantBuy. */
-		long netMargin;
-		/** Net margin over the buy price, as a fraction: 0.02 is 2%. */
-		double roi;
-		int buyLimit;
-		long profitPerLimit;
-		long volume24h;
-		long dataAgeSeconds;
-
-		public int getId()
-		{
-			return id;
-		}
-
-		public long getBuyAt()
-		{
-			return instantSell;
-		}
-
-		public long getSellAt()
-		{
-			return instantBuy;
-		}
-
-		public long getNetMargin()
-		{
-			return netMargin;
-		}
-
-		public double getRoi()
-		{
-			return roi;
-		}
-
-		public int getBuyLimit()
-		{
-			return buyLimit;
-		}
-
-		public long getProfitPerLimit()
-		{
-			return profitPerLimit;
-		}
-
-		public long getVolume24h()
-		{
-			return volume24h;
-		}
-	}
-
-	/** One open position in the journal, marked to market by the server. */
-	public static class Position
-	{
-		/** The lot's id, for closing or deleting it. */
-		String id;
-		int itemId;
-		String itemName;
-		long buyPrice;
-		long buyQty;
-		long sellQty;
-		long remainingQty;
-		long costBasis;
-		/** What you would get selling instantly now: the low. */
-		long currentSell;
-		/** What buyers are paying now: the high, and the price a patient sale lists at. */
-		long currentBuy;
-		long marketValue;
-		long unrealisedPnl;
-		/** A fraction: 0.02 is 2%. */
-		double unrealisedRoi;
-		long breakEvenSell;
-		double hoursHeld;
-		boolean stale;
-
-		public String getId()
-		{
-			return id == null ? "" : id;
-		}
-
-		public int getItemId()
-		{
-			return itemId;
-		}
-
-		public String getItemName()
-		{
-			return itemName == null ? "" : itemName;
-		}
-
-		public long getBuyPrice()
-		{
-			return buyPrice;
-		}
-
-		public long getRemainingQty()
-		{
-			return remainingQty;
-		}
-
-		public long getCostBasis()
-		{
-			return costBasis;
-		}
-
-		public long getCurrentSell()
-		{
-			return currentSell;
-		}
-
-		public long getCurrentBuy()
-		{
-			return currentBuy;
-		}
-
-		public long getUnrealisedPnl()
-		{
-			return unrealisedPnl;
-		}
-
-		public double getUnrealisedRoi()
-		{
-			return unrealisedRoi;
-		}
-
-		public long getBreakEvenSell()
-		{
-			return breakEvenSell;
-		}
-
-		public double getHoursHeld()
-		{
-			return hoursHeld;
-		}
-
-		public boolean isStale()
-		{
-			return stale;
-		}
-	}
-
-	/** The open positions and their totals. */
-	public static class Positions
-	{
-		List<Position> positions;
-		Summary summary;
-
-		public static class Summary
-		{
-			int openPositions;
-			long costBasis;
-			long marketValue;
-			long unrealisedPnl;
-			boolean marketDataAvailable = true;
-		}
-
-		/** Never null. */
-		public List<Position> getPositions()
-		{
-			return withoutNulls(positions);
-		}
-
-		/** Never null. */
-		public Summary getSummary()
-		{
-			return summary == null ? new Summary() : summary;
-		}
-	}
-
-	/** The journal's performance over the last week, as the server works it out. */
-	public static class Analytics
-	{
-		int totalFlips;
-		int completedFlips;
-		int openFlips;
-		long realisedProfit;
-		long totalTaxPaid;
-		/** A fraction: 0.75 is 75%. */
-		double winRate;
-		/** A fraction. */
-		double averageRoi;
-		long gpPerHour;
-
-		public int getCompletedFlips()
-		{
-			return completedFlips;
-		}
-
-		public int getOpenFlips()
-		{
-			return openFlips;
-		}
-
-		public long getRealisedProfit()
-		{
-			return realisedProfit;
-		}
-
-		public double getWinRate()
-		{
-			return winRate;
-		}
-
-		public double getAverageRoi()
-		{
-			return averageRoi;
-		}
-
-		public long getGpPerHour()
-		{
-			return gpPerHour;
-		}
-	}
-
-	/** The key's owner, as much as the Account tab shows. */
-	public static class Me
-	{
-		String displayName;
-		String effectiveTier;
-		boolean onTrial;
-		int trialDaysLeft;
-
-		/** "Pro plan", "Pro trial, 5 days left", "Free plan". */
-		public String describePlan()
-		{
-			final String tier = effectiveTier == null || effectiveTier.isEmpty() ? "unknown" : effectiveTier;
-			final String name = Character.toUpperCase(tier.charAt(0)) + tier.substring(1);
-			if (onTrial)
-			{
-				return name + " trial, " + trialDaysLeft + (trialDaysLeft == 1 ? " day left" : " days left");
-			}
-			return name + " plan";
-		}
-	}
-
-	/** One row of the game-account picker. */
-	public static class GameAccount
-	{
-		String id;
-		String label;
-		boolean isDefault;
-
-		@Override
-		public String toString()
-		{
-			// This is what the combo box renders.
-			return plain(label == null || label.isEmpty() ? id : label);
-		}
-	}
-
-	/**
-	 * What a tab's read returns. Every tab endpoint answers in this one shape,
-	 * filling only its own parts; the rest come back null, and the plugin
-	 * leaves what it was already showing alone. That is the difference
-	 * between "nothing changed" and "nothing there", and it is why the
-	 * getters here return null rather than an empty list.
-	 */
-	public static class Panel
-	{
-		@Nullable
-		Me me;
-		@Nullable
-		List<GameAccount> accounts;
-		@Nullable
-		List<GeTransaction> recentTransactions;
-		@Nullable
-		Analytics week;
-		@Nullable
-		Positions positions;
-		@Nullable
-		List<Watchlist> watchlists;
-		@Nullable
-		List<Quote> quotes;
-
-		@Nullable
-		public Me getMe()
-		{
-			return me;
-		}
-
-		/** Null if the part was not in the reply; otherwise never contains null. */
-		@Nullable
-		public List<GameAccount> getAccounts()
-		{
-			return accounts == null ? null : withoutNulls(accounts);
-		}
-
-		@Nullable
-		public List<GeTransaction> getRecentTransactions()
-		{
-			return recentTransactions == null ? null : withoutNulls(recentTransactions);
-		}
-
-		@Nullable
-		public Analytics getWeek()
-		{
-			return week;
-		}
-
-		@Nullable
-		public Positions getPositions()
-		{
-			return positions;
-		}
-
-		@Nullable
-		public List<Watchlist> getWatchlists()
-		{
-			return watchlists == null ? null : withoutNulls(watchlists);
-		}
-
-		/** The quotes keyed by item id, or null if the part was not in the reply. */
-		@Nullable
-		public Map<Integer, Quote> getQuotes()
-		{
-			if (quotes == null)
-			{
-				return null;
-			}
-			final Map<Integer, Quote> out = new LinkedHashMap<>();
-			for (Quote quote : withoutNulls(quotes))
-			{
-				out.put(quote.id, quote);
-			}
-			return out;
-		}
-	}
-
-	/** One open Grand Exchange slot, as the client reports it, for the server to reconcile against. */
-	public static class OfferState
-	{
-		int slot;
-		/** The plugin's reference for this offer, so the server can find its fills. Null if none yet. */
-		@Nullable
-		String offerRef;
-		int itemId;
-		String itemName;
-		String side;
-		long price;
-		long totalQuantity;
-		long quantitySold;
-		/** The client's running total, an int that can wrap; see spentEstimated. */
-		long spent;
-		boolean spentEstimated;
-		String state;
-	}
-
-	/** One row of the Grand Exchange history screen, as read off it. No id and no time. */
-	public static class HistoryRow
-	{
-		int position;
-		int itemId;
-		String itemName;
-		String side;
-		long quantity;
-		long grossValue;
-	}
-
-	/** What the server made of a snapshot: how much it already had and how much it took on. */
-	public static class Reconciliation
-	{
-		int reconciled;
-		int recovered;
-		int matched;
-		int added;
-		int ignored;
-		/** Only present when a row was malformed; raw JSON for the same reason as IngestResult's. */
-		List<JsonElement> problems;
-
-		public int getRecovered()
-		{
-			return recovered;
-		}
-
-		public int getAdded()
-		{
-			return added;
-		}
-
-		/** Why rows were refused, one line each. Never null. */
-		public List<String> getProblems()
-		{
-			return problemsOf(problems);
-		}
-	}
-
-	/** What the server did with a batch, so the panel can say something true. */
-	public static class IngestResult
-	{
-		int accepted;
-		int duplicate;
-		int rejected;
-		int flipsOpened;
-		int flipsClosed;
-		long unmatchedSellQty;
-		/**
-		 * Held as raw JSON rather than as strings. If the server ever sends
-		 * structured problems, a List&lt;String&gt; here would fail to parse a
-		 * response for a batch that was in fact accepted, and the batch would
-		 * be re-sent every tick with the queue wedged behind it.
-		 */
-		List<JsonElement> problems;
-
-		public int getFlipsOpened()
-		{
-			return flipsOpened;
-		}
-
-		public int getFlipsClosed()
-		{
-			return flipsClosed;
-		}
-
-		public long getUnmatchedSellQty()
-		{
-			return unmatchedSellQty;
-		}
-
-		/**
-		 * Fills the server recorded nothing for. They are gone: the batch is
-		 * confirmed and dropped from the queue either way, so this is the only
-		 * chance anyone has to learn a trade did not make it.
-		 */
-		public int getRejected()
-		{
-			return rejected;
-		}
-
-		/** Why, one line per refused row. Never null. */
-		public List<String> getProblems()
-		{
-			return problemsOf(problems);
-		}
-
-		/** Rows the server accounted for, one way or another. */
-		int acknowledged()
-		{
-			return accepted + duplicate + rejected;
-		}
-	}
-
-	/**
-	 * The refusals a reply carries, as lines for a log or a panel.
-	 *
-	 * <p>Held as raw JSON on the way in -- see {@link IngestResult#problems} --
-	 * so a string comes out as itself and anything structured as the JSON it
-	 * was, rather than failing the parse of a reply that was otherwise fine.
-	 *
-	 * @return never null, and never containing null
-	 */
-	private static List<String> problemsOf(@Nullable List<JsonElement> problems)
-	{
-		if (problems == null)
-		{
-			return Collections.emptyList();
-		}
-		final List<String> out = new ArrayList<>(problems.size());
-		for (JsonElement problem : problems)
-		{
-			if (problem == null || problem.isJsonNull())
-			{
-				continue;
-			}
-			out.add(problem.isJsonPrimitive() ? problem.getAsString() : problem.toString());
-		}
-		return out;
-	}
-
-	private static <T> List<T> withoutNulls(@Nullable List<T> in)
-	{
-		if (in == null)
-		{
-			return Collections.emptyList();
-		}
-		final List<T> out = new ArrayList<>(in.size());
-		for (T item : in)
-		{
-			if (item != null)
-			{
-				out.add(item);
-			}
-		}
-		return out;
-	}
 
 	// ------------------------------------------------------------- the calls
 
@@ -675,13 +149,13 @@ public class FlippingRsApi
 	 * read, so a successful one means the key is good and the server is
 	 * reachable.
 	 */
-	public Panel account(String apiKey) throws IOException
+	public PanelData account(String apiKey) throws IOException
 	{
 		return read(apiKey, url("api", "plugin", "account").newBuilder());
 	}
 
 	/** The Trades tab: the journal's newest fills for an account. Null parts without one. */
-	public Panel trades(String apiKey, @Nullable String accountId) throws IOException
+	public PanelData trades(String apiKey, @Nullable String accountId) throws IOException
 	{
 		final HttpUrl.Builder url = url("api", "plugin", "trades").newBuilder();
 		if (accountId != null && !accountId.isEmpty())
@@ -696,7 +170,7 @@ public class FlippingRsApi
 	 * account, with the machine's UTC offset in minutes so the week's days
 	 * fall on the player's calendar.
 	 */
-	public Panel journal(String apiKey, @Nullable String accountId, int tzOffset) throws IOException
+	public PanelData journal(String apiKey, @Nullable String accountId, int tzOffset) throws IOException
 	{
 		final HttpUrl.Builder url = url("api", "plugin", "journal").newBuilder()
 			.addQueryParameter("tzOffset", Integer.toString(tzOffset));
@@ -710,23 +184,69 @@ public class FlippingRsApi
 	/**
 	 * The Watchlists tab: every watchlist the owner has, and the site's
 	 * quotes for the items of one of them: the one named, or the first.
+	 *
+	 * @param accountId the journal to count buy limits against, on the same
+	 *                  terms as {@link #quotes}: without one the server has
+	 *                  nothing to count and leaves those fields off, and the
+	 *                  reply is otherwise identical
 	 */
-	public Panel watchlists(String apiKey, @Nullable String watchlistId) throws IOException
+	public PanelData watchlists(String apiKey, @Nullable String watchlistId, @Nullable String accountId)
+		throws IOException
 	{
 		final HttpUrl.Builder url = url("api", "plugin", "watchlists").newBuilder();
 		if (watchlistId != null && !watchlistId.isEmpty())
 		{
 			url.addQueryParameter("watchlistId", watchlistId);
 		}
+		if (accountId != null && !accountId.isEmpty())
+		{
+			url.addQueryParameter("accountId", accountId);
+		}
 		return read(apiKey, url);
 	}
 
 	/**
-	 * One tab's read. Every tab endpoint answers with the same {@link Panel}
+	 * Quotes for particular items, whether or not they are on a watchlist.
+	 *
+	 * <p>What the watchlist read gives for a curated list, this gives for
+	 * whatever the exchange happens to be showing. The moment a price is
+	 * actually wanted is the moment one is being typed, and that is for any
+	 * item, not only the ones somebody thought to add to a list beforehand.
+	 *
+	 * <p>Capped by the caller, not here: it is the caller that knows how many
+	 * items are on screen.
+	 *
+	 * @param accountId the journal to count buy limits against, or null for
+	 *                  none -- a limit is how much of it <em>this journal</em>
+	 *                  has spent, so without one the server has nothing to
+	 *                  count and leaves those fields off
+	 * @throws NotHereException from a server that does not have this route,
+	 *                          which the caller takes as "stop asking"
+	 */
+	public PanelData quotes(String apiKey, @Nullable String accountId, Collection<Integer> itemIds)
+		throws IOException
+	{
+		final HttpUrl.Builder url = url("api", "plugin", "quote").newBuilder();
+		if (accountId != null && !accountId.isEmpty())
+		{
+			url.addQueryParameter("accountId", accountId);
+		}
+		for (Integer itemId : itemIds)
+		{
+			if (itemId != null)
+			{
+				url.addQueryParameter("itemId", Integer.toString(itemId));
+			}
+		}
+		return read(apiKey, url);
+	}
+
+	/**
+	 * One tab's read. Every tab endpoint answers with the same {@link PanelData}
 	 * shape, filling only its own parts, so the plugin draws all of them with
 	 * one routine and a part that is absent is left alone.
 	 */
-	private Panel read(String apiKey, HttpUrl.Builder url) throws IOException
+	private PanelData read(String apiKey, HttpUrl.Builder url) throws IOException
 	{
 		final Request request = new Request.Builder()
 			.url(url.build())
@@ -738,8 +258,8 @@ public class FlippingRsApi
 		{
 			final String body = bodyOf(response);
 			check(response, body);
-			final Panel panel = gson.fromJson(body, Panel.class);
-			return panel == null ? new Panel() : panel;
+			final PanelData panel = gson.fromJson(body, PanelData.class);
+			return panel == null ? new PanelData() : panel;
 		}
 		catch (JsonParseException e)
 		{
@@ -1057,6 +577,10 @@ public class FlippingRsApi
 		if (code == 400 || code == 413 || code == 422)
 		{
 			throw new PermanentException(message);
+		}
+		if (code == 404)
+		{
+			throw new NotHereException(message);
 		}
 		throw new IOException(message);
 	}

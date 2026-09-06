@@ -94,7 +94,7 @@ public class FlippingRsApiTest
 	public void eachTabReadsItsOwnEndpointWithTheKey() throws Exception
 	{
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
-		final FlippingRsApi.Panel account = api.account("frs_secret");
+		final PanelData account = api.account("frs_secret");
 		RecordedRequest request = server.takeRequest();
 		assertEquals("GET", request.getMethod());
 		assertEquals("/api/plugin/account", request.getPath());
@@ -107,16 +107,16 @@ public class FlippingRsApiTest
 		assertFalse(account.getAccounts().get(1).isDefault);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
-		final FlippingRsApi.Panel trades = api.trades("frs_secret", "a1");
+		final PanelData trades = api.trades("frs_secret", "a1");
 		assertEquals("/api/plugin/trades?accountId=a1", server.takeRequest().getPath());
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
-		final FlippingRsApi.Panel journal = api.journal("frs_secret", "a1", 60);
+		final PanelData journal = api.journal("frs_secret", "a1", 60);
 		assertEquals("/api/plugin/journal?tzOffset=60&accountId=a1", server.takeRequest().getPath());
 		assertEverySentFieldOfTheJournalArrived(journal);
 
 		server.enqueue(new MockResponse().setBody(FULL_PANEL));
-		final FlippingRsApi.Panel lists = api.watchlists("frs_secret", "wl_1");
+		final PanelData lists = api.watchlists("frs_secret", "wl_1", null);
 		assertEquals("/api/plugin/watchlists?watchlistId=wl_1", server.takeRequest().getPath());
 		assertEquals(Arrays.asList(4151, 11802), lists.getWatchlists().get(0).getItemIds());
 		assertTrue("null items are an empty list, not an NPE", lists.getWatchlists().get(1).getItemIds().isEmpty());
@@ -143,16 +143,16 @@ public class FlippingRsApiTest
 	 * nought per cent. A sample of the fields cannot catch that; only all of
 	 * them can.
 	 */
-	private static void assertEverySentFieldOfTheJournalArrived(FlippingRsApi.Panel journal)
+	private static void assertEverySentFieldOfTheJournalArrived(PanelData journal)
 	{
-		final FlippingRsApi.Analytics week = journal.getWeek();
+		final Analytics week = journal.getWeek();
 		assertEquals("completed flips", 12, week.getCompletedFlips());
 		assertEquals("open flips", 2, week.getOpenFlips());
 		assertEquals("realised profit", 1_200_000L, week.getRealisedProfit());
 		assertEquals("win rate", 0.75, week.getWinRate(), 0.0);
 		assertEquals("gp per hour", 45_000L, week.getGpPerHour());
 
-		final FlippingRsApi.Position p = journal.getPositions().getPositions().get(0);
+		final Position p = journal.getPositions().getPositions().get(0);
 		assertEquals("item", 4151, p.getItemId());
 		assertEquals("item name", "Abyssal whip", p.getItemName());
 		assertEquals("how many are left", 10L, p.getRemainingQty());
@@ -165,7 +165,7 @@ public class FlippingRsApiTest
 		assertEquals("how long it has been held", 5.5, p.getHoursHeld(), 0.0);
 		assertTrue("whether it is stale", p.isStale());
 
-		final FlippingRsApi.Positions.Summary totals = journal.getPositions().getSummary();
+		final Positions.Summary totals = journal.getPositions().getSummary();
 		assertEquals("open positions", 1, totals.openPositions);
 		assertEquals("cost basis", 14_800_000L, totals.costBasis);
 		assertEquals("market value", 15_200_000L, totals.marketValue);
@@ -174,7 +174,7 @@ public class FlippingRsApiTest
 	}
 
 	/** The same for a watchlist card's quote. */
-	private static void assertEveryFieldOfTheQuoteArrived(FlippingRsApi.Quote q)
+	private static void assertEveryFieldOfTheQuoteArrived(Quote q)
 	{
 		assertEquals("id", 4151, q.getId());
 		// buyAt is the site's instantSell and sellAt its instantBuy: what you
@@ -197,13 +197,13 @@ public class FlippingRsApiTest
 	@Test
 	public void namesThatLookLikeMarkupAreShownAsTyped()
 	{
-		final FlippingRsApi.GameAccount account = new FlippingRsApi.GameAccount();
+		final GameAccount account = new GameAccount();
 		account.id = "a1";
 		account.label = "<html><b>Main</b>";
 		assertFalse(javax.swing.plaf.basic.BasicHTML.isHTMLString(account.toString()));
 		assertTrue(account.toString().trim().startsWith("<html>"));
 
-		final FlippingRsApi.Watchlist watchlist = new FlippingRsApi.Watchlist();
+		final Watchlist watchlist = new Watchlist();
 		watchlist.id = "w1";
 		watchlist.name = "<HTML>Plan";
 		assertFalse("the check is case-insensitive, so the guard must be too",
@@ -211,8 +211,8 @@ public class FlippingRsApiTest
 
 		watchlist.name = "Plan <html> not at the start";
 		assertEquals("only a leading tag is touched", "Plan <html> not at the start", watchlist.toString());
-		assertEquals("Plan", FlippingRsApi.plain("Plan"));
-		assertNull(FlippingRsApi.plain(null));
+		assertEquals("Plan", Wire.plain("Plan"));
+		assertNull(Wire.plain(null));
 	}
 
 	/** Without a journal chosen the account parameter is simply left off. */
@@ -224,7 +224,7 @@ public class FlippingRsApiTest
 		assertEquals("/api/plugin/trades", server.takeRequest().getPath());
 
 		server.enqueue(new MockResponse().setBody("{}"));
-		api.watchlists("k", null);
+		api.watchlists("k", null, null);
 		assertEquals("/api/plugin/watchlists", server.takeRequest().getPath());
 	}
 
@@ -237,7 +237,7 @@ public class FlippingRsApiTest
 	{
 		server.enqueue(new MockResponse().setBody("{\"quotes\":[]}"));
 
-		final FlippingRsApi.Panel panel = api.watchlists("k", null);
+		final PanelData panel = api.watchlists("k", null, null);
 
 		assertNotNull(panel.getQuotes());
 		assertTrue(panel.getQuotes().isEmpty());
@@ -253,7 +253,7 @@ public class FlippingRsApiTest
 	public void anEmptyReplyIsAPanelWithNothingInIt() throws Exception
 	{
 		server.enqueue(new MockResponse().setBody("null"));
-		final FlippingRsApi.Panel panel = api.account("k");
+		final PanelData panel = api.account("k");
 		assertNotNull(panel);
 		assertNull(panel.getAccounts());
 	}
@@ -344,7 +344,7 @@ public class FlippingRsApiTest
 			"{\"accepted\":2,\"duplicate\":1,\"rejected\":3,\"flipsOpened\":1,"
 				+ "\"flipsClosed\":1,\"unmatchedSellQty\":7,\"problems\":[\"row 4: bad side\"]}"));
 
-		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
+		final IngestResult result = api.submit("k", "a", oneFill());
 
 		assertEquals(1, result.getFlipsOpened());
 		assertEquals(1, result.getFlipsClosed());
@@ -402,7 +402,7 @@ public class FlippingRsApiTest
 				.getAsJsonObject().keySet()));
 
 		server.enqueue(new MockResponse().setBody("{}"));
-		final FlippingRsApi.OfferState state = new FlippingRsApi.OfferState();
+		final OfferState state = new OfferState();
 		state.offerRef = "ref-1";
 		state.itemName = "Abyssal whip";
 		state.side = "buy";
@@ -421,7 +421,7 @@ public class FlippingRsApiTest
 				.getAsJsonObject().keySet()));
 
 		server.enqueue(new MockResponse().setBody("{}"));
-		final FlippingRsApi.HistoryRow row = new FlippingRsApi.HistoryRow();
+		final HistoryRow row = new HistoryRow();
 		row.itemName = "Abyssal whip";
 		row.side = "sell";
 		api.submitHistory("k", "a", Collections.singletonList(row));
@@ -463,7 +463,7 @@ public class FlippingRsApiTest
 
 	private static String plan(String tier, boolean onTrial, int daysLeft)
 	{
-		final FlippingRsApi.Me me = new FlippingRsApi.Me();
+		final Me me = new Me();
 		me.effectiveTier = tier;
 		me.onTrial = onTrial;
 		me.trialDaysLeft = daysLeft;
@@ -540,7 +540,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setBody(
 			"{\"accepted\":0,\"duplicate\":0,\"rejected\":3,\"problems\":[\"row 1: bad side\"]}"));
 
-		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
+		final IngestResult result = api.submit("k", "a", oneFill());
 
 		assertEquals("the rows were read and refused, not lost in transit", 3, result.getRejected());
 	}
@@ -760,7 +760,7 @@ public class FlippingRsApiTest
 	{
 		server.enqueue(new MockResponse().setBody("{\"accepted\":0,\"duplicate\":1,\"rejected\":0}"));
 
-		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
+		final IngestResult result = api.submit("k", "a", oneFill());
 
 		assertEquals(0, result.getRejected());
 	}
@@ -776,7 +776,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setBody(
 			"{\"accepted\":1,\"rejected\":1,\"problems\":[{\"row\":4,\"reason\":\"bad side\"},\"row 5: late\",null]}"));
 
-		final FlippingRsApi.IngestResult result = api.submit("k", "a", oneFill());
+		final IngestResult result = api.submit("k", "a", oneFill());
 
 		assertEquals(1, result.getRejected());
 		assertEquals(2, result.getProblems().size());
@@ -792,7 +792,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setResponseCode(201).setBody(
 			"{\"id\":\"wl_9\",\"name\":\"Plan\",\"itemIds\":[4151]}"));
 
-		final FlippingRsApi.Watchlist created = api.createWatchlist("k", "Plan", Collections.singletonList(4151));
+		final Watchlist created = api.createWatchlist("k", "Plan", Collections.singletonList(4151));
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("POST", request.getMethod());
@@ -810,7 +810,7 @@ public class FlippingRsApiTest
 		server.enqueue(new MockResponse().setBody(
 			"{\"id\":\"wl_1\",\"name\":\"Plan\",\"itemIds\":[4151,11802]}"));
 
-		final FlippingRsApi.Watchlist updated = api.updateWatchlist("k", "wl_1", Arrays.asList(4151, 11802));
+		final Watchlist updated = api.updateWatchlist("k", "wl_1", Arrays.asList(4151, 11802));
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("PATCH", request.getMethod());
@@ -931,7 +931,7 @@ public class FlippingRsApiTest
 	public void openOffersAreSentForReconciliation() throws Exception
 	{
 		server.enqueue(new MockResponse().setBody("{\"reconciled\":1,\"recovered\":1}"));
-		final FlippingRsApi.OfferState state = new FlippingRsApi.OfferState();
+		final OfferState state = new OfferState();
 		state.slot = 3;
 		state.offerRef = "ref-1";
 		state.itemId = 4151;
@@ -943,7 +943,7 @@ public class FlippingRsApiTest
 		state.spent = 4_000_000;
 		state.state = "BUYING";
 
-		final FlippingRsApi.Reconciliation result = api.submitOffers("frs_secret", "acct-1", Collections.singletonList(state));
+		final Reconciliation result = api.submitOffers("frs_secret", "acct-1", Collections.singletonList(state));
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("POST", request.getMethod());
@@ -964,7 +964,7 @@ public class FlippingRsApiTest
 	{
 		server.enqueue(new MockResponse().setBody(
 			"{\"matched\":1,\"added\":1,\"ignored\":1,\"problems\":[{\"row\":2,\"reason\":\"no side\"}]}"));
-		final FlippingRsApi.HistoryRow row = new FlippingRsApi.HistoryRow();
+		final HistoryRow row = new HistoryRow();
 		row.position = 0;
 		row.itemId = 4151;
 		row.itemName = "Abyssal whip";
@@ -972,7 +972,7 @@ public class FlippingRsApiTest
 		row.quantity = 3;
 		row.grossValue = 4_560_000;
 
-		final FlippingRsApi.Reconciliation result = api.submitHistory("k", "acct-1", Collections.singletonList(row));
+		final Reconciliation result = api.submitHistory("k", "acct-1", Collections.singletonList(row));
 
 		final RecordedRequest request = server.takeRequest();
 		assertEquals("/api/plugin/history", request.getPath());
@@ -1029,7 +1029,7 @@ public class FlippingRsApiTest
 		api.account("k");
 		api.trades("k", "a");
 		api.journal("k", "a", 0);
-		api.watchlists("k", "w");
+		api.watchlists("k", "w", null);
 		api.submit("k", "a", oneFill());
 		api.createWatchlist("k", "Plan", Collections.singletonList(1));
 		api.updateWatchlist("k", "wl_1", Collections.singletonList(1));

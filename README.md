@@ -32,11 +32,16 @@ you changing a setting every time you log in. That matters for more than
 tidiness: buy limits are tracked per journal, so mixing two characters into
 one gives you wrong limit timers as well as wrong totals.
 
+The choice is remembered against the account rather than against whichever
+character happens to be logged in, which is what lets trades an alt could not
+send — a dropped connection, a key not entered yet — go out while you are
+playing something else, instead of waiting for that character to log in again.
+
 A plugin key can only do what the plugin needs: record trades, edit a
 watchlist, close or delete a position, and read back the same few rows the
 sidebar shows. What it cannot do is anything larger than that picture — no
 paging, no filtering, no export of your journal, no changes to your account,
-and no market data beyond the prices for the watchlist it is showing. Anyone
+and no market data beyond prices for the items already in front of you. Anyone
 who took the key would get your sidebar and no more, which is a much smaller
 problem than a full key would be. Plugin keys are available on every plan.
 
@@ -48,7 +53,9 @@ problem than a full key would be. Plugin keys are available on every plan.
 | Record trades | on | Switch off to stop recording and stop talking to flippingrs.com |
 | Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
 | Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
-| Prices on the offer screen | on | Shows the site's exact buy and sell prices when you set up an offer for a watched item |
+| Prices in the exchange | on | Shows the site's prices on the offer screen and on each of your open offers |
+| Trades that couldn't be recorded | on | Tells you when flippingrs.com would not record a trade |
+| An offer finishing | off | Tells you when one of your offers finishes |
 | Server URL | — | Only for developers running their own copy of the site; ignored otherwise |
 
 ## The sidebar
@@ -58,7 +65,9 @@ Five tabs:
 - **Activity** is what the plugin itself is doing: how many trades it has
   recorded this session, how many are waiting to be sent, when it last sent,
   and the trades still waiting to go out. Anything about recording, such as
-  a trade the site could not accept, is reported here.
+  a trade the site could not accept, is reported here. If any were set aside,
+  this is also where you can put them back in the queue and try again, which
+  is worth doing after fixing whatever the site was objecting to.
 - **Trades** is your most recent trades, as your journal has them.
 - **Journal** is your last seven days, with profit, number of flips, win rate
   and gp per hour, and everything you are currently holding: what you paid,
@@ -81,17 +90,42 @@ Five tabs:
 
 ## In the Grand Exchange
 
-Right-click an item anywhere in the Grand Exchange, whether one of your offer
-slots, an item beside them, the offer setup screen, or a row in your history.
-**View item** opens it on flippingrs.com in your browser. **Add to watchlist**
-puts it on the watchlist in the sidebar. Neither one touches the game; they
-only open your browser or update your list on the site. Both can be turned off
-in the settings.
+Right-click an item anywhere in the Grand Exchange and you get **View item**,
+which opens it on flippingrs.com in your browser, and **Add to watchlist**,
+which puts it on the watchlist in the sidebar. Anywhere means every screen the
+exchange has: your offer boxes, the setup screen, the page you get by clicking
+an offer you have already placed, your history, the collection box, the
+inventory beside it all, another player's offers in a view-only exchange, and
+the price checker. Neither entry touches the game; they only open your browser
+or update your list on the site. Both can be turned off in the settings.
 
-When you set up a buy or sell offer for an item that is on your watchlist, the
-site's exact buy and sell prices and the margin appear in the corner of the
-offer screen, so the number to type is right there. That can be turned off
-too.
+When you set up a buy or sell offer, the site's exact buy and sell prices, the
+margin and how old the prices are all appear in the corner of the offer screen,
+so the number to type is right there. How much of the buy limit you have left
+appears too, if your plan tracks buy limits; an item that has never traded
+shows no age, rather than an age of nothing.
+
+The buy limit is counted from the trades your journal has, which is not
+necessarily every trade you have made: an item bought before you installed the
+plugin, or on a client that was not reporting, does not count against the
+window. The error only ever goes one way — it can show more room than you
+really have, never less — but it is worth knowing before you trust it.
+
+Prices are drawn on the items themselves, too, on all of those same screens.
+On one of your own offers the plugin knows what you asked for as well as what
+the item is, so it shows the price for the side you are on and how far your
+offer is from it — green when your offer is priced to fill sooner, red when it
+is priced to sit. The offer screen is where a flipper actually spends their
+time, and what an offer box cannot tell you on its own is whether the number
+you asked for is still the right one.
+
+Everywhere else there is nothing of yours to compare against, so it shows the
+two ends of the spread, and the margin alone where the box is too narrow for
+both.
+
+All of this works for any item, not only the ones on your watchlist. Nothing
+is drawn for an item the site has no price for, which is the honest rendering
+of not knowing. It can all be turned off.
 
 ## Catching up on trades it missed
 
@@ -129,7 +163,10 @@ team. The plugin sends it:
 
 It also reads back what the sidebar shows: your journals, your plan, your
 recent trades, your open positions and weekly summary, your watchlists, and
-prices for the items on them.
+prices for the items on them. While the exchange is open it asks for prices
+for the items it is showing, whichever of its screens is up, so those can be
+priced without being on a list first. Which items you are looking at is the
+only thing that tells the site, and it asks for at most forty at a time.
 
 Like any website, flippingrs.com can see your IP address. Your character name
 is never sent, and neither is anything about other players, your inventory,
@@ -166,6 +203,9 @@ redirect your key or your trades anywhere else.
   journal all just hold your trades until things are fixed. The one thing the
   site will not accept, a trade it says is malformed, is kept in a file in
   your RuneLite folder rather than deleted, and the sidebar tells you where.
+  It is not a grave: the commonest reason for a refusal is a wrong key or the
+  wrong journal, so the sidebar offers to put those trades back in the queue,
+  and does it for you when you change either of those settings.
   The one exception is a batch the site takes in and then refuses part of:
   its reply says how many rows it would not record, not which, so there is
   nothing to put in a file. Those are not sent again. The sidebar says how
@@ -279,6 +319,32 @@ reuse, cancellation, and the int overflow, all without a game running — and
 `FlippingRsPluginBehaviourTest` covers the orchestration: what is held, what
 is set aside, and which journal the panel says it is filing under.
 
+## How the code is laid out
+
+The plugin class is the lifecycle, the client's events, and the capture of
+fills. Everything else is a collaborator it builds in `wire()`:
+
+- `OfferTracker` turns slot updates into fills. `TransactionQueue` keeps them
+  on disk. `TransactionSender` gets them to the server and decides what a
+  refusal means.
+- `PanelReads` keeps the sidebar current without spending more of the rate
+  limit than that is worth. `Watchlists` owns the quote caches, `CatchUp`
+  reports the open slots and the history screen, `PositionActions` closes and
+  deletes positions.
+- `GeItems` answers "where is the exchange showing an item" for every one of
+  its screens, once, so the right-click entries and the prices drawn on items
+  cannot drift apart. `GeItemInfoOverlay` draws on what it finds and
+  `GeQuoteOverlay` draws the fuller box on the setup page.
+- `FlippingRsPanel` is the tab strip and the shared vocabulary; each tab is a
+  `SidebarTab` that owns its own widgets and draws only while it is the one on
+  screen. The panel asks the plugin for things through `PanelActions`, which is
+  an interface rather than a dozen setters so that adding a button does not
+  compile until somebody says what pressing it does.
+
+The wire shapes are one class each — `Quote`, `Position`, `PanelData` and the
+rest — and mirror the server's replies rather than the sidebar's needs, so a
+field with no reader is the contract written down rather than dead code.
+
 ## The API it talks to
 
 Everything goes through `/api/plugin`, authenticated with `X-Api-Key`, and
@@ -302,6 +368,22 @@ One read per tab, each capped and unfilterable by design:
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
   for the items of one of them. Re-read every thirty seconds for the quotes,
   while the sidebar or the exchange is open.
+
+`GET /api/plugin/quote?itemId=` prices particular items, whether or not they
+are on a watchlist: what the watchlist read gives for a curated list, this
+gives for whatever the exchange happens to be showing. It is asked for at most
+once every thirty seconds and only while the exchange is open. A server that
+answers 404 is taken at its word and not asked again for the rest of the
+session, so an older flippingrs.com loses the extra prices and nothing else.
+
+A quote carries `instantBuy` and `instantSell` — the two ends of the spread, and
+what the sidebar calls sell-at and buy-at — with `netMargin`, `roi`, `buyLimit`,
+`profitPerLimit`, `volume24h` and `dataAgeSeconds`. Two optional fields,
+`limitRemaining` and `limitResetsInSeconds`, are drawn on the offer screen when
+they are sent and left off entirely when they are not: a server that says
+nothing about the limit is not the same as one saying there is none left, and
+drawing "0" for the first would tell somebody to stop buying an item they can
+buy.
 
 `POST /api/plugin/watchlists` and `PATCH /api/plugin/watchlists/{id}` create a
 watchlist and replace its items. The plugin never deletes one.

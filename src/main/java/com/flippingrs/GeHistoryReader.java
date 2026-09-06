@@ -61,9 +61,9 @@ class GeHistoryReader
 	 * @param list  the history list, or null if the screen is not open
 	 * @param names resolves an item id to its name; client thread
 	 */
-	static List<FlippingRsApi.HistoryRow> read(@Nullable Widget list, IntFunction<String> names)
+	static List<HistoryRow> read(@Nullable Widget list, IntFunction<String> names)
 	{
-		final List<FlippingRsApi.HistoryRow> out = new ArrayList<>();
+		final List<HistoryRow> out = new ArrayList<>();
 		if (list == null)
 		{
 			return out;
@@ -122,7 +122,7 @@ class GeHistoryReader
 		int position = 0;
 		for (Map.Entry<Integer, List<Widget>> line : lines.entrySet())
 		{
-			final FlippingRsApi.HistoryRow row = parse(iconByLine.get(line.getKey()), line.getValue(), names);
+			final HistoryRow row = parse(iconByLine.get(line.getKey()), line.getValue(), names);
 			if (row == null)
 			{
 				continue;
@@ -173,7 +173,7 @@ class GeHistoryReader
 	}
 
 	@Nullable
-	private static FlippingRsApi.HistoryRow parse(@Nullable Widget icon, List<Widget> line, IntFunction<String> names)
+	private static HistoryRow parse(@Nullable Widget icon, List<Widget> line, IntFunction<String> names)
 	{
 		final int itemId = icon == null ? 0 : icon.getItemId();
 		final long iconQuantity = icon == null ? 0 : icon.getItemQuantity();
@@ -293,7 +293,7 @@ class GeHistoryReader
 			return null;
 		}
 
-		final FlippingRsApi.HistoryRow row = new FlippingRsApi.HistoryRow();
+		final HistoryRow row = new HistoryRow();
 		row.itemId = itemId;
 		row.itemName = names.apply(itemId);
 		row.side = side;

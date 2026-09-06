@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Notification;
 import net.runelite.client.config.Range;
 
 @ConfigGroup(FlippingRsConfig.GROUP)
@@ -88,15 +89,61 @@ public interface FlippingRsConfig extends Config
 
 	@ConfigItem(
 		keyName = "setupOverlay",
-		name = "Prices on the offer screen",
-		description = "When you set up a buy or sell offer for an item on your watchlist, shows flippingrs.com's "
-			+ "exact buy and sell prices and the margin on the offer screen, so the number you type is in front of you.",
+		name = "Prices in the exchange",
+		description = "Shows flippingrs.com's prices where you need them. On the offer setup screen: the exact buy "
+			+ "and sell prices, the margin, how old the prices are, and how much of the buy limit you have left "
+			+ "if your plan tracks that. And on every item the exchange shows: the price for the side you are on "
+			+ "and how far your offer is from it, or both ends of the spread where you have no offer. Works for "
+			+ "any item, not only the ones on your watchlist; nothing is drawn for an item the site has no price "
+			+ "for. Buy limits count only the trades your journal knows about, so an item you bought before "
+			+ "installing the plugin, or on another client, can show more room left than you really have.",
 		position = 12,
 		section = exchangeSection
 	)
 	default boolean setupOverlay()
 	{
 		return true;
+	}
+
+	@ConfigSection(
+		name = "Notifications",
+		description = "When the plugin should get your attention",
+		position = 15
+	)
+	String notificationSection = "notifications";
+
+	// Only two, and only for things you would otherwise never learn. The
+	// sidebar is where the plugin explains itself, and a flipper keeps the
+	// exchange open and the sidebar shut -- so anything that goes wrong with
+	// recording is said into a panel nobody is looking at. That is worth a
+	// notification. An offer filling is not, by default: the client already
+	// tells you, and a busy flipper would get one every few seconds.
+
+	@ConfigItem(
+		keyName = "notifyProblems",
+		name = "Trades that couldn't be recorded",
+		description = "Tells you when flippingrs.com would not record a trade. The sidebar says so too, but a "
+			+ "flipper keeps it shut, and a trade missing from your journal is not something you want to find "
+			+ "out about days later.",
+		position = 16,
+		section = notificationSection
+	)
+	default Notification notifyProblems()
+	{
+		return Notification.ON;
+	}
+
+	@ConfigItem(
+		keyName = "notifyOfferComplete",
+		name = "An offer finishing",
+		description = "Tells you when one of your Grand Exchange offers finishes. Off by default: the client "
+			+ "already shows it, and a fast flipper would get one of these every few seconds.",
+		position = 17,
+		section = notificationSection
+	)
+	default Notification notifyOfferComplete()
+	{
+		return Notification.OFF;
 	}
 
 	@ConfigSection(
@@ -126,9 +173,9 @@ public interface FlippingRsConfig extends Config
 		return "";
 	}
 
-	// The game account is deliberately not here. It is stored per RuneScape
-	// profile and picked in the side panel, so logging into an alt files its
-	// trades under the right journal without anyone remembering to switch a
-	// setting. A single global dropdown would silently file a main's flips
-	// under an alt the first time someone forgot.
+	// The game account is deliberately not here. It is stored against the
+	// RuneScape account and picked in the side panel, so logging into an alt
+	// files its trades under the right journal without anyone remembering to
+	// switch a setting. A single global dropdown would silently file a main's
+	// flips under an alt the first time someone forgot.
 }
