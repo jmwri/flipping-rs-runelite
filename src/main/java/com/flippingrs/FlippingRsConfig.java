@@ -92,9 +92,10 @@ public interface FlippingRsConfig extends Config
 		name = "Prices in the exchange",
 		description = "Shows flippingrs.com's prices where you need them. On the offer setup screen: the exact buy "
 			+ "and sell prices, the margin, how old the prices are, and how much of the buy limit you have left "
-			+ "if your plan tracks that. And on every item the exchange shows: the price for the side you are on "
-			+ "and how far your offer is from it, or both ends of the spread where you have no offer. Works for "
-			+ "any item, not only the ones on your watchlist; nothing is drawn for an item the site has no price "
+			+ "if your plan tracks that. And on any item the exchange shows, point at it for the same in a "
+			+ "tooltip, plus how far your own offer is from the side you are trading if it is one of yours. "
+			+ "The exchange itself is left exactly as the game draws it. Works for "
+			+ "any item, not only the ones on your watchlist; nothing is shown for an item the site has no price "
 			+ "for. Buy limits count only the trades your journal knows about, so an item you bought before "
 			+ "installing the plugin, or on another client, can show more room left than you really have.",
 		position = 12,
