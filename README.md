@@ -147,7 +147,12 @@ A line each rather than one line of everything, because a price and its
 difference stop being two things the moment either is long — a hundred million
 buying and a hundred and ten million selling is most of a line before anything
 is said about it. The offer boxes are made taller to hold them, and the
-container and window round them grow to match. That is what an offer
+container and window round them grow to match.
+
+As many lines as there is room for, and no more. The window cannot grow past
+the screen it is on, so on a small client you may get two lines, or one, or
+just the difference on the end of the line that is already there. What gets
+left out is decided rather than clipped, and your own side is never what goes. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is

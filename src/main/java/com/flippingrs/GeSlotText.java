@@ -42,11 +42,16 @@ class GeSlotText
 	/** One per slot, holding what its line said before. */
 	private final Appended[] slots = new Appended[GeItems.SLOTS.length];
 
-	GeSlotText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor)
+	/** How many rows of text the boxes have been made room for. */
+	private final java.util.function.IntSupplier rows;
+
+	GeSlotText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor,
+		java.util.function.IntSupplier rows)
 	{
 		this.client = client;
 		this.config = config;
 		this.quoteFor = quoteFor;
+		this.rows = rows;
 		for (int i = 0; i < slots.length; i++)
 		{
 			slots[i] = new Appended();
@@ -73,7 +78,9 @@ class GeSlotText
 			{
 				final Widget box = client.getWidget(GeItems.SLOTS[slot]);
 				final GrandExchangeOffer offer = slot < offers.length ? offers[slot] : null;
-				final String text = box == null || box.isHidden() ? null : textFor(offer, quoteOn(offer));
+				final int lines = rows.getAsInt();
+				final String text = box == null || box.isHidden()
+					? null : textFor(offer, quoteOn(offer), lines);
 				if (text == null)
 				{
 					slots[slot].clear();
@@ -85,9 +92,10 @@ class GeSlotText
 					slots[slot].clear();
 					continue;
 				}
-				// Three rows, and the room for them. GeSlotLayout makes the box
-				// tall enough to hold what this makes the line.
-				slots[slot].to(line, "<br>" + text, LINES);
+				// Exactly as many rows as were made room for. Saying more than
+				// the box was grown to hold is how this drew over the line
+				// under it.
+				slots[slot].to(line, lines > 0 ? "<br>" + text : text, lines);
 			}
 		}
 		catch (RuntimeException e)
@@ -135,10 +143,16 @@ class GeSlotText
 	 * What one slot gains: both of the site's prices, and how far your own
 	 * offer is from the one that applies to it.
 	 *
-	 * <p>Three lines, one figure each, because a price and its difference on one
-	 * line stop being two things the moment either of them is long: a hundred
-	 * million buying and a hundred and ten million selling is most of a line
-	 * before anything is said about it. A column of three reads at any size.
+	 * <p>A line each, because a price and its difference on one line stop being
+	 * two things the moment either of them is long: a hundred million buying
+	 * and a hundred and ten million selling is most of a line before anything
+	 * is said about it. A column reads at any size.
+	 *
+	 * <p>As many lines as there is room for, and no more. The window cannot
+	 * grow past the screen, so on a small client there may be room for two, or
+	 * one, or none -- and what gets dropped is decided here rather than by the
+	 * box clipping it. Your own side goes first and is never the thing
+	 * dropped: it is the only price yours can be measured against.
 	 *
 	 * <p>The side being traded is in white and carries how far your own offer
 	 * is from it, since that is the only price yours can be measured against.
@@ -154,7 +168,7 @@ class GeSlotText
 	 * the wording is pinned by a test rather than by running a client.
 	 */
 	@Nullable
-	static String textFor(@Nullable GrandExchangeOffer offer, @Nullable Quote quote)
+	static String textFor(@Nullable GrandExchangeOffer offer, @Nullable Quote quote, int rows)
 	{
 		if (offer == null || quote == null)
 		{
@@ -188,9 +202,28 @@ class GeSlotText
 		// words "buy" and "sell" would be repeating the box back at itself, so
 		// the side being traded is picked out in white instead and the two
 		// prices stand on their own.
-		return line("Buy", quote.getBuyAt(), buying, buying ? edge : null)
-			+ "<br>" + line("Sell", quote.getSellAt(), !buying, buying ? null : edge)
-			+ "<br>" + colour(FlippingRsPanel.signed(quote.getNetMargin()),
+		final String yours = line(buying ? "Buy" : "Sell",
+			buying ? quote.getBuyAt() : quote.getSellAt(), true, edge);
+		if (rows <= 0)
+		{
+			// No room was made, so this goes on the end of the line that is
+			// already there and says only what will fit: how far off you are.
+			return colour("  ", MUTED)
+				+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
+		}
+		if (rows == 1)
+		{
+			return yours;
+		}
+		final String other = line(buying ? "Sell" : "Buy",
+			buying ? quote.getSellAt() : quote.getBuyAt(), false, null);
+		if (rows == 2)
+		{
+			// Your side first: the other one is what you will do next, not now.
+			return yours + "<br>" + other;
+		}
+		return yours + "<br>" + other + "<br>"
+			+ colour(FlippingRsPanel.signed(quote.getNetMargin()),
 				quote.getNetMargin() >= 0 ? GOOD : BAD);
 	}
 

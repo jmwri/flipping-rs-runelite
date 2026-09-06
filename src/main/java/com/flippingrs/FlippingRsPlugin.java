@@ -267,7 +267,8 @@ public class FlippingRsPlugin extends Plugin
 		overlayManager.add(infoOverlay);
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
-		slotText = new GeSlotText(client, config, this::watchedQuote);
+		slotText = new GeSlotText(client, config, this::watchedQuote,
+			() -> slotLayout == null ? 0 : slotLayout.rowsAfforded());
 		tooltipText = new GeTooltipText(client, config, this::watchedQuote);
 		slotLayout = new GeSlotLayout(client, config);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,

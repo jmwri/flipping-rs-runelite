@@ -41,11 +41,14 @@ class GeSlotLayout
 	/** One row of the small font. */
 	private static final int LINE = 12;
 
-	/** How many rows the prices take. */
-	private static final int LINES = 3;
+	/** The most rows worth asking for. More than this is not worth the room. */
+	private static final int WANTED = 3;
 
-	/** How much taller each box gets. Zero switches the whole thing off. */
-	private static final int EXTRA = LINE * LINES;
+	/**
+	 * Room kept between the window and the edge of the screen. The exchange
+	 * does not sit flush against it and neither should this.
+	 */
+	private static final int SPARE = 8;
 
 	/**
 	 * Everything between a box and the window, innermost first. Each grows by
@@ -76,6 +79,12 @@ class GeSlotLayout
 	@Nullable
 	private int[] aroundHeightMode;
 
+	/**
+	 * How many rows of text the boxes were last made room for. Read by
+	 * {@link GeSlotText}, which says exactly that much and no more.
+	 */
+	private int rowsAfforded;
+
 	GeSlotLayout(Client client, FlippingRsConfig config)
 	{
 		this.client = client;
@@ -104,7 +113,7 @@ class GeSlotLayout
 	{
 		try
 		{
-			if (EXTRA <= 0 || !config.setupOverlay())
+			if (!config.setupOverlay())
 			{
 				reset();
 				return;
@@ -122,26 +131,79 @@ class GeSlotLayout
 			int deepest = 0;
 			for (int slot = 0; slot < widgets.length; slot++)
 			{
+				if (widgets[slot] != null && baseHeight[slot] >= 0)
+				{
+					deepest = Math.max(deepest, rows[slot] + 1);
+				}
+			}
+			final int afforded = afford(deepest);
+			final int extra = afforded * LINE;
+			for (int slot = 0; slot < widgets.length; slot++)
+			{
 				if (widgets[slot] == null || baseHeight[slot] < 0)
 				{
 					continue;
 				}
-				deepest = Math.max(deepest, rows[slot] + 1);
-				put(widgets[slot], baseY[slot] + rows[slot] * EXTRA, baseHeight[slot] + EXTRA);
+				put(widgets[slot], baseY[slot] + rows[slot] * extra, baseHeight[slot] + extra);
 			}
 			for (int i = 0; i < AROUND.length; i++)
 			{
 				final Widget holder = client.getWidget(AROUND[i]);
 				if (holder != null && !holder.isHidden() && aroundHeight[i] >= 0)
 				{
-					grow(holder, aroundHeight[i] + deepest * EXTRA);
+					grow(holder, aroundHeight[i] + deepest * extra);
 				}
 			}
+			rowsAfforded = afforded;
 		}
 		catch (RuntimeException e)
 		{
 			log.debug("could not make room in the offer boxes", e);
 		}
+	}
+
+	/**
+	 * How many rows of text there is actually room to add.
+	 *
+	 * <p>Asked rather than assumed, because the window cannot grow past the
+	 * screen it is on. Three rows on two rows of boxes is seventy-two pixels
+	 * of window, and a client with fifty to spare answers that by cutting the
+	 * title off the top and the bottom row of offers off the bottom -- which
+	 * is worse than saying less.
+	 *
+	 * <p>The window is centred, so height added to it goes half above and half
+	 * below: what can be afforded is twice the smaller of the two gaps.
+	 *
+	 * @param rows how many rows of boxes there are, since each of them has to
+	 *             be grown and the window carries the total
+	 */
+	private int afford(int rows)
+	{
+		if (rows <= 0)
+		{
+			return 0;
+		}
+		final Widget frame = client.getWidget(InterfaceID.GeOffers.FRAME);
+		final java.awt.Rectangle bounds = frame == null ? null : frame.getBounds();
+		if (bounds == null || bounds.height <= 0)
+		{
+			return 0;
+		}
+		// The frame as the game had it, not as this may have already grown it.
+		final int height = aroundHeight[2] >= 0 ? aroundHeight[2] : bounds.height;
+		final int top = bounds.y + (bounds.height - height) / 2;
+		final int below = client.getCanvasHeight() - (top + height);
+		final int room = 2 * Math.min(top, below) - SPARE;
+		return Math.max(0, Math.min(WANTED, room / (rows * LINE)));
+	}
+
+	/**
+	 * How many rows of text the boxes have been made room for, which is what
+	 * there is room to say. Zero means the window had nothing to spare.
+	 */
+	int rowsAfforded()
+	{
+		return rowsAfforded;
 	}
 
 	/** Puts the layout back the way the game had it, and forgets it. */
@@ -328,5 +390,6 @@ class GeSlotLayout
 		baseHeightMode = null;
 		aroundHeight = null;
 		aroundHeightMode = null;
+		rowsAfforded = 0;
 	}
 }

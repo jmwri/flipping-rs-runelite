@@ -70,8 +70,8 @@ public class GeSlotTextTest
 	@Test
 	public void anEmptySlotSaysNothing()
 	{
-		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.EMPTY, 0), whip()));
-		assertNull("nor does a slot with no offer at all", GeSlotText.textFor(null, whip()));
+		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.EMPTY, 0), whip(), 3));
+		assertNull("nor does a slot with no offer at all", GeSlotText.textFor(null, whip(), 3));
 	}
 
 	/**
@@ -82,7 +82,7 @@ public class GeSlotTextTest
 	@Test
 	public void anItemWithNoQuoteSaysNothing()
 	{
-		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_480_000), null));
+		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_480_000), null, 3));
 	}
 
 	/**
@@ -98,7 +98,7 @@ public class GeSlotTextTest
 	@Test
 	public void aBuyIsMeasuredAgainstTheSitesBuyPrice()
 	{
-		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip());
+		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip(), 3);
 
 		assertNotNull(text);
 		final String[] lines = lines(text);
@@ -114,7 +114,7 @@ public class GeSlotTextTest
 	@Test
 	public void aBuyUnderTheMarketIsCalledOut()
 	{
-		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip());
+		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip(), 3);
 
 		assertNotNull(text);
 		assertEquals("Buy 1.48M  -10.0K", lines(text)[0]);
@@ -130,17 +130,18 @@ public class GeSlotTextTest
 	@Test
 	public void aSaleIsMeasuredAgainstTheSitesSellPrice()
 	{
-		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip());
+		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip(), 3);
 		assertNotNull(good);
-		assertEquals("the sale's own side carries the difference",
-			"Sell 1.52M  +10.0K", lines(good)[1]);
-		assertEquals("and the buy price is just a price", "Buy 1.48M", lines(good)[0]);
+		assertEquals("your own side comes first and carries the difference",
+			"Sell 1.52M  +10.0K", lines(good)[0]);
+		assertEquals("and the side you will need next is under it",
+			"Buy 1.48M", lines(good)[1]);
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
-			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip());
+			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip(), 3);
 		assertNotNull(optimistic);
-		assertEquals("Sell 1.52M  -80.0K", lines(optimistic)[1]);
+		assertEquals("Sell 1.52M  -80.0K", lines(optimistic)[0]);
 		assertTrue(optimistic, optimistic.contains(BAD));
 	}
 
@@ -158,12 +159,36 @@ public class GeSlotTextTest
 		big.netMargin = 8_800_000;
 
 		final String[] lines = lines(GeSlotText.textFor(
-			offer(GrandExchangeOfferState.BUYING, 99_000_000), big));
+			offer(GrandExchangeOfferState.BUYING, 99_000_000), big, 3));
 
 		assertEquals(3, lines.length);
 		assertEquals("Buy 100.00M  -1.00M", lines[0]);
 		assertEquals("Sell 110.00M", lines[1]);
 		assertEquals("+8.80M", lines[2]);
+	}
+
+	/**
+	 * A window with no room to spare still says the one thing that fits, on
+	 * the line that is already there.
+	 *
+	 * <p>What gets dropped is decided here rather than by the box clipping it,
+	 * and your own side is never what goes: it is the only price yours can be
+	 * measured against.
+	 */
+	@Test
+	public void lessRoomSaysLess()
+	{
+		final GrandExchangeOffer selling = offer(GrandExchangeOfferState.SELLING, 1_510_000);
+
+		assertEquals("nothing but the difference, inline",
+			"  +10.0K", plain(GeSlotText.textFor(selling, whip(), 0)));
+		assertEquals("one row: your own side, with it",
+			"Sell 1.52M  +10.0K", plain(GeSlotText.textFor(selling, whip(), 1)));
+
+		final String[] two = lines(GeSlotText.textFor(selling, whip(), 2));
+		assertEquals(2, two.length);
+		assertEquals("Sell 1.52M  +10.0K", two[0]);
+		assertEquals("and the side you will need next", "Buy 1.48M", two[1]);
 	}
 
 	/**
@@ -173,8 +198,8 @@ public class GeSlotTextTest
 	@Test
 	public void aFinishedOfferIsStillPriced()
 	{
-		assertNotNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BOUGHT, 1_480_000), whip()));
-		assertNotNull(GeSlotText.textFor(offer(GrandExchangeOfferState.CANCELLED_SELL, 1_520_000), whip()));
+		assertNotNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BOUGHT, 1_480_000), whip(), 3));
+		assertNotNull(GeSlotText.textFor(offer(GrandExchangeOfferState.CANCELLED_SELL, 1_520_000), whip(), 3));
 	}
 
 	/** A quote with no price in it is no quote at all. */
@@ -183,7 +208,7 @@ public class GeSlotTextTest
 	{
 		final Quote empty = new Quote();
 		empty.id = 4151;
-		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_000), empty));
+		assertNull(GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_000), empty, 3));
 	}
 
 	/**
@@ -193,7 +218,7 @@ public class GeSlotTextTest
 	@Test
 	public void theColoursAreColoursRatherThanTokens()
 	{
-		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip());
+		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip(), 3);
 
 		assertNotNull(text);
 		assertTrue(text, text.contains("<col=") && text.contains("</col>"));
