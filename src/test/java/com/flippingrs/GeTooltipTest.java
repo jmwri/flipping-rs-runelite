@@ -81,24 +81,59 @@ public class GeTooltipTest
 	}
 
 	/**
-	 * An item you have an offer on gains how far your price is from the side
-	 * you are trading. Only the eight slots can say this; everywhere else the
-	 * same item is just an item.
+	 * An item you have an offer on gains the price you asked for and how it
+	 * compares with the site's for the side you are trading. Only the eight
+	 * slots can say this; everywhere else the same item is just an item.
+	 *
+	 * <p>Named rather than signed. "-2" on its own is a difference from
+	 * something unnamed, in a direction the reader has to guess, and whether
+	 * it is good news depends on which side of the trade they are on; the line
+	 * sits directly under the price it is measured against, so saying which
+	 * price that is makes the arithmetic checkable on the spot.
 	 */
 	@Test
 	public void yourOwnOfferIsMeasuredAgainstYourOwnSide()
 	{
 		final String buying = GeTooltip.textFor(whip(),
 			offer(GrandExchangeOfferState.BUYING, 1_485_000), BOX_TEXT);
-		assertEquals("a buy over the site's buy price fills sooner",
-			"Yours +5,000", lines(buying)[3]);
+		assertEquals("a bid over the site's buy price fills sooner",
+			"Yours 1,485,000 (5,000 over buy)", lines(buying)[3]);
 		assertTrue(buying, buying.contains(GOOD));
 
 		final String selling = GeTooltip.textFor(whip(),
 			offer(GrandExchangeOfferState.SELLING, 1_600_000), BOX_TEXT);
-		assertEquals("and a sale over its sell price will sit",
-			"Yours -80,000", lines(selling)[3]);
+		assertEquals("and an ask over its sell price will sit",
+			"Yours 1,600,000 (80,000 over sell)", lines(selling)[3]);
 		assertTrue(selling, selling.contains(BAD));
+	}
+
+	/**
+	 * The other three directions, because the words invert between the two
+	 * sides and a sign convention does not survive that.
+	 *
+	 * <p>Over is good for a buyer and bad for a seller; the same word means
+	 * the opposite thing depending on which side you are on, which is exactly
+	 * why the side is named and the verdict is left to the colour.
+	 */
+	@Test
+	public void overIsGoodOnOneSideAndBadOnTheOther()
+	{
+		final String bidLow = GeTooltip.textFor(whip(),
+			offer(GrandExchangeOfferState.BUYING, 1_470_000), BOX_TEXT);
+		assertEquals("a bid under the buy price is the patient end",
+			"Yours 1,470,000 (10,000 under buy)", lines(bidLow)[3]);
+		assertTrue(bidLow, bidLow.contains(BAD));
+
+		final String askLow = GeTooltip.textFor(whip(),
+			offer(GrandExchangeOfferState.SELLING, 1_500_000), BOX_TEXT);
+		assertEquals("an ask under the sell price fills sooner",
+			"Yours 1,500,000 (20,000 under sell)", lines(askLow)[3]);
+		assertTrue(askLow, askLow.contains(GOOD));
+
+		final String exact = GeTooltip.textFor(whip(),
+			offer(GrandExchangeOfferState.SELLING, 1_520_000), BOX_TEXT);
+		assertEquals("and a price the site agrees with is neither over nor under",
+			"Yours 1,520,000 (at sell)", lines(exact)[3]);
 	}
 
 	/** The buy limit and the price age, when the server sends them. */
