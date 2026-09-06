@@ -41,6 +41,13 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * <p>Nothing is drawn for an item with no quote, which is every item before
  * the first fetch lands and every unwatched item on a server that does not
  * price single items. A blank box is the honest rendering of not knowing.
+ *
+ * <p>Drawn on top of the interface rather than inside it. The client will let
+ * a plugin add widgets of its own, which would scroll and clip themselves and
+ * would need re-adding every time the exchange rebuilds a screen; this draws
+ * over the top and does its own clipping instead. The trade is that a caption
+ * here can never obscure a real part of the interface by being in the wrong
+ * place after a game update -- it is only ever paint.
  */
 class GeItemInfoOverlay extends Overlay
 {
@@ -182,10 +189,15 @@ class GeItemInfoOverlay extends Overlay
 		for (GeItems.Spot spot : spots)
 		{
 			onScreen.add(spot.itemId);
+			if (!spot.paint)
+			{
+				// The setup screen carries its own; see GeSetupText.
+				continue;
+			}
 			final Caption caption = captionFor(spot.offer, quoteFor.apply(spot.itemId));
 			if (caption != null)
 			{
-				draw(graphics, metrics, spot.bounds, caption);
+				draw(graphics, metrics, spot, caption);
 			}
 		}
 		showing.accept(onScreen);
@@ -201,8 +213,9 @@ class GeItemInfoOverlay extends Overlay
 	 * is thirty-odd pixels wide and a history row is most of the screen; the
 	 * same caption cannot serve both, and half a number is worse than none.
 	 */
-	private static void draw(Graphics2D graphics, FontMetrics metrics, Rectangle bounds, Caption caption)
+	private static void draw(Graphics2D graphics, FontMetrics metrics, GeItems.Spot spot, Caption caption)
 	{
+		final Rectangle bounds = spot.bounds;
 		final int room = bounds.width - 2 * MARGIN;
 		String text = caption.full;
 		if (metrics.stringWidth(text) > room)
@@ -218,12 +231,29 @@ class GeItemInfoOverlay extends Overlay
 		final int x = bounds.x + bounds.width - width - MARGIN;
 		final int y = bounds.y + bounds.height - MARGIN;
 
-		graphics.setColor(new Color(0, 0, 0, 160));
-		graphics.fillRect(x - 2, y - metrics.getAscent() - 1, width + 4, height);
+		// Clipped to the list holding the row, the way the client clips the
+		// row itself. Some of these screens scroll, and a row scrolled out of
+		// one is not hidden -- its bounds are a real rectangle outside the
+		// list -- so without this the caption for a row nobody can see is
+		// painted over whatever the exchange has put above or below it.
+		final java.awt.Shape was = graphics.getClip();
+		if (spot.clip != null)
+		{
+			graphics.clipRect(spot.clip.x, spot.clip.y, spot.clip.width, spot.clip.height);
+		}
+		try
+		{
+			graphics.setColor(new Color(0, 0, 0, 160));
+			graphics.fillRect(x - 2, y - metrics.getAscent() - 1, width + 4, height);
 
-		graphics.setColor(Color.BLACK);
-		graphics.drawString(text, x + 1, y + 1);
-		graphics.setColor(caption.colour);
-		graphics.drawString(text, x, y);
+			graphics.setColor(Color.BLACK);
+			graphics.drawString(text, x + 1, y + 1);
+			graphics.setColor(caption.colour);
+			graphics.drawString(text, x, y);
+		}
+		finally
+		{
+			graphics.setClip(was);
+		}
 	}
 }

@@ -31,11 +31,16 @@ import net.runelite.api.WorldType;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.ScriptID;
 import net.runelite.client.Notifier;
+import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -154,6 +159,9 @@ public class FlippingRsPlugin extends Plugin
 	private Notifier notifier;
 
 	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -186,8 +194,9 @@ public class FlippingRsPlugin extends Plugin
 	private volatile FlippingRsApi api;
 	private FlippingRsPanel panel;
 	private GeMenu geMenu;
-	private GeQuoteOverlay quoteOverlay;
 	private GeItemInfoOverlay infoOverlay;
+	private GeSetupText setupText;
+	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
 	// are in place: in startUp, or by a test that sets them directly.
@@ -249,10 +258,11 @@ public class FlippingRsPlugin extends Plugin
 
 		geMenu = new GeMenu(client, itemManager, this::openItem,
 			itemId -> submit(sendExecutor, () -> addToWatchlist(itemId)));
-		quoteOverlay = new GeQuoteOverlay(client, this::watchedQuote, itemId -> watchlists.showingSetup(itemId));
-		overlayManager.add(quoteOverlay);
 		infoOverlay = new GeItemInfoOverlay(client, config, this::watchedQuote, watchlists::showingOffers);
 		overlayManager.add(infoOverlay);
+		setupText = new GeSetupText(client, config, this::watchedQuote);
+		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
+			itemId -> watchlists.showingExamined(itemId));
 
 		panel = new FlippingRsPanel(new SidebarActions());
 
@@ -494,11 +504,14 @@ public class FlippingRsPlugin extends Plugin
 			clientToolbar.removeNavigation(navButton);
 			navButton = null;
 		}
-		if (quoteOverlay != null)
+		if (setupText != null)
 		{
-			overlayManager.remove(quoteOverlay);
-			quoteOverlay = null;
+			// The line belongs to a screen this plugin is no longer keeping up
+			// to date, so it goes rather than sitting there frozen.
+			clientThread.invoke(setupText::reset);
+			setupText = null;
 		}
+		examinePrices = null;
 		if (infoOverlay != null)
 		{
 			overlayManager.remove(infoOverlay);
@@ -874,6 +887,50 @@ public class FlippingRsPlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		catchUp.tick(client.getTickCount());
+		final GeSetupText text = setupText;
+		if (text != null)
+		{
+			// Every tick, not only when the client rebuilds the screen: the
+			// prices move under it, and a rebuild this does not know about
+			// would otherwise leave the line gone until the screen is closed.
+			text.update();
+		}
+	}
+
+	/**
+	 * The client has just rebuilt the offer setup screen, throwing away
+	 * anything added to it. Putting the line back here rather than waiting for
+	 * the next tick is what stops it flickering as the screen opens.
+	 */
+	@Subscribe
+	public void onScriptPostFired(ScriptPostFired event)
+	{
+		final GeSetupText text = setupText;
+		if (text != null && event.getScriptId() == ScriptID.GE_OFFERS_SETUP_BUILD)
+		{
+			text.rebuilt();
+		}
+	}
+
+	/** Which item an examine was asked about; the message itself says nothing. */
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		final ExaminePrices examine = examinePrices;
+		if (examine != null)
+		{
+			examine.clicked(event);
+		}
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		final ExaminePrices examine = examinePrices;
+		if (examine != null)
+		{
+			examine.examined(event);
+		}
 	}
 
 	/**

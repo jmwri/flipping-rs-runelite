@@ -105,6 +105,21 @@ public interface FlippingRsConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "examinePrices",
+		name = "Prices when you examine",
+		description = "Adds flippingrs.com's buy and sell prices and the margin to the end of an item's examine "
+			+ "line. Examine is the question the game already has for \"what is this\", and it is asked from the "
+			+ "inventory, the bank and the ground -- places the Grand Exchange never sees. An item nobody has "
+			+ "priced yet says nothing the first time and is answered the next.",
+		position = 13,
+		section = exchangeSection
+	)
+	default boolean examinePrices()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Notifications",
 		description = "When the plugin should get your attention",

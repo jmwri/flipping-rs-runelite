@@ -115,6 +115,9 @@ final class Watchlists
 	/** The item on the offer setup screen, or 0 when it is not open. */
 	private volatile int setupItem;
 
+	/** The last item examined that had no price, or 0. */
+	private volatile int examinedItem;
+
 	/**
 	 * Set once a server has said it has no per-item quote route, so the plugin
 	 * stops asking.
@@ -329,6 +332,19 @@ final class Watchlists
 	}
 
 	/**
+	 * An item somebody examined that nobody has a price for. Client thread.
+	 *
+	 * <p>Kept until the next fetch takes it, so that examining an item once is
+	 * what makes the second examine of it able to answer. Only one: examine is
+	 * a deliberate act on one item, and remembering a list of them would turn
+	 * an idle rummage through a bank into a request for forty prices.
+	 */
+	void showingExamined(int itemId)
+	{
+		examinedItem = itemId;
+	}
+
+	/**
 	 * Fetches quotes for what the exchange is showing and the watchlist does
 	 * not cover. Net thread, on the quote tick.
 	 *
@@ -339,15 +355,30 @@ final class Watchlists
 	 */
 	void fetchOnDemand()
 	{
-		if (quoteRouteMissing || !config.setupOverlay() || !exchangeOpen)
+		if (quoteRouteMissing)
 		{
 			return;
 		}
-		final Set<Integer> wanted = new java.util.LinkedHashSet<>(offerItems);
+		// The exchange being open is what makes the offer screens worth
+		// pricing, but an examined item is examined anywhere -- a bank, the
+		// ground -- so it is asked for wherever it was.
+		final boolean wantsScreens = config.setupOverlay() && exchangeOpen;
+		final boolean wantsExamined = config.examinePrices() && examinedItem > 0;
+		if (!wantsScreens && !wantsExamined)
+		{
+			return;
+		}
+		final Set<Integer> wanted = new java.util.LinkedHashSet<>(wantsScreens ? offerItems
+			: java.util.Collections.<Integer>emptySet());
 		final int setup = setupItem;
 		if (setup > 0)
 		{
 			wanted.add(setup);
+		}
+		final int examined = examinedItem;
+		if (examined > 0)
+		{
+			wanted.add(examined);
 		}
 		wanted.removeAll(watchedIds);
 		if (wanted.isEmpty())
