@@ -137,8 +137,9 @@ what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
 Each of your open offers gains three lines: the site's buy price, its sell
-price, and the margin between them after tax. The side you are trading is in
-white and carries how far your own offer is from it — green when your offer is
+price, and the margin between them after tax. Buy above sell whichever way you
+are trading, so a column of eight boxes reads at a glance. The side you are
+trading is in white and carries how far your own offer is from it — green when your offer is
 priced to fill sooner, red when it is priced to sit. The other side is greyed:
 it is not what you are doing now, but it is what you will do next, since a buy
 that has filled is a sale about to be listed.

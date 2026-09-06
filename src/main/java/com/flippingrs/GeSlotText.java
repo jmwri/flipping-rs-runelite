@@ -151,14 +151,19 @@ class GeSlotText
 	 * <p>As many lines as there is room for, and no more. The window cannot
 	 * grow past the screen, so on a small client there may be room for two, or
 	 * one, or none -- and what gets dropped is decided here rather than by the
-	 * box clipping it. Your own side goes first and is never the thing
-	 * dropped: it is the only price yours can be measured against.
+	 * box clipping it. The margin goes first, then the side you are not
+	 * trading; your own side is never the thing dropped, because it is the
+	 * only price yours can be measured against.
+	 *
+	 * <p>Buy above sell, whichever way you are trading, because that is the
+	 * order the prices are written in everywhere else and a column of eight
+	 * boxes has to be readable at a glance rather than line by line.
 	 *
 	 * <p>The side being traded is in white and carries how far your own offer
 	 * is from it, since that is the only price yours can be measured against.
-	 * The other side is grey: it is not what you are doing now, but it is what
-	 * you will do next, and a buy that has filled is a sale about to be listed.
-	 * The margin underneath is what the pair of them come to after tax.
+	 * The other is grey: not what you are doing now, but what you will do
+	 * next, since a buy that has filled is a sale about to be listed. The
+	 * margin underneath is what the pair of them come to after tax.
 	 *
 	 * <p>The comparison is still against your own side, because that is the
 	 * only one your offer can be measured against.
@@ -202,8 +207,6 @@ class GeSlotText
 		// words "buy" and "sell" would be repeating the box back at itself, so
 		// the side being traded is picked out in white instead and the two
 		// prices stand on their own.
-		final String yours = line(buying ? "Buy" : "Sell",
-			buying ? quote.getBuyAt() : quote.getSellAt(), true, edge);
 		if (rows <= 0)
 		{
 			// No room was made, so this goes on the end of the line that is
@@ -211,18 +214,25 @@ class GeSlotText
 			return colour("  ", MUTED)
 				+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 		}
+		// Buy above sell, always, whichever way you happen to be trading. It is
+		// the order the prices are written in everywhere else -- the sidebar,
+		// the setup screen, the site -- and an order that rearranges itself
+		// depending on the offer makes a column of eight boxes unreadable: you
+		// would be checking the label on every line instead of glancing down
+		// one.
+		final String buy = line("Buy", quote.getBuyAt(), buying, buying ? edge : null);
+		final String sell = line("Sell", quote.getSellAt(), !buying, buying ? null : edge);
 		if (rows == 1)
 		{
-			return yours;
+			// Room for one, so it is the one your own offer is measured
+			// against; the other side is not what you are doing.
+			return buying ? buy : sell;
 		}
-		final String other = line(buying ? "Sell" : "Buy",
-			buying ? quote.getSellAt() : quote.getBuyAt(), false, null);
 		if (rows == 2)
 		{
-			// Your side first: the other one is what you will do next, not now.
-			return yours + "<br>" + other;
+			return buy + "<br>" + sell;
 		}
-		return yours + "<br>" + other + "<br>"
+		return buy + "<br>" + sell + "<br>"
 			+ colour(FlippingRsPanel.signed(quote.getNetMargin()),
 				quote.getNetMargin() >= 0 ? GOOD : BAD);
 	}

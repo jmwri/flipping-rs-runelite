@@ -132,16 +132,16 @@ public class GeSlotTextTest
 	{
 		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip(), 3);
 		assertNotNull(good);
-		assertEquals("your own side comes first and carries the difference",
-			"Sell 1.52M  +10.0K", lines(good)[0]);
-		assertEquals("and the side you will need next is under it",
-			"Buy 1.48M", lines(good)[1]);
+		assertEquals("buy is above sell whichever way you are trading",
+			"Buy 1.48M", lines(good)[0]);
+		assertEquals("and the sale's own side carries the difference",
+			"Sell 1.52M  +10.0K", lines(good)[1]);
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
 			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip(), 3);
 		assertNotNull(optimistic);
-		assertEquals("Sell 1.52M  -80.0K", lines(optimistic)[0]);
+		assertEquals("Sell 1.52M  -80.0K", lines(optimistic)[1]);
 		assertTrue(optimistic, optimistic.contains(BAD));
 	}
 
@@ -187,8 +187,8 @@ public class GeSlotTextTest
 
 		final String[] two = lines(GeSlotText.textFor(selling, whip(), 2));
 		assertEquals(2, two.length);
-		assertEquals("Sell 1.52M  +10.0K", two[0]);
-		assertEquals("and the side you will need next", "Buy 1.48M", two[1]);
+		assertEquals("buy above sell, even when you are selling", "Buy 1.48M", two[0]);
+		assertEquals("Sell 1.52M  +10.0K", two[1]);
 	}
 
 	/**
