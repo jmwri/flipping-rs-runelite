@@ -524,11 +524,19 @@ that does know is a different answer, and that one is shown.
 `hoursHeld` is worked out by the server, which has both timestamps; the plugin
 does no date arithmetic. `timesKnown` is false for a flip with a leg the plugin
 recovered after the fact rather than watched — that leg carries the time it was
-found rather than the time it happened, so the hold is left off the card
-entirely. The profit is still real; only the clock is not, and a made-up "held
-3d" beside a real profit is the sort of figure somebody would plan around. The
-summary describes exactly the lots sent, not all time, so it cannot disagree
-with a count of what is on screen.
+found rather than the time it happened, so the card says "recovered, time
+unknown" in place of a hold. The profit is still real; only the clock is not,
+and a made-up "held 3d" beside a real profit is the sort of figure somebody
+would plan around.
+
+Said rather than left blank, because the list is ordered by when a lot sold and
+a recovered lot is adopted the moment it is found: these sort to the top, so the
+first card is quite likely to be one of them, and a card silently missing a line
+every card under it has reads as a fault rather than as a fact about that flip.
+
+The summary describes exactly the lots sent, not all time, so it cannot disagree
+with a count of what is on screen. Twenty at most: this is a sidebar, and the
+site's own Journal page is where a whole history gets read.
 
 `GET /api/plugin/quote?itemId=` prices particular items, whether or not they
 are on a watchlist: what the watchlist read gives for a curated list, this

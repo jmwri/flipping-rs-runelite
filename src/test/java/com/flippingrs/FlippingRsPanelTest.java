@@ -638,21 +638,26 @@ public class FlippingRsPanelTest
 	}
 
 	/**
-	 * A flip whose timing was recovered rather than watched shows no hold.
+	 * A flip whose timing was recovered rather than watched says so.
 	 *
 	 * <p>The recovered leg carries the time it was found, not the time it
 	 * happened. The profit is real; the clock is not, and "held 3d" beside a
 	 * real profit is exactly the sort of figure somebody would plan around.
+	 *
+	 * <p>Named rather than left blank, because the list is ordered by when a
+	 * lot sold and a recovered lot is adopted the moment it is found -- so
+	 * these sort to the top, and a first card silently missing a line that
+	 * every card below it has reads as a fault rather than as a fact.
 	 */
 	@Test
-	public void aRecoveredFlipShowsNoHoldTime()
+	public void aRecoveredFlipSaysWhyItHasNoHoldTime()
 	{
 		final ClosedPosition watched = sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000);
 		assertEquals("10 sold · held 5h", FlippingRsPanel.closedHeld(watched));
 
 		final ClosedPosition recovered = sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000);
 		recovered.timesKnown = false;
-		assertEquals("10 sold", FlippingRsPanel.closedHeld(recovered));
+		assertEquals("10 sold · recovered, time unknown", FlippingRsPanel.closedHeld(recovered));
 	}
 
 	/** What a closed card says, to the coin. */
