@@ -117,8 +117,15 @@ public class FlippingRsPlugin extends Plugin
 		WorldType.TOURNAMENT_WORLD, WorldType.QUEST_SPEEDRUNNING, WorldType.PVP_ARENA,
 		WorldType.FRESH_START_WORLD);
 
-	/** How often the watchlist's quotes are refreshed: the same cadence the site's own data moves at. */
-	private static final long QUOTE_REFRESH_SECONDS = 30;
+	/**
+	 * How often the watchlist's quotes are refreshed: the same cadence the
+	 * site's own data moves at.
+	 *
+	 * <p>Not private, because the Watchlists tab counts down to the next one
+	 * and the number it counts to has to be this one. Two copies would leave
+	 * the tab counting down to a moment that had already passed.
+	 */
+	static final long QUOTE_REFRESH_SECONDS = 30;
 
 	/**
 	 * Ticks after login during which offer deltas are the client replaying

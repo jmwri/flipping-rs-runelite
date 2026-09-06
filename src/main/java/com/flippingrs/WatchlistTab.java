@@ -85,6 +85,10 @@ final class WatchlistTab extends SidebarTab
 		findFlips.setAlignmentX(Component.LEFT_ALIGNMENT);
 		findFlips.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		body.add(findFlips);
+		// The freshness line last, under everything it qualifies. Empty until
+		// the first read, so it takes no room on a tab that has nothing yet.
+		body.add(Box.createVerticalStrut(8));
+		body.add(refreshLine());
 		this.body = body;
 	}
 
@@ -94,8 +98,23 @@ final class WatchlistTab extends SidebarTab
 		return body;
 	}
 
+	/**
+	 * The only tab whose next read is a scheduled thing, so the only one that
+	 * can honestly count down to it.
+	 *
+	 * <p>The plugin's own constant, not a copy of the number: a cadence that
+	 * changed in one place and not the other would leave the tab counting down
+	 * to a moment that has already passed, or sitting at "due now" for fifteen
+	 * seconds.
+	 */
 	@Override
-	void paused(@Nullable String why)
+	long refreshEverySeconds()
+	{
+		return FlippingRsPlugin.QUOTE_REFRESH_SECONDS;
+	}
+
+	@Override
+	void onPaused(@Nullable String why)
 	{
 		paused = why;
 		if (why != null)
@@ -156,6 +175,7 @@ final class WatchlistTab extends SidebarTab
 	/** Replaces the watchlist's rows, in the server's order. */
 	void setWatchlistItems(List<WatchedItem> items)
 	{
+		stamp();
 		watchlistProblem = null;
 		watched = new ArrayList<>(items);
 		refresh();

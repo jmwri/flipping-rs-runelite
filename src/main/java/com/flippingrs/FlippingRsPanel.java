@@ -170,6 +170,16 @@ public class FlippingRsPanel extends PluginPanel
 	private MaterialTab showing;
 
 	/**
+	 * Keeps the showing tab's freshness line counting.
+	 *
+	 * <p>One label, once a second, and only while the sidebar is actually the
+	 * thing on screen -- RuneLite says when that starts and stops. Six labels
+	 * ticking behind five tabs nobody is looking at would be work for no
+	 * reader, on the thread the client draws frames with.
+	 */
+	private final Timer freshness = new Timer(1000, e -> tickFreshness());
+
+	/**
 	 * The six tabs, each owning its own widgets and its own deferred redraw.
 	 *
 	 * <p>Named and ordered as flippingrs.com names and orders its own screens,
@@ -297,12 +307,54 @@ public class FlippingRsPanel extends PluginPanel
 		analytics.showing(showing == analyticsTab);
 		account.showing(showing == accountTab);
 		activity.showing(showing == activityTab);
+		// At once as well as on the tick, or a tab picked halfway through a
+		// second would show the count as it stood when it was last on screen.
+		tickFreshness();
+	}
+
+	/** The showing tab's freshness line, brought up to the second. */
+	private void tickFreshness()
+	{
+		final SidebarTab tab = showingTab();
+		if (tab != null)
+		{
+			tab.tick(System.currentTimeMillis());
+		}
+	}
+
+	/** Which of the six is on screen, or null before the first is picked. */
+	@Nullable
+	private SidebarTab showingTab()
+	{
+		if (showing == watchlistTab)
+		{
+			return watchlist;
+		}
+		if (showing == journalTab)
+		{
+			return journal;
+		}
+		if (showing == positionsTab)
+		{
+			return positions;
+		}
+		if (showing == analyticsTab)
+		{
+			return analytics;
+		}
+		if (showing == accountTab)
+		{
+			return account;
+		}
+		return showing == activityTab ? activity : null;
 	}
 
 	/** RuneLite calls this when the panel becomes the sidebar's content. */
 	@Override
 	public void onActivate()
 	{
+		tickFreshness();
+		freshness.start();
 		actions.shown();
 	}
 
@@ -310,6 +362,7 @@ public class FlippingRsPanel extends PluginPanel
 	@Override
 	public void onDeactivate()
 	{
+		freshness.stop();
 		actions.hidden();
 	}
 
@@ -1286,6 +1339,41 @@ public class FlippingRsPanel extends PluginPanel
 				return watchlist.listForTest().getComponents();
 			default:
 				return positions.listForTest().getComponents();
+		}
+	}
+
+	/** The showing tab's freshness line, and the timer that keeps it counting. */
+	String refreshLineForTest(String tab)
+	{
+		return tabNamed(tab).refreshLineForTest();
+	}
+
+	String freshnessTextForTest(String tab, long nowMs)
+	{
+		return tabNamed(tab).freshnessText(nowMs);
+	}
+
+	Timer freshnessTimerForTest()
+	{
+		return freshness;
+	}
+
+	private SidebarTab tabNamed(String tab)
+	{
+		switch (tab)
+		{
+			case "Watchlists":
+				return watchlist;
+			case "Journal":
+				return journal;
+			case "Positions":
+				return positions;
+			case "Analytics":
+				return analytics;
+			case "Account":
+				return account;
+			default:
+				return activity;
 		}
 	}
 

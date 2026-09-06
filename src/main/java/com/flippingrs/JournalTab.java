@@ -52,6 +52,10 @@ final class JournalTab extends SidebarTab
 		recentList.setAlignmentX(Component.LEFT_ALIGNMENT);
 		recentList.setToolTipText("Your most recent trades, as your journal has them.");
 		body.add(recentList);
+		// The freshness line last, under everything it qualifies. Empty until
+		// the first read, so it takes no room on a tab that has nothing yet.
+		body.add(Box.createVerticalStrut(8));
+		body.add(refreshLine());
 		this.body = body;
 	}
 
@@ -61,8 +65,19 @@ final class JournalTab extends SidebarTab
 		return body;
 	}
 
+	/**
+	 * No timer. The ledger is re-read when a trade is recorded and when the
+	 * sidebar is opened -- both of which are somebody doing something -- so
+	 * what is worth saying is what to do, not how long to wait.
+	 */
 	@Override
-	void paused(@Nullable String why)
+	String refreshedBy()
+	{
+		return "when you trade";
+	}
+
+	@Override
+	void onPaused(@Nullable String why)
 	{
 		paused = why;
 		if (why != null)
@@ -85,6 +100,7 @@ final class JournalTab extends SidebarTab
 	/** As above, with the items' sprites by item id, resolved by the plugin. */
 	void setRecentTrades(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
 	{
+		stamp();
 		recentProblem = null;
 		recent.clear();
 		for (GeTransaction tx : newestFirst)

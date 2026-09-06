@@ -47,6 +47,10 @@ final class AnalyticsTab extends SidebarTab
 		week.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		week.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(week);
+		// The freshness line last, under everything it qualifies. Empty until
+		// the first read, so it takes no room on a tab that has nothing yet.
+		body.add(Box.createVerticalStrut(8));
+		body.add(refreshLine());
 		this.body = body;
 		draw();
 	}
@@ -57,8 +61,15 @@ final class AnalyticsTab extends SidebarTab
 		return body;
 	}
 
+	/** Read with the open lots, on a trade and on opening the sidebar. */
 	@Override
-	void paused(@Nullable String why)
+	String refreshedBy()
+	{
+		return "when you trade";
+	}
+
+	@Override
+	void onPaused(@Nullable String why)
 	{
 		paused = why;
 		if (why != null)
@@ -72,6 +83,7 @@ final class AnalyticsTab extends SidebarTab
 	/** The week's verdict, as the server works it out. */
 	void setWeek(Analytics figures)
 	{
+		stamp();
 		problem = null;
 		loaded = true;
 		setWrappedText(week, summarise(figures));

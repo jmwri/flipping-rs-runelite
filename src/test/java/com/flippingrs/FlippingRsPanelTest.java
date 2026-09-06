@@ -511,6 +511,147 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/**
+	 * Every tab that shows the server's answers says how old they are and what
+	 * brings the next one.
+	 *
+	 * <p>A margin from four minutes ago is a different thing to act on than
+	 * the same margin from four seconds ago, and nothing else on these tabs
+	 * says which it is.
+	 */
+	@Test
+	public void eachTabSaysHowFreshItIsAndWhatBringsTheNextRead() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+			final long now = System.currentTimeMillis();
+
+			// The quotes are the one thing on a clock, so the one thing that
+			// can honestly count down.
+			panel.setWatchlistItems(Collections.emptyList());
+			assertEquals("Updated just now · next in 30s",
+				plainText(panel.refreshLineForTest("Watchlists")));
+			assertEquals("a quote is never a minute old, so the age stays plain",
+				"Updated just now · next in 22s", plainText(
+				panel.freshnessTextForTest("Watchlists", now + 8_000)));
+
+			// The rest are read because something happened, so they say what.
+			panel.setJournal(new Analytics(), new Positions());
+			assertEquals("Updated just now · next when you trade",
+				plainText(panel.refreshLineForTest("Positions")));
+			assertEquals("Updated just now · next when you trade",
+				plainText(panel.refreshLineForTest("Analytics")));
+
+			panel.setRecentTrades(Collections.emptyList(), Collections.emptyMap());
+			assertEquals("Updated just now · next when you trade",
+				plainText(panel.refreshLineForTest("Journal")));
+
+			panel.setAccounts(Collections.emptyList(), null);
+			assertEquals("Updated just now · next when you connect",
+				plainText(panel.refreshLineForTest("Account")));
+		});
+	}
+
+	/**
+	 * A countdown does not go negative, and does not sit on zero pretending to
+	 * be exact.
+	 *
+	 * <p>The read is a request over a network started by a fixed delay from
+	 * the last one finishing, so the final second is a moment this cannot be
+	 * precise about. It is also the moment a stalled read would be most
+	 * obviously wrong about.
+	 */
+	@Test
+	public void aCountdownThatHasRunOutSaysSoRatherThanGoingNegative() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+			panel.setWatchlistItems(Collections.emptyList());
+			final long now = System.currentTimeMillis();
+
+			assertEquals("Updated just now · next in 1s",
+				plainText(panel.freshnessTextForTest("Watchlists", now + 29_000)));
+			assertEquals("Updated just now · next due now",
+				plainText(panel.freshnessTextForTest("Watchlists", now + 30_000)));
+			assertEquals("a read that never came does not count backwards",
+				"Updated 2h ago · next due now",
+				plainText(panel.freshnessTextForTest("Watchlists", now + 7_200_000)));
+		});
+	}
+
+	/**
+	 * A tab that has read nothing yet says nothing about freshness.
+	 *
+	 * <p>"Updated never" is not what somebody wants to be told about a tab
+	 * that is still loading, and the tab's own summary already says it has
+	 * nothing.
+	 */
+	@Test
+	public void aTabWithNothingYetSaysNothingAboutIt() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+
+			assertEquals("", plainText(panel.refreshLineForTest("Positions")));
+			assertEquals("", plainText(panel.refreshLineForTest("Watchlists")));
+			assertEquals("and Activity has no server data to be fresh or stale",
+				"", plainText(panel.refreshLineForTest("Activity")));
+		});
+	}
+
+	/**
+	 * And a plugin that has stopped reading stops counting down.
+	 *
+	 * <p>A countdown to a read that is not going to happen would be the most
+	 * confident thing on a tab that has just said it is not reading.
+	 */
+	@Test
+	public void nothingCountsDownWhileNothingIsBeingRead() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+			panel.setWatchlistItems(Collections.emptyList());
+			panel.setJournal(new Analytics(), new Positions());
+
+			panel.setPaused("Recording is off, so nothing is being read.");
+
+			assertEquals("", plainText(panel.refreshLineForTest("Watchlists")));
+			assertEquals("", plainText(panel.refreshLineForTest("Positions")));
+
+			panel.setWatchlistItems(Collections.emptyList());
+			assertEquals("and it starts again when reading does",
+				"Updated just now · next in 30s",
+				plainText(panel.refreshLineForTest("Watchlists")));
+		});
+	}
+
+	/**
+	 * The count runs only while the sidebar is the thing on screen.
+	 *
+	 * <p>It is a label rewritten once a second on the thread the client draws
+	 * frames with. That is nothing at all while somebody is reading it and
+	 * pure waste while nobody is.
+	 */
+	@Test
+	public void theCountRunsOnlyWhileTheSidebarIsOpen() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+			assertFalse(panel.freshnessTimerForTest().isRunning());
+
+			panel.onActivate();
+			assertTrue(panel.freshnessTimerForTest().isRunning());
+
+			panel.onDeactivate();
+			assertFalse(panel.freshnessTimerForTest().isRunning());
+		});
+	}
+
 	/** A flip that is over: what it made, after the exchange took its cut. */
 	private static ClosedPosition sold(int itemId, String name, long buy, long sell, long profit)
 	{
