@@ -93,6 +93,25 @@ class GeSlotLayout
 	private final List<Integer> grownHeight = new ArrayList<>();
 	private final List<Integer> grownMode = new ArrayList<>();
 
+	/**
+	 * The pieces of each box that are the box: its background and its border.
+	 *
+	 * <p>Making a slot taller makes the layer taller, and a layer draws
+	 * nothing. What is actually seen is a sprite inside it, and that sprite
+	 * keeps the height it was given -- so the box grows, the border does not,
+	 * and the extra lines end up outside a frame that is still the old size.
+	 * These are grown with the box they belong to.
+	 *
+	 * <p>Which children those are is decided by shape rather than by name: the
+	 * ones that span the box are the box. A label or an icon sitting inside it
+	 * is left exactly where the game put it, so nothing the exchange draws
+	 * moves; the room simply appears underneath it, which is where the added
+	 * lines go.
+	 */
+	private final List<Widget> skin = new ArrayList<>();
+	private final List<Integer> skinHeight = new ArrayList<>();
+	private final List<Integer> skinMode = new ArrayList<>();
+
 	/** The window, if it had to be slid down the screen, and where it was. */
 	@Nullable
 	private Widget moved;
@@ -167,6 +186,9 @@ class GeSlotLayout
 					continue;
 				}
 				put(widgets[slot], baseY[slot] + rows[slot] * extra, baseHeight[slot] + extra);
+				// And the sprite that is the visible box, which is a separate
+				// thing from the layer holding it.
+				stretch(widgets[slot], baseHeight[slot], extra);
 				lowest = widgets[slot];
 			}
 			// Whatever the boxes now stick out of, all the way up until
@@ -234,6 +256,55 @@ class GeSlotLayout
 			}
 			child = parent;
 		}
+	}
+
+	/**
+	 * Grows the parts of a box that are drawn as the box.
+	 *
+	 * <p>A child that spans the height of the slot is its background or its
+	 * border, and has to grow with it. Anything shorter is something the
+	 * exchange put inside the slot and is left alone.
+	 */
+	private void stretch(Widget box, int boxBase, int extra)
+	{
+		for (Widget child : RowText.under(box))
+		{
+			final int base = baseOf(child);
+			if (base < 0 || base * 3 < boxBase * 2)
+			{
+				// Not tall enough to be the box itself.
+				continue;
+			}
+			final int wanted = base + extra;
+			if (child.getHeight() != wanted)
+			{
+				child.setHeightMode(WidgetSizeMode.ABSOLUTE);
+				child.setOriginalHeight(wanted);
+				child.revalidate();
+			}
+		}
+	}
+
+	/**
+	 * The height a box's child had before any of this touched it, remembering
+	 * it the first time it is asked for.
+	 */
+	private int baseOf(Widget child)
+	{
+		final int index = skin.indexOf(child);
+		if (index >= 0)
+		{
+			return skinHeight.get(index);
+		}
+		final int height = child.getHeight();
+		if (height <= 0)
+		{
+			return -1;
+		}
+		skin.add(child);
+		skinHeight.add(height);
+		skinMode.add(child.getHeightMode());
+		return height;
 	}
 
 	/**
@@ -422,6 +493,13 @@ class GeSlotLayout
 					box.revalidate();
 				}
 			}
+			for (int i = 0; i < skin.size(); i++)
+			{
+				final Widget child = skin.get(i);
+				child.setHeightMode(skinMode.get(i));
+				child.setOriginalHeight(skinHeight.get(i));
+				child.revalidate();
+			}
 			if (moved != null && movedY != null)
 			{
 				moved.setYPositionMode(movedYMode);
@@ -574,6 +652,9 @@ class GeSlotLayout
 		grownHeight.clear();
 		grownMode.clear();
 		chainSlack.clear();
+		skin.clear();
+		skinHeight.clear();
+		skinMode.clear();
 		moved = null;
 		movedY = null;
 		rowsAfforded = 0;
