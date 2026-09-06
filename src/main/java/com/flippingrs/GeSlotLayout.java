@@ -93,6 +93,13 @@ class GeSlotLayout
 	private final List<Integer> grownHeight = new ArrayList<>();
 	private final List<Integer> grownMode = new ArrayList<>();
 
+	/** The window, if it had to be slid down the screen, and where it was. */
+	@Nullable
+	private Widget moved;
+	@Nullable
+	private Integer movedY;
+	private int movedYMode;
+
 	/**
 	 * How many rows of text the boxes were last made room for. Read by
 	 * {@link GeSlotText}, which says exactly that much and no more.
@@ -166,6 +173,10 @@ class GeSlotLayout
 			// something already has the room. That is the fix for the cutting
 			// off: it is never the box that clips, it is whatever holds it.
 			openOut(lowest);
+			// And if the window has grown off the top of the screen, it is
+			// moved down rather than left there. Height it could not have is
+			// worth refusing; a position it could have had is not.
+			keepOnScreen();
 			rowsAfforded = afforded;
 		}
 		catch (RuntimeException e)
@@ -223,6 +234,56 @@ class GeSlotLayout
 			}
 			child = parent;
 		}
+	}
+
+	/**
+	 * Moves the window back onto the screen if growing it took it off.
+	 *
+	 * <p>A taller window is centred on where the shorter one was, so it grows
+	 * upwards as much as downwards -- and the exchange sits high enough that
+	 * the top is what runs out first. There is usually room underneath, and
+	 * sliding down into it costs nothing: the window is the same size, in a
+	 * place it fits.
+	 *
+	 * <p>Only ever downwards, and never further than the room below allows,
+	 * so this cannot push the bottom off in the course of saving the top.
+	 */
+	private void keepOnScreen()
+	{
+		if (grown.isEmpty())
+		{
+			return;
+		}
+		final Widget window = grown.get(grown.size() - 1);
+		final java.awt.Rectangle bounds = window.getBounds();
+		if (bounds == null || bounds.height <= 0)
+		{
+			return;
+		}
+		final int above = bounds.y;
+		final int below = client.getCanvasHeight() - (bounds.y + bounds.height);
+		if (above >= 0 || below <= 0)
+		{
+			// Either it is on screen, or there is nowhere to move it to.
+			return;
+		}
+		final int by = Math.min(-above, below);
+		rememberY(window);
+		window.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
+		window.setOriginalY(window.getRelativeY() + by);
+		window.revalidate();
+	}
+
+	/** Keeps where a widget was, the first time it is moved. */
+	private void rememberY(Widget widget)
+	{
+		if (movedY != null)
+		{
+			return;
+		}
+		moved = widget;
+		movedY = widget.getRelativeY();
+		movedYMode = widget.getYPositionMode();
 	}
 
 	/** How far down its own children reach, which is the height it needs. */
@@ -305,10 +366,10 @@ class GeSlotLayout
 	/**
 	 * How much taller the window can get before it runs off the screen.
 	 *
-	 * <p>It is centred, so height added to it goes half above and half below:
-	 * what can be afforded is twice the smaller of the two gaps, less a little
-	 * to keep it off the edge. Taking more than this is what cut the title off
-	 * the top and the bottom row of offers off the bottom.
+	 * <p>The whole of it, above and below, because a window that ends up too
+	 * high is slid back down by {@link #keepOnScreen} rather than refused.
+	 * What cannot be recovered from is a window taller than the screen, and
+	 * that is what this is measuring.
 	 */
 	private int screenRoom()
 	{
@@ -323,7 +384,7 @@ class GeSlotLayout
 		final int height = index >= 0 ? grownHeight.get(index) : bounds.height;
 		final int top = bounds.y + (bounds.height - height) / 2;
 		final int below = client.getCanvasHeight() - (top + height);
-		return Math.max(0, 2 * Math.min(top, below) - SPARE);
+		return Math.max(0, top + below - SPARE);
 	}
 
 	/**
@@ -360,6 +421,12 @@ class GeSlotLayout
 					box.setOriginalHeight(baseHeight[slot]);
 					box.revalidate();
 				}
+			}
+			if (moved != null && movedY != null)
+			{
+				moved.setYPositionMode(movedYMode);
+				moved.setOriginalY(movedY);
+				moved.revalidate();
 			}
 			// Outermost first, so each is put back into something still big
 			// enough to hold it.
@@ -507,6 +574,8 @@ class GeSlotLayout
 		grownHeight.clear();
 		grownMode.clear();
 		chainSlack.clear();
+		moved = null;
+		movedY = null;
 		rowsAfforded = 0;
 	}
 }
