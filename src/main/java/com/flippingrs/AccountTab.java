@@ -80,6 +80,10 @@ final class AccountTab extends SidebarTab
 		reconnect.setAlignmentX(Component.LEFT_ALIGNMENT);
 		reconnect.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		body.add(reconnect);
+		// The freshness line last, under everything it qualifies. Empty until
+		// the first read, so it takes no room on a tab that has nothing yet.
+		body.add(Box.createVerticalStrut(8));
+		body.add(refreshLine());
 		this.body = body;
 	}
 
@@ -116,8 +120,20 @@ final class AccountTab extends SidebarTab
 	 * through would look like the user re-picking the account and write the
 	 * setting back on every reconnect.
 	 */
+	/**
+	 * Read once, when the plugin connects, and again when the key or the
+	 * chosen journal changes. Nothing about a plan or a list of journals goes
+	 * stale on its own, so nothing re-reads it on a clock.
+	 */
+	@Override
+	String refreshedBy()
+	{
+		return "when you connect";
+	}
+
 	void setAccounts(List<GameAccount> available, @Nullable String selectedId)
 	{
+		stamp();
 		repopulating = true;
 		try
 		{

@@ -113,6 +113,10 @@ final class PositionsTab extends SidebarTab
 		closedSection.add(closedList);
 		closedSection.setVisible(false);
 		body.add(closedSection);
+		// The freshness line last, under everything it qualifies. Empty until
+		// the first read, so it takes no room on a tab that has nothing yet.
+		body.add(Box.createVerticalStrut(8));
+		body.add(refreshLine());
 		this.body = body;
 		drawSummary();
 	}
@@ -123,8 +127,15 @@ final class PositionsTab extends SidebarTab
 		return body;
 	}
 
+	/** Read with the week, on a trade and on opening the sidebar. */
 	@Override
-	void paused(@Nullable String why)
+	String refreshedBy()
+	{
+		return "when you trade";
+	}
+
+	@Override
+	void onPaused(@Nullable String why)
 	{
 		paused = why;
 		if (why != null)
@@ -144,6 +155,7 @@ final class PositionsTab extends SidebarTab
 	/** The open lots and their totals, as the server has them. */
 	void setPositions(Positions open)
 	{
+		stamp();
 		problem = null;
 		loaded = true;
 		final Positions.Summary totals = open.getSummary();

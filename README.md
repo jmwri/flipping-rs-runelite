@@ -86,6 +86,7 @@ for one journal. It opens on **Journal**.
   tax, with the totals for the lots shown. The section only appears if the site
   sends them, so an older flippingrs.com shows the open book exactly as it did
   before rather than a heading claiming you have never closed anything.
+
 - **Analytics** is your last seven days: profit, number of flips, win rate and
   gp per hour.
 - **Account** is whether the plugin is connected, which plan you are on, and
@@ -97,6 +98,15 @@ for one journal. It opens on **Journal**.
   trade the site could not accept, is reported here. If any were set aside,
   this is also where you put them back in the queue and try again, which is
   worth doing after fixing whatever the site was objecting to.
+
+Each tab that shows the site's answers says at its foot how old they are and
+what brings the next read: "Updated just now · next in 22s" on the watchlist,
+whose prices are the one thing on a clock, and "Updated 4m ago · next when you
+trade" on the rest, which are read when something happens rather than on a
+timer. A tab that has read nothing yet says nothing, and nothing counts down
+while the plugin is not reading at all — a countdown to a read that is not
+coming would be the most confident thing on a tab that has just said it is not
+reading.
 
 Positions and Analytics are two tabs from one read: the server answers with the
 week and the open lots together, so keeping them apart costs no extra request.
