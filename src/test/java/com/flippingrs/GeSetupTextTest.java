@@ -18,6 +18,19 @@ import static org.junit.Assert.assertTrue;
  */
 public class GeSetupTextTest
 {
+	/**
+	 * The text without its colour tags.
+	 *
+	 * <p>What is on screen is words; the tags are how the game is told to
+	 * colour them. A test that asserted on the tagged string would break every
+	 * time a colour moved, and would read as though the colours were the
+	 * point.
+	 */
+	private static String plain(String text)
+	{
+		return text.replaceAll("</?col[^>]*>", "");
+	}
+
 	private static Quote whip()
 	{
 		final Quote quote = new Quote();
@@ -36,7 +49,7 @@ public class GeSetupTextTest
 	@Test
 	public void thePricesAreExactToTheCoin()
 	{
-		final String text = GeSetupText.textFor(whip());
+		final String text = plain(GeSetupText.textFor(whip()));
 
 		assertTrue(text, text.contains("Buy 1,480,000"));
 		assertTrue(text, text.contains("Sell 1,520,000"));
@@ -59,7 +72,7 @@ public class GeSetupTextTest
 		quote.limitRemaining = 3412;
 		quote.dataAgeSeconds = 250;
 
-		final String text = GeSetupText.textFor(quote);
+		final String text = plain(GeSetupText.textFor(quote));
 
 		assertFalse("one line", text.contains("<br>"));
 		assertTrue(text, text.startsWith("Buy "));
@@ -78,68 +91,44 @@ public class GeSetupTextTest
 		quote.dataAgeSeconds = -1;
 
 		assertFalse(quote.hasLimitLeft());
-		final String text = GeSetupText.textFor(quote);
+		final String text = plain(GeSetupText.textFor(quote));
 		assertFalse(text, text.contains("Limit"));
 		assertFalse(text, text.contains("Priced"));
 		assertTrue("the prices are still there", text.contains("Buy 1,480,000"));
 	}
 
 	/**
-	 * The line is coloured by the margin, unless the prices are old enough
-	 * that the margin is not worth trusting -- in which case it is greyed,
-	 * because a confident green on a stale number is the wrong thing to say.
+	 * Old prices are said to be old rather than coloured as if they were not.
+	 * A confident green on a stale number is the wrong thing to say.
 	 */
 	@Test
-	public void staleNumbersAreNotColouredConfidently()
+	public void oldPricesAreMarkedAsOld()
 	{
 		final Quote fresh = whip();
 		fresh.dataAgeSeconds = 30;
 		final Quote stale = whip();
 		stale.dataAgeSeconds = 4000;
 
-		assertFalse("a fresh profit is not greyed",
-			GeSetupText.colourFor(fresh) == GeSetupText.colourFor(stale));
-
-		final Quote losing = whip();
-		losing.netMargin = -5_000;
-		losing.dataAgeSeconds = 30;
-		assertFalse("and a loss is not the colour of a profit",
-			GeSetupText.colourFor(losing) == GeSetupText.colourFor(fresh));
+		assertFalse(GeSetupText.stale(fresh));
+		assertTrue(GeSetupText.stale(stale));
 	}
 
 	/**
-	 * Where the line begins: directly under the description, wherever that
-	 * ended up.
+	 * The colours are written as colours, not as RuneLite's own tokens.
 	 *
-	 * <p>Measured against the description every frame rather than fixed,
-	 * because the description is the one part of this screen whose height is
-	 * not: it wraps, so a long name or a long examine pushes what follows
-	 * down. A remembered offset would sit on top of the description for
-	 * exactly the items whose description is worth reading.
+	 * <p>{@code <colNORMAL>} and friends are turned into colours only for the
+	 * message types RuneLite has one configured for, and mean nothing at all
+	 * to a widget -- so they went to the screen as their own text. This is
+	 * what that bug looked like, and what it must not look like again.
 	 */
 	@Test
-	public void theLineBeginsUnderTheDescription()
+	public void theColoursAreColoursRatherThanTokens()
 	{
-		final Rectangle page = new Rectangle(100, 200, 300, 250);
-		final Rectangle shortDesc = new Rectangle(110, 240, 280, 12);
-		final Rectangle wrapped = new Rectangle(110, 240, 280, 36);
+		final String text = GeSetupText.textFor(whip());
 
-		// The description ends 52px into the page (240 + 12 - 200), so the line
-		// begins a gap below that.
-		assertEquals("just under a one-line description",
-			52 + 4, GeSetupText.under(page, shortDesc, 4));
-		assertEquals("and further down when it wrapped to three",
-			76 + 4, GeSetupText.under(page, wrapped, 4));
-	}
-
-	/** A description above the page cannot push the line off the top of it. */
-	@Test
-	public void theLineNeverStartsAboveThePage()
-	{
-		final Rectangle page = new Rectangle(100, 200, 300, 250);
-		final Rectangle above = new Rectangle(110, 100, 280, 12);
-
-		assertEquals(0, GeSetupText.under(page, above, 4));
+		assertFalse(text, text.contains("<colNORMAL>"));
+		assertFalse(text, text.contains("<colHIGHLIGHT>"));
+		assertTrue(text, text.contains("<col=") && text.contains("</col>"));
 	}
 
 	@Test

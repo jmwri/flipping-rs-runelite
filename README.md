@@ -119,11 +119,10 @@ much of it you want. Nothing the game shows is replaced: the description, the
 guide price and the tax are all left exactly as they are, so if the plugin is
 offline or the item has no price you lose nothing you had before.
 
-It is one line. The space it goes in is measured rather than assumed, since it
-is a gap in Jagex's layout and theirs to change, and a gap that will take one
-line is a much safer thing to expect than one that will take two. If even that
-does not fit, nothing is drawn: a line on top of the quantity buttons would be
-worse than no line.
+It is added to the end of the description's own text rather than placed as
+something separate, so the game positions it, sizes it and wraps it exactly as
+it does its own lines. Nothing has to guess where there is room, and nothing
+goes stale when Jagex moves the screen.
 
 The buy limit is counted from the trades your journal has, which is not
 necessarily every trade you have made: an item bought before you installed the
@@ -131,12 +130,11 @@ plugin, or on a client that was not reporting, does not count against the
 window. The error only ever goes one way — it can show more room than you
 really have, never less — but it is worth knowing before you trust it.
 
-Your Grand Exchange history is written into as well. Each row gets the site's
-prices and the margin on the right-hand side, so a list of what you did reads
-as a list of what would be worth doing again. That one is a child of the list
-rather than paint on top of it for a reason the offer screen did not have: the
-history scrolls, and the client scrolling and clipping a caption with its row
-is the difference between one that follows the row and one that does not.
+Your Grand Exchange history gains the same, on the end of each row's own text:
+the prices and the margin, so a list of what you did reads as a list of what
+would be worth doing again. Adding to the row rather than drawing beside it is
+what makes it scroll and clip with the row, which on a scrolling list is the
+difference between a note that follows its row and one that does not.
 
 Prices are drawn on the items themselves on the rest of those screens.
 On one of your own offers the plugin knows what you asked for as well as what
@@ -381,7 +379,10 @@ fills. Everything else is a collaborator it builds in `wire()`:
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.
-- `GeHistoryText` does the same for the history list, one child per row.
+- `GeHistoryText` does the same for each row of the history list. Both work
+  through `Appended`, which holds what a line said before and can tell the
+  client rewriting it from the text it put there -- without which a line grows
+  another copy of its prices every time the screen refreshes.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
   click that asked, and one click answers one message. Which click that is is

@@ -11,8 +11,6 @@ import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.widgets.Widget;
-import net.runelite.client.chat.ChatColorType;
-import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 
@@ -49,6 +47,13 @@ class ExaminePrices
 {
 	/** The name of the op, which is the only thing that marks it as an examine. */
 	private static final String EXAMINE = "Examine";
+
+	/** Colours for the added text, written as the game reads them. */
+	private static final String MUTED = "9f9f9f";
+	private static final String VALUE = "ffffff";
+	private static final String GOOD = "4caf50";
+	private static final String BAD = "d32f2f";
+	private static final String NAME = "ff981f";
 
 	private final Client client;
 	private final FlippingRsConfig config;
@@ -172,12 +177,13 @@ class ExaminePrices
 			{
 				return;
 			}
-			// The format message, not the value. What suffix builds carries
-			// RuneLite's own colour tags, and it is update() reading the format
-			// message that turns those into a coloured line; writing the tags
-			// straight into the value puts them on screen as themselves.
-			node.setRuneLiteFormatMessage(node.getValue() + suffix(quote));
-			chat.update(node);
+			// Straight into the value, with the colours already in it. The
+			// format message is not the way: ChatMessageManager.update is a
+			// no-op in this client, and what it would have resolved --
+			// RuneLite's <colNORMAL> tokens -- is only resolved for message
+			// types it has a configured colour for. An item examine is not one
+			// of them, so the tokens arrived on screen as their own text.
+			node.setValue(node.getValue() + suffix(quote));
 			client.refreshChat();
 		}
 		catch (RuntimeException e)
@@ -189,25 +195,29 @@ class ExaminePrices
 	/**
 	 * What gets added to the line: the two prices and the margin.
 	 *
+	 * <p>Coloured with the colour itself rather than with RuneLite's
+	 * {@code <colNORMAL>} tokens. Those are only turned into colours for the
+	 * message types RuneLite has a colour configured for, and an item examine
+	 * is not one of them -- so the tokens went to the chat box as their own
+	 * text. A literal colour tag is what the game's text renderer reads, and
+	 * it needs nothing to have substituted anything first.
+	 *
 	 * <p>Static and returning the built string, so the wording is pinned by a
 	 * test rather than by running a client.
 	 */
 	static String suffix(Quote quote)
 	{
-		return new ChatMessageBuilder()
-			.append(ChatColorType.NORMAL)
-			.append(" Buy ")
-			.append(ChatColorType.HIGHLIGHT)
-			.append(FlippingRsPanel.exact(quote.getBuyAt()))
-			.append(ChatColorType.NORMAL)
-			.append(" · Sell ")
-			.append(ChatColorType.HIGHLIGHT)
-			.append(FlippingRsPanel.exact(quote.getSellAt()))
-			.append(ChatColorType.NORMAL)
-			.append(" · Margin ")
-			.append(ChatColorType.HIGHLIGHT)
-			.append(FlippingRsPanel.signedExact(quote.getNetMargin()))
-			.build();
+		return colour(" Buy ", MUTED) + colour(FlippingRsPanel.exact(quote.getBuyAt()), VALUE)
+			+ colour(" · Sell ", MUTED) + colour(FlippingRsPanel.exact(quote.getSellAt()), VALUE)
+			+ colour(" · Margin ", MUTED)
+			+ colour(FlippingRsPanel.signedExact(quote.getNetMargin()),
+				quote.getNetMargin() >= 0 ? GOOD : BAD);
+	}
+
+	/** One run of text in one colour, as the game's own text renderer reads it. */
+	static String colour(String text, String hex)
+	{
+		return "<col=" + hex + ">" + text + "</col>";
 	}
 
 	/**
@@ -237,13 +247,12 @@ class ExaminePrices
 			{
 				return;
 			}
+			// value, not runeLiteFormattedMessage, for the same reason: the
+			// colours are already in the string and nothing has to substitute
+			// a token to make them appear.
 			chat.queue(QueuedMessage.builder()
 				.type(ChatMessageType.CONSOLE)
-				.runeLiteFormattedMessage(new ChatMessageBuilder()
-					.append(ChatColorType.HIGHLIGHT)
-					.append(itemName.apply(itemId))
-					.append(suffix(quote))
-					.build())
+				.value(colour(itemName.apply(itemId), NAME) + suffix(quote))
 				.build());
 		}
 		catch (RuntimeException e)

@@ -6,47 +6,45 @@ import java.util.function.IntFunction;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.FontID;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetTextAlignment;
-import net.runelite.api.widgets.WidgetType;
 
 /**
- * The site's prices on each row of the Grand Exchange history, written into
- * the list rather than drawn on top of it.
+ * The site's prices on each row of the Grand Exchange history, added to the
+ * row's own text.
  *
- * <p>The history is the second screen worth injecting into, and for a reason
- * the offer setup screen did not have: it scrolls. Paint on a scrolling list
- * has to work out for itself which rows are visible and clip to the viewport,
- * and it is wrong the moment it gets either of those slightly off. A child of
- * the list scrolls and clips because the client does it, which is not an
- * improvement in tidiness -- it is the difference between a caption that
- * follows its row and one that does not.
+ * <p>On the row's text rather than in a widget of this plugin's own, for the
+ * same reason as the offer setup screen: a line the client wrote is already
+ * placed, sized, scrolled and clipped by the list that owns it. A caption
+ * placed alongside had to have its position worked out from the row's, which
+ * is a guess about somebody else's layout -- and on a scrolling list it is a
+ * guess that has to stay right through every scroll.
  *
- * <p>One text widget per row, right-aligned so it sits opposite the item and
- * its quantity rather than over them. A row whose item has no price gets an
- * empty one, not a missing one: the widgets are paired with the rows by
- * position, and a list with gaps in it would have to be rebuilt whenever a
- * price arrived.
+ * <p>A row whose item has no price is left exactly as the game wrote it.
  *
  * <p>Client thread only.
  */
 @Slf4j
 class GeHistoryText
 {
-	/** Space between the caption and the right edge of the list. */
-	private static final int MARGIN = 8;
+	/** How many rows to price. The history shows far fewer than this. */
+	private static final int MAX_ROWS = 64;
+
+	/** Colours, written as the game's own text renderer reads them. */
+	private static final String MUTED = "9f9f9f";
+	private static final String GOOD = "4caf50";
+	private static final String BAD = "d32f2f";
 
 	private final Client client;
 	private final FlippingRsConfig config;
 	private final IntFunction<Quote> quoteFor;
 
 	/**
-	 * The captions this plugin added, in the order of the rows they belong to.
-	 * Emptied whenever the client rebuilds the list out from under them.
+	 * One per row, in the order the rows come in. Each remembers the line it
+	 * is adding to and what that line said before, so a list the client
+	 * rewrites is added to once rather than again and again.
 	 */
-	private final List<Widget> captions = new ArrayList<>();
+	private final List<Appended> rows = new ArrayList<>();
 
 	GeHistoryText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor)
 	{
@@ -56,12 +54,10 @@ class GeHistoryText
 	}
 
 	/**
-	 * Brings the captions in line with the rows.
+	 * Brings the additions in line with the rows.
 	 *
-	 * <p>Called every tick the history is open. The list is rebuilt whenever
-	 * it is reopened or its contents change, which throws these away; noticing
-	 * that here rather than hooking every path that can do it is what stops a
-	 * rebuild nobody predicted leaving the screen bare.
+	 * <p>Called every tick the history is open, because the client rebuilds
+	 * and rewrites this list freely and nothing announces it.
 	 *
 	 * <p>Never throws. It runs from the event bus on the game thread, where an
 	 * exception becomes an uncaught plugin error on every tick.
@@ -73,41 +69,48 @@ class GeHistoryText
 			final Widget list = client.getWidget(InterfaceID.GeHistory.LIST);
 			if (list == null || list.isHidden() || !config.setupOverlay())
 			{
-				captions.clear();
+				reset();
 				return;
 			}
-			final List<Widget> rows = rowsOf(list);
-			if (rows.isEmpty())
+			final Widget[] children = list.getDynamicChildren();
+			if (children == null)
 			{
-				captions.clear();
+				reset();
 				return;
 			}
-			if (!ours(list))
+			int index = 0;
+			for (Widget icon : children)
 			{
-				// The client rebuilt the list, so what was made before is no
-				// longer in it. Anything held from then points at a widget
-				// nothing will draw.
-				captions.clear();
-			}
-			for (int i = 0; i < rows.size(); i++)
-			{
-				final Widget row = rows.get(i);
-				final Widget caption = i < captions.size() ? captions.get(i) : make(list);
-				if (caption == null)
+				if (index >= MAX_ROWS)
 				{
-					return;
+					break;
 				}
-				if (i >= captions.size())
+				if (icon == null || icon.getItemId() <= 0 || icon.isHidden())
 				{
-					captions.add(caption);
+					continue;
 				}
-				draw(list, row, caption);
+				final Widget text = textOn(children, icon);
+				if (text == null)
+				{
+					continue;
+				}
+				final Quote quote = quoteFor.apply(icon.getItemId());
+				final Appended row = index < rows.size() ? rows.get(index) : add();
+				if (quote == null)
+				{
+					// Nothing to say about this item, so its row is the game's.
+					row.clear();
+				}
+				else
+				{
+					row.to(text, "  " + textFor(quote));
+				}
+				index++;
 			}
-			// A list that got shorter leaves captions with no row to sit on.
-			for (int i = rows.size(); i < captions.size(); i++)
+			// A list that got shorter leaves rows with nothing to sit on.
+			for (int i = index; i < rows.size(); i++)
 			{
-				captions.get(i).setHidden(true);
-				captions.get(i).setText("");
+				rows.get(i).clear();
 			}
 		}
 		catch (RuntimeException e)
@@ -116,115 +119,98 @@ class GeHistoryText
 		}
 	}
 
-	/** Forgets the captions, for a screen that has closed or a plugin stopping. */
+	/** Puts every row back the way the game had it. */
 	void reset()
 	{
-		for (Widget caption : captions)
+		for (Appended row : rows)
 		{
 			try
 			{
-				caption.setHidden(true);
-				caption.setText("");
+				row.clear();
 			}
 			catch (RuntimeException e)
 			{
-				log.debug("could not clear a history caption", e);
+				log.debug("could not clear a history row", e);
 			}
 		}
-		captions.clear();
+	}
+
+	private Appended add()
+	{
+		final Appended row = new Appended();
+		rows.add(row);
+		return row;
 	}
 
 	/**
-	 * The rows of the list: its children that are drawing an item.
+	 * The line of text belonging to the row an item icon is on.
 	 *
-	 * <p>The captions this class adds are text rather than items, so they are
-	 * not mistaken for rows and the two lists stay the same length.
+	 * <p>A row is not one widget: it is an icon and one or more pieces of text
+	 * laid out beside it, and only their positions say which belong together.
+	 * The one taken is the last text that starts within the icon's own height,
+	 * which is the end of that row's sentence and so where something added to
+	 * it reads as part of it.
 	 */
-	private static List<Widget> rowsOf(Widget list)
+	@Nullable
+	private static Widget textOn(Widget[] children, Widget icon)
 	{
-		final List<Widget> rows = new ArrayList<>();
-		final Widget[] children = list.getDynamicChildren();
-		if (children == null)
-		{
-			return rows;
-		}
+		final int top = icon.getRelativeY();
+		final int bottom = top + Math.max(1, icon.getHeight());
+		Widget last = null;
 		for (Widget child : children)
 		{
-			if (child != null && child.getItemId() > 0 && !child.isHidden())
+			if (child == null || child == icon || child.isHidden() || child.getItemId() > 0)
 			{
-				rows.add(child);
+				continue;
+			}
+			final String text = child.getText();
+			if (text == null || text.isEmpty())
+			{
+				continue;
+			}
+			final int y = child.getRelativeY();
+			if (y < top || y >= bottom)
+			{
+				continue;
+			}
+			if (last == null || child.getRelativeX() > last.getRelativeX())
+			{
+				last = child;
 			}
 		}
-		return rows;
-	}
-
-	/** Whether the captions held are still children of the list that is up now. */
-	private boolean ours(Widget list)
-	{
-		return !captions.isEmpty() && captions.get(0).getParent() == list;
-	}
-
-	@Nullable
-	private Widget make(Widget list)
-	{
-		final Widget caption = list.createChild(-1, WidgetType.TEXT);
-		if (caption == null)
-		{
-			return null;
-		}
-		caption.setFontId(FontID.PLAIN_11);
-		caption.setTextShadowed(true);
-		// Right-aligned against the far edge of the list, opposite the item and
-		// its quantity, so it fills the space the row leaves rather than
-		// sitting on anything the row is already using.
-		caption.setXTextAlignment(WidgetTextAlignment.RIGHT);
-		// Along the bottom of the row, not down the middle of it. A row already
-		// has its own text through the middle, and a caption centred there
-		// lands on top of it.
-		caption.setYTextAlignment(WidgetTextAlignment.BOTTOM);
-		return caption;
-	}
-
-	/** Puts one caption on one row, saying nothing for an item with no price. */
-	private void draw(Widget list, Widget row, Widget caption)
-	{
-		final Quote quote = quoteFor.apply(row.getItemId());
-		final String text = quote == null ? "" : textFor(quote);
-		caption.setHidden(text.isEmpty());
-		caption.setText(text);
-		caption.setTextColor(quote == null ? 0 : colourFor(quote));
-		// The row's own place in the list, so the caption scrolls with it: the
-		// client offsets every child of a scrolling list by the same amount,
-		// and clips them all to the same viewport.
-		caption.setOriginalX(0);
-		caption.setOriginalY(row.getRelativeY());
-		caption.setOriginalWidth(Math.max(0, list.getWidth() - MARGIN));
-		caption.setOriginalHeight(Math.max(1, row.getHeight()));
-		caption.revalidate();
+		return last;
 	}
 
 	/**
-	 * What one row says: the two prices and the margin, which is what turns a
-	 * list of what you did into a list of what it would be worth doing again.
+	 * What one row gains: the two prices and the margin, which is what turns a
+	 * list of what you did into a list of what would be worth doing again.
+	 *
+	 * <p>Rounded rather than exact. A history row is already a sentence and
+	 * these go on the end of it; the exact figures belong on the screen where
+	 * a price is being typed, not on the one being read back.
 	 *
 	 * <p>Static, so the wording is pinned by a test rather than by running a
 	 * client.
 	 */
 	static String textFor(Quote quote)
 	{
-		return FlippingRsPanel.gp(quote.getBuyAt()) + " / " + FlippingRsPanel.gp(quote.getSellAt())
-			+ "  " + FlippingRsPanel.signed(quote.getNetMargin());
+		return colour("(", MUTED) + colour(FlippingRsPanel.gp(quote.getBuyAt()), MUTED)
+			+ colour(" / ", MUTED) + colour(FlippingRsPanel.gp(quote.getSellAt()), MUTED)
+			+ colour("  ", MUTED)
+			+ colour(FlippingRsPanel.signed(quote.getNetMargin()),
+				quote.getNetMargin() >= 0 ? GOOD : BAD)
+			+ colour(")", MUTED);
 	}
 
-	/** Green for a margin worth having, red for one that is not. */
-	static int colourFor(Quote quote)
+	/** One run of text in one colour, as the game's own text renderer reads it. */
+	static String colour(String text, String hex)
 	{
-		return quote.getNetMargin() >= 0 ? 0x4caf50 : 0xd32f2f;
+		return "<col=" + hex + ">" + text + "</col>";
 	}
 
-	/** How many captions are up, for a test that has a client. */
+	/** How many rows are being added to, for a test that has a client. */
 	int countForTest()
 	{
-		return captions.size();
+		return rows.size();
 	}
 }

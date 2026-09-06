@@ -1,51 +1,34 @@
 package com.flippingrs;
 
-import java.awt.Rectangle;
 import java.util.function.IntFunction;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.FontID;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetPositionMode;
-import net.runelite.api.widgets.WidgetSizeMode;
-import net.runelite.api.widgets.WidgetType;
 
 /**
- * The site's prices on the offer setup screen, written into the screen itself
- * rather than drawn on top of it.
+ * The site's prices on the offer setup screen, added to the screen's own text
+ * rather than drawn on top of it or placed beside it.
  *
- * <p>This is the one place in the exchange worth injecting into. It is a
- * single fixed layout with a build script to hang off, it is where the number
- * actually gets typed, and it has room below the game's own lines. Everywhere
- * else the plugin paints over the top, because a caption in the wrong place
- * after a game update is only ugly, whereas a widget in the wrong place can
- * cover something the player needed.
+ * <p>Put on the end of the item's description, which is the line that already
+ * sits between what the item is and how much of it you want. Appending to a
+ * line the client wrote means the screen positions it, sizes it, wraps it and
+ * clips it exactly as it does its own -- none of which has to be worked out
+ * here, or kept right as Jagex moves the screen. A widget of this plugin's own
+ * had to be placed, and a placement is a guess about somebody else's layout
+ * that goes stale without warning.
  *
- * <p>Nothing the game shows is replaced. The item's description, the guide
- * price and the tax are left exactly as they are and a line is added under the
- * description -- between what the item is and how much of it you want -- so a
- * player whose plugin is offline or whose item has no price loses nothing they
- * had before.
+ * <p>Nothing the game says is lost: the description keeps its text, the guide
+ * price and the tax are untouched, and the addition comes off again when the
+ * screen closes or the item has no price.
  *
  * <p>Client thread only. Widgets may not be touched from anywhere else.
  */
 @Slf4j
 class GeSetupText
 {
-	/**
-	 * How far under the item's description to sit, and how tall to be.
-	 *
-	 * <p>No gap: flush with the bottom of the description rather than below
-	 * it. The description's box already carries its own padding under the last
-	 * line of text, so anything added to that reads as the line having come
-	 * adrift from what it belongs to.
-	 */
-	private static final int GAP = 0;
-	private static final int LINE = 12;
-
 	/**
 	 * Past this, the age of the prices is called out rather than merely
 	 * stated. Five minutes: the site's data moves on a half-minute cadence, so
@@ -54,22 +37,18 @@ class GeSetupText
 	 */
 	private static final long STALE_SECONDS = 300;
 
-	/** The site's orange, for a line that is plainly not the game's. */
-	private static final int BRAND = 0xff981f;
-	private static final int GOOD = 0x4caf50;
-	private static final int BAD = 0xd32f2f;
-	private static final int MUTED = 0x9f9f9f;
+	/** Colours, written as the game's own text renderer reads them. */
+	private static final String MUTED = "9f9f9f";
+	private static final String VALUE = "ffffff";
+	private static final String GOOD = "4caf50";
+	private static final String BAD = "d32f2f";
 
 	private final Client client;
 	private final FlippingRsConfig config;
 	private final IntFunction<Quote> quoteFor;
 
-	/**
-	 * The line this plugin added, or null if it has not been added or the
-	 * client has since rebuilt the screen out from under it.
-	 */
-	@Nullable
-	private Widget line;
+	/** What has been added to the description, and what it said before. */
+	private final Appended line = new Appended();
 
 	GeSetupText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor)
 	{
@@ -79,29 +58,28 @@ class GeSetupText
 	}
 
 	/**
-	 * Puts the line where it belongs, making it if it is not there.
+	 * Brings the addition in line with the item being set up.
 	 *
-	 * <p>Called on every tick the exchange is open rather than only when the
-	 * client rebuilds the screen. The rebuild is hooked too, but hooking it is
-	 * an optimisation rather than the guarantee: a rebuild this does not know
-	 * about would otherwise leave the line gone for as long as the screen
-	 * stays open, and finding out about that needs a client running. Checking
-	 * that it is still there costs a widget lookup.
+	 * <p>Called every tick the screen is open. The client rewrites the
+	 * description whenever it rebuilds the screen, and {@link Appended} is what
+	 * tells a rewrite apart from the text this put there; noticing it here
+	 * rather than hooking every path that can do it is what stops a rebuild
+	 * nobody predicted leaving the line missing or doubled.
 	 *
 	 * <p>Never throws. It runs from the event bus on the game thread, where an
-	 * exception is logged as an uncaught plugin error on every tick.
+	 * exception becomes an uncaught plugin error on every tick.
 	 */
 	void update()
 	{
 		try
 		{
-			final Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
-			if (setup == null || setup.isHidden() || !config.setupOverlay())
+			final Widget description = client.getWidget(InterfaceID.GeOffers.SETUP_DESC);
+			if (description == null || description.isHidden() || !config.setupOverlay())
 			{
-				// The screen is gone, or the setting is off. The line goes with
-				// it: a price frozen at whatever it was, on a screen it no
-				// longer belongs to, is worse than no price.
-				hide();
+				// The screen is gone, or the setting is off. The addition goes
+				// with it: prices frozen at whatever they were, on a screen
+				// they no longer belong to, are worse than no prices.
+				line.clear();
 				return;
 			}
 			final int itemId = client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH);
@@ -109,12 +87,11 @@ class GeSetupText
 			if (quote == null)
 			{
 				// No price for this item, which is every item before the first
-				// fetch lands. An empty line is the honest rendering of that,
-				// and it leaves the screen exactly as the game drew it.
-				hide();
+				// fetch lands. The description goes back to being the game's.
+				line.clear();
 				return;
 			}
-			show(setup, quote);
+			line.to(description, "<br>" + textFor(quote));
 		}
 		catch (RuntimeException e)
 		{
@@ -123,196 +100,34 @@ class GeSetupText
 	}
 
 	/**
-	 * The client has just rebuilt the setup screen, which throws away any
-	 * child added to it. Rebuilding the line here rather than waiting for the
-	 * next tick is what stops it flickering as the screen is opened.
+	 * The client has just rebuilt the setup screen. {@link Appended} copes with
+	 * that on its own; doing it here as well is what stops the line flickering
+	 * as the screen opens.
 	 */
 	void rebuilt()
 	{
-		line = null;
 		update();
 	}
 
-	/** Forgets the line, for a screen that has closed or a plugin stopping. */
+	/** Puts the description back the way the game had it. */
 	void reset()
 	{
-		hide();
-		line = null;
-	}
-
-	private void hide()
-	{
-		if (line != null)
-		{
-			line.setHidden(true);
-			line.setText("");
-		}
-	}
-
-	/** Writes the two lines, making the widget first if it is not there. */
-	private void show(Widget setup, Quote quote)
-	{
-		final Widget target = lineOn(setup);
-		if (target == null)
-		{
-			return;
-		}
-		final Rectangle page = setup.getBounds();
-		final Widget description = client.getWidget(InterfaceID.GeOffers.SETUP_DESC);
-		final Rectangle above = description == null ? null : description.getBounds();
-		if (page == null || above == null || page.height <= 0 || above.height <= 0)
-		{
-			// Nothing has been laid out yet. The next tick tries again rather
-			// than putting the line at a guessed position for one frame.
-			return;
-		}
-		if (roomUnder(setup, page, above) < LINE)
-		{
-			// The line does not fit between the description and whatever the
-			// screen draws next. Drawing anyway would put it on top of the
-			// quantity buttons, which is worse than not drawing at all.
-			hide();
-			return;
-		}
-		target.setHidden(false);
-		target.setText(textFor(quote));
-		target.setTextColor(colourFor(quote));
-		place(page, above, target);
-		target.revalidate();
+		line.clear();
 	}
 
 	/**
-	 * Puts the line directly under the item's description, where the screen
-	 * goes from saying what the item is to asking how much of it you want.
+	 * What is added: the two prices and the margin, then the buy limit and how
+	 * old the prices are.
 	 *
-	 * <p>Measured against the description every time rather than set once,
-	 * because the description is the one part of this screen whose height is
-	 * not fixed: it wraps, so a long name or a long examine pushes everything
-	 * under it down. A line placed at a remembered offset would sit on top of
-	 * the description for exactly the items whose description is worth
-	 * reading.
+	 * <p>One line. It is going on the end of somebody else's, and the
+	 * description's box is only so tall. What qualifies the prices is folded
+	 * onto the end rather than dropped: the buy limit and the age are what say
+	 * whether the numbers before them can be trusted.
 	 *
-	 * <p>Both boxes come from the laid-out widgets rather than their declared
-	 * positions, which is what makes this work whether or not the description
-	 * is a direct child of the page. A frame that has not been laid out yet
-	 * gives no boxes, and the next tick tries again.
-	 */
-	private void place(Rectangle page, Rectangle above, Widget target)
-	{
-		final int x = Math.max(0, above.x - page.x);
-		final int y = under(page, above, GAP);
-		if (target.getOriginalX() == x && target.getOriginalY() == y)
-		{
-			return;
-		}
-		target.setOriginalX(x);
-		target.setOriginalY(y);
-		target.setOriginalHeight(LINE);
-		// As wide as the description, so a long line wraps where that one does
-		// rather than running off the side of the page.
-		target.setOriginalWidth(Math.max(0, page.width - 2 * x));
-		target.setWidthMode(WidgetSizeMode.ABSOLUTE);
-	}
-
-	/**
-	 * How much clear space there is between the description and whatever the
-	 * screen draws next under it.
-	 *
-	 * <p>Measured rather than assumed, because this line is being put into a
-	 * gap in somebody else's layout and that gap is theirs to change. Jagex
-	 * moves these screens; a height fixed here would be a line sitting on the
-	 * quantity buttons after an update, which is worse than the overlay this
-	 * replaced ever was -- paint can be read through, a widget cannot.
-	 *
-	 * <p>The line this class owns is skipped, or measuring it after it has
-	 * been placed would find it directly under the description and conclude
-	 * there was no room for it.
-	 */
-	private int roomUnder(Widget setup, Rectangle page, Rectangle above)
-	{
-		final int from = above.y + above.height;
-		int next = page.y + page.height;
-		for (Widget[] children : new Widget[][]{
-			setup.getStaticChildren(), setup.getDynamicChildren(), setup.getNestedChildren()})
-		{
-			if (children == null)
-			{
-				continue;
-			}
-			for (Widget child : children)
-			{
-				if (child == null || child == line || child.isHidden())
-				{
-					continue;
-				}
-				final Rectangle box = child.getBounds();
-				if (box == null || box.height <= 0 || box.y < from)
-				{
-					continue;
-				}
-				next = Math.min(next, box.y);
-			}
-		}
-		return next - from - GAP;
-	}
-
-	/**
-	 * How far down the page a line sitting under {@code above} begins.
-	 *
-	 * <p>Its own method so the arithmetic is pinned by a test: an off-by-one
-	 * here is a line drawn over the description or floating away from it, and
-	 * neither is visible without a client running.
-	 */
-	static int under(Rectangle page, Rectangle above, int gap)
-	{
-		return Math.max(0, above.y + above.height - page.y + gap);
-	}
-
-	/**
-	 * The line's widget, made if the screen does not have it.
-	 *
-	 * <p>A widget kept from before is only reused while it is still a child of
-	 * the screen that is up now. The client rebuilds this interface freely,
-	 * and a reference held across one of those points at a widget that is no
-	 * longer in the tree: writing to it does nothing visible and never
-	 * recovers.
-	 */
-	@Nullable
-	private Widget lineOn(Widget setup)
-	{
-		if (line != null && line.getParent() == setup)
-		{
-			return line;
-		}
-		line = setup.createChild(-1, WidgetType.TEXT);
-		if (line == null)
-		{
-			return null;
-		}
-		line.setFontId(FontID.PLAIN_11);
-		line.setTextShadowed(true);
-		// Down from the top of the page, because where it belongs is measured
-		// from the description above it; see place.
-		line.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
-		line.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
-		line.setOriginalHeight(LINE);
-		line.setHeightMode(WidgetSizeMode.ABSOLUTE);
-		line.revalidate();
-		return line;
-	}
-
-	/**
-	 * What the line says: the two prices and the margin, then the buy limit
-	 * and how old the prices are.
-	 *
-	 * <p>One line. It is going into a gap in somebody else's layout, and a gap
-	 * that takes one line is a much safer thing to assume than one that takes
-	 * two -- the taller this is, the likelier it is to reach the quantity
-	 * buttons under it. What qualifies the prices is folded onto the end
-	 * rather than dropped: the buy limit and the age are what say whether the
-	 * numbers before them can be trusted, and losing them to a tight layout
-	 * would leave the confident half on screen and the qualifying half
-	 * nowhere.
+	 * <p>Coloured with the colours themselves rather than with RuneLite's
+	 * {@code <colNORMAL>} tokens, which are only turned into colours for
+	 * message types it has a colour configured for and mean nothing at all to
+	 * a widget.
 	 *
 	 * <p>Static, so the wording is pinned by a test rather than by running a
 	 * client.
@@ -320,9 +135,11 @@ class GeSetupText
 	static String textFor(Quote quote)
 	{
 		final StringBuilder out = new StringBuilder();
-		out.append("Buy ").append(FlippingRsPanel.exact(quote.getBuyAt()))
-			.append("  Sell ").append(FlippingRsPanel.exact(quote.getSellAt()))
-			.append("  ").append(FlippingRsPanel.signedExact(quote.getNetMargin()));
+		out.append(colour("Buy ", MUTED)).append(colour(FlippingRsPanel.exact(quote.getBuyAt()), VALUE))
+			.append(colour("  Sell ", MUTED)).append(colour(FlippingRsPanel.exact(quote.getSellAt()), VALUE))
+			.append("  ").append(colour(FlippingRsPanel.signedExact(quote.getNetMargin()),
+				quote.getNetMargin() >= 0 ? GOOD : BAD));
+
 		final StringBuilder under = new StringBuilder();
 		if (quote.hasLimitLeft())
 		{
@@ -335,26 +152,21 @@ class GeSetupText
 		}
 		if (under.length() > 0)
 		{
-			out.append("  ·  ").append(under);
+			out.append(colour("  ·  " + under, stale(quote) ? BAD : MUTED));
 		}
 		return out.toString();
 	}
 
-	/**
-	 * The colour of the line: the margin's, unless the prices are old enough
-	 * that the margin is not worth trusting.
-	 */
-	static int colourFor(Quote quote)
+	/** One run of text in one colour, as the game's own text renderer reads it. */
+	static String colour(String text, String hex)
 	{
-		if (quote.getDataAgeSeconds() > STALE_SECONDS)
-		{
-			return MUTED;
-		}
-		if (quote.getNetMargin() == 0)
-		{
-			return BRAND;
-		}
-		return quote.getNetMargin() > 0 ? GOOD : BAD;
+		return "<col=" + hex + ">" + text + "</col>";
+	}
+
+	/** Whether the prices are old enough that the margin is not worth trusting. */
+	static boolean stale(Quote quote)
+	{
+		return quote.getDataAgeSeconds() > STALE_SECONDS;
 	}
 
 	/**
@@ -416,10 +228,10 @@ class GeSetupText
 		return minutes == 0 ? hours + "h" : hours + "h " + minutes + "m";
 	}
 
-	/** The line as it currently reads, for a test that has a client. */
+	/** The description as it now reads, for a test that has a client. */
 	@Nullable
 	String textForTest()
 	{
-		return line == null ? null : line.getText();
+		return line.textForTest();
 	}
 }
