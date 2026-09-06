@@ -200,7 +200,6 @@ public class FlippingRsPlugin extends Plugin
 	private GeHistoryText historyText;
 	private GeSlotText slotText;
 	private GeTooltipText tooltipText;
-	private GeSlotLayout slotLayout;
 	private ExaminePrices examinePrices;
 
 	// The collaborators. Built by wire(), from the fields above, once those
@@ -269,7 +268,6 @@ public class FlippingRsPlugin extends Plugin
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
 		slotText = new GeSlotText(client, config, this::watchedQuote);
 		tooltipText = new GeTooltipText(client, config, this::watchedQuote);
-		slotLayout = new GeSlotLayout(client, config);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
@@ -538,14 +536,6 @@ public class FlippingRsPlugin extends Plugin
 			final GeTooltipText tooltips = tooltipText;
 			clientThread.invoke(tooltips::reset);
 			tooltipText = null;
-		}
-		if (slotLayout != null)
-		{
-			// The exchange gets its own layout back; this is the one thing the
-			// plugin moves rather than adds to.
-			final GeSlotLayout layout = slotLayout;
-			clientThread.invoke(layout::reset);
-			slotLayout = null;
 		}
 		examinePrices = null;
 		if (infoOverlay != null)
@@ -935,13 +925,6 @@ public class FlippingRsPlugin extends Plugin
 		if (history != null)
 		{
 			history.update();
-		}
-		final GeSlotLayout layout = slotLayout;
-		if (layout != null)
-		{
-			// Before the text, so the line has somewhere to go on the tick the
-			// screen is first opened rather than the one after it.
-			layout.update();
 		}
 		final GeSlotText slots = slotText;
 		if (slots != null)

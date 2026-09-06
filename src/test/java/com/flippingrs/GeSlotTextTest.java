@@ -80,17 +80,13 @@ public class GeSlotTextTest
 	}
 
 	/**
-	 * Both prices are shown, and the difference is measured against the one
-	 * that applies to your side. A buy at or over the site's buy price is an
-	 * offer that will fill sooner, and is said in green.
+	 * The difference is measured against the price for your own side. A buy at
+	 * or over the site's buy price is an offer that will fill sooner, and is
+	 * said in green.
 	 *
-	 * <p>Showing only the side being traded left the slot unable to answer the
-	 * question after the one it was answering: a buy that has filled is a sale
-	 * about to be listed, and the price to list it at was the number missing.
-	 *
-	 * <p>Written short, because a box that already says what the item is and
-	 * which way it is going does not need the words "buy" and "sell" repeated
-	 * back at it. Which side is which is said in colour instead.
+	 * <p>Only the difference. An offer box has no room of its own to give, so
+	 * this goes on the end of a line the game already wrote -- and the one
+	 * thing the box cannot tell you is whether your price is still right.
 	 */
 	@Test
 	public void aBuyIsMeasuredAgainstTheSitesBuyPrice()
@@ -98,8 +94,8 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_485_000), whip());
 
 		assertNotNull(text);
-		assertEquals("both prices, and the difference against yours",
-			"1.48M/1.52M  +5.0K", plain(text));
+		assertEquals("how far your offer is from what that side is worth",
+			"  +5.0K", plain(text));
 		assertTrue(text, text.contains(GOOD));
 	}
 
@@ -110,7 +106,7 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip());
 
 		assertNotNull(text);
-		assertEquals("1.48M/1.52M  -10.0K", plain(text));
+		assertEquals("  -10.0K", plain(text));
 		assertTrue(text, text.contains(BAD));
 	}
 
@@ -125,36 +121,14 @@ public class GeSlotTextTest
 	{
 		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip());
 		assertNotNull(good);
-		assertEquals("1.48M/1.52M  +10.0K", plain(good));
+		assertEquals("  +10.0K", plain(good));
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
 			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip());
 		assertNotNull(optimistic);
-		assertEquals("1.48M/1.52M  -80.0K", plain(optimistic));
+		assertEquals("  -80.0K", plain(optimistic));
 		assertTrue(optimistic, optimistic.contains(BAD));
-	}
-
-	/**
-	 * A cheap item whose two ends round to the same words shows one figure.
-	 *
-	 * <p>"434gp/434gp -2gp" reads as a contradiction: the same number twice
-	 * beside a difference that says they are not the same. They are not -- the
-	 * spread is a coin or two and the words cannot show it -- so the words
-	 * stop trying.
-	 */
-	@Test
-	public void oneFigureWhenBothEndsReadTheSame()
-	{
-		final Quote karambwan = new Quote();
-		karambwan.id = 3144;
-		karambwan.instantSell = 434;
-		karambwan.instantBuy = 434;
-
-		final String text = GeSlotText.textFor(offerOn(3144, GrandExchangeOfferState.SELLING, 436), karambwan);
-
-		assertNotNull(text);
-		assertEquals("434gp  -2gp", plain(text));
 	}
 
 	/**

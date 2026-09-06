@@ -82,9 +82,11 @@ class GeSlotText
 					slots[slot].clear();
 					continue;
 				}
-				// One extra row, and the room for it. Without the room the row
-				// draws over whatever the box has under this line.
-				slots[slot].to(line, "<br>" + text, 1);
+				// On the end of the line rather than under it. A box that is
+				// exactly as tall as what the game put in it has no room for
+				// another row, and making room meant resizing Jagex's grid --
+				// which could not be made to hold still.
+				slots[slot].to(line, text);
 			}
 		}
 		catch (RuntimeException e)
@@ -132,14 +134,16 @@ class GeSlotText
 	 * What one slot gains: both of the site's prices, and how far your own
 	 * offer is from the one that applies to it.
 	 *
-	 * <p>Both prices, not only the side you are on. Showing one was a smaller
-	 * thing to read but it left the slot unable to answer the question after
-	 * the one it was answering: a buy that has filled is a sale about to be
-	 * listed, and the price it should be listed at was the number not shown.
+	 * <p>One number: how far your offer is from what the site says that side is
+	 * worth. An offer box is the smallest space in the exchange and it has no
+	 * room of its own to give -- this goes on the end of a line the game
+	 * already wrote, so what it says has to fit in what is left of it.
 	 *
-	 * <p>Written short. The box already says what the item is and which way it
-	 * is being traded, so naming the sides again would be repeating it back;
-	 * the one being traded is white and the other is grey.
+	 * <p>Which is the right number to keep. The box already tells you the item,
+	 * the side and your price; the one thing it cannot tell you is whether that
+	 * price is still the right one. The prices it is measured against are a
+	 * hover away on the same screen, and spelled out in full on the setup
+	 * screen where there is room for them.
 	 *
 	 * <p>The comparison is still against your own side, because that is the
 	 * only one your offer can be measured against.
@@ -183,19 +187,9 @@ class GeSlotText
 		// words "buy" and "sell" would be repeating the box back at itself, so
 		// the side being traded is picked out in white instead and the two
 		// prices stand on their own.
-		final String buyAt = FlippingRsPanel.gp(quote.getBuyAt());
-		final String sellAt = FlippingRsPanel.gp(quote.getSellAt());
-		// One figure when the two read the same. A cheap item's ends of the
-		// spread are often a coin or two apart and round to the same words,
-		// and "434gp/434gp" beside a difference of -2gp reads as a
-		// contradiction rather than as a narrow spread.
-		final String prices = buyAt.equals(sellAt)
-			? colour(buyAt, VALUE)
-			: colour(buyAt, buying ? VALUE : MUTED) + colour("/", MUTED)
-				+ colour(sellAt, buying ? MUTED : VALUE);
-		// Two spaces, not one. A single space between two numbers in the small
-		// font leaves them touching, and "434gp -2gp" read as one figure.
-		return prices + colour("  ", MUTED)
+		// Two spaces in front of it, so it does not run into whatever the game
+		// wrote on this line.
+		return colour("  ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}
 

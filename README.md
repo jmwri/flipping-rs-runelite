@@ -136,14 +136,14 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Each of your open offers gains a line too: both of the site's prices, and how
-far your own offer is from the one that applies to it — green when your offer
-is priced to fill sooner, red when it is priced to sit. Written short, because
-the box already says what the item is and which way you are trading it; the
-side being traded is picked out in white rather than named again. The boxes are
-made a little taller to hold the extra line, and the container and window round
-them grow to match — the only place the plugin moves the game's own furniture
-rather than adding to it. That is what an offer
+Each of your open offers gains one figure on the end of its own line: how far
+your price is from what the site says that side is worth — green when your
+offer is priced to fill sooner, red when it is priced to sit. One figure
+because an offer box is the smallest space in the exchange and has no room of
+its own to give. It is also the right one to keep: the box already tells you
+the item, the side and your price, and the only thing it cannot tell you is
+whether that price is still the right one. The prices behind it are a hover
+away on the same screen. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is
@@ -392,10 +392,10 @@ fills. Everything else is a collaborator it builds in `wire()`:
   fixed.
 - `GeHistoryText`, `GeSlotText` and `GeTooltipText` do the same for each row of
   the history, each of the eight offer boxes, and whichever hover text is up.
-  `GeSlotLayout` is the exception to all of this: it makes the offer boxes
-  taller, so it remembers what the client last laid out and works from that
-  rather than from the value it changed, and it gives the layout back on the
-  way out. All three work through `Appended`, which holds
+  Nothing here resizes anything: an earlier attempt made the offer boxes taller
+  to fit a second line, and it could not be made to hold still, because it
+  changed a layout and then read that same layout back as its own baseline.
+  Everything now fits in the room the game already leaves. All three work through `Appended`, which holds
   what a line said before and can tell the client rewriting it from the text it
   put there -- without which a line grows another copy of its prices every time
   the screen refreshes. `RowText` is how they find the line to add to, which is
