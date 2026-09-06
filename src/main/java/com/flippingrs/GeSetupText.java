@@ -1,5 +1,6 @@
 package com.flippingrs;
 
+import java.awt.Rectangle;
 import java.util.function.IntFunction;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
@@ -24,9 +25,10 @@ import net.runelite.api.widgets.WidgetType;
  * cover something the player needed.
  *
  * <p>Nothing the game shows is replaced. The item's description, the guide
- * price and the tax are left exactly as they are and a line is added under
- * them, so a player whose plugin is offline or whose item has no price loses
- * nothing they had before.
+ * price and the tax are left exactly as they are and a line is added under the
+ * description -- between what the item is and how much of it you want -- so a
+ * player whose plugin is offline or whose item has no price loses nothing they
+ * had before.
  *
  * <p>Client thread only. Widgets may not be touched from anywhere else.
  */
@@ -34,11 +36,11 @@ import net.runelite.api.widgets.WidgetType;
 class GeSetupText
 {
 	/**
-	 * How far below the game's last line to sit, and how tall to be. The
+	 * How far under the item's description to sit, and how tall to be. The
 	 * screen's own lines are eleven pixels apart, which is what the small font
 	 * gives; two lines and a gap is what this needs.
 	 */
-	private static final int GAP = 6;
+	private static final int GAP = 4;
 	private static final int LINE = 12;
 
 	/**
@@ -152,10 +154,117 @@ class GeSetupText
 		{
 			return;
 		}
+		final Rectangle page = setup.getBounds();
+		final Widget description = client.getWidget(InterfaceID.GeOffers.SETUP_DESC);
+		final Rectangle above = description == null ? null : description.getBounds();
+		if (page == null || above == null || page.height <= 0 || above.height <= 0)
+		{
+			// Nothing has been laid out yet. The next tick tries again rather
+			// than putting the line at a guessed position for one frame.
+			return;
+		}
+		final int room = roomUnder(setup, page, above);
+		if (room < LINE)
+		{
+			// Not even one line fits between the description and whatever the
+			// screen draws next. Drawing anyway would put this on top of the
+			// quantity buttons, which is worse than not drawing at all.
+			hide();
+			return;
+		}
 		target.setHidden(false);
-		target.setText(textFor(quote));
+		target.setText(textFor(quote, room >= LINE * 2));
 		target.setTextColor(colourFor(quote));
+		place(page, above, target, Math.min(LINE * 2, room));
 		target.revalidate();
+	}
+
+	/**
+	 * Puts the line directly under the item's description, where the screen
+	 * goes from saying what the item is to asking how much of it you want.
+	 *
+	 * <p>Measured against the description every time rather than set once,
+	 * because the description is the one part of this screen whose height is
+	 * not fixed: it wraps, so a long name or a long examine pushes everything
+	 * under it down. A line placed at a remembered offset would sit on top of
+	 * the description for exactly the items whose description is worth
+	 * reading.
+	 *
+	 * <p>Both boxes come from the laid-out widgets rather than their declared
+	 * positions, which is what makes this work whether or not the description
+	 * is a direct child of the page. A frame that has not been laid out yet
+	 * gives no boxes, and the next tick tries again.
+	 */
+	private void place(Rectangle page, Rectangle above, Widget target, int height)
+	{
+		final int x = Math.max(0, above.x - page.x);
+		final int y = under(page, above, GAP);
+		if (target.getOriginalX() == x && target.getOriginalY() == y
+			&& target.getOriginalHeight() == height)
+		{
+			return;
+		}
+		target.setOriginalX(x);
+		target.setOriginalY(y);
+		target.setOriginalHeight(height);
+		// As wide as the description, so a long line wraps where that one does
+		// rather than running off the side of the page.
+		target.setOriginalWidth(Math.max(0, page.width - 2 * x));
+		target.setWidthMode(WidgetSizeMode.ABSOLUTE);
+	}
+
+	/**
+	 * How much clear space there is between the description and whatever the
+	 * screen draws next under it.
+	 *
+	 * <p>Measured rather than assumed, because this line is being put into a
+	 * gap in somebody else's layout and that gap is theirs to change. Jagex
+	 * moves these screens; a height fixed here would be a line sitting on the
+	 * quantity buttons after an update, which is worse than the overlay this
+	 * replaced ever was -- paint can be read through, a widget cannot.
+	 *
+	 * <p>The line this class owns is skipped, or measuring it after it has
+	 * been placed would find it directly under the description and conclude
+	 * there was no room for it.
+	 */
+	private int roomUnder(Widget setup, Rectangle page, Rectangle above)
+	{
+		final int from = above.y + above.height;
+		int next = page.y + page.height;
+		for (Widget[] children : new Widget[][]{
+			setup.getStaticChildren(), setup.getDynamicChildren(), setup.getNestedChildren()})
+		{
+			if (children == null)
+			{
+				continue;
+			}
+			for (Widget child : children)
+			{
+				if (child == null || child == line || child.isHidden())
+				{
+					continue;
+				}
+				final Rectangle box = child.getBounds();
+				if (box == null || box.height <= 0 || box.y < from)
+				{
+					continue;
+				}
+				next = Math.min(next, box.y);
+			}
+		}
+		return next - from - GAP;
+	}
+
+	/**
+	 * How far down the page a line sitting under {@code above} begins.
+	 *
+	 * <p>Its own method so the arithmetic is pinned by a test: an off-by-one
+	 * here is a line drawn over the description or floating away from it, and
+	 * neither is visible without a client running.
+	 */
+	static int under(Rectangle page, Rectangle above, int gap)
+	{
+		return Math.max(0, above.y + above.height - page.y + gap);
 	}
 
 	/**
@@ -181,15 +290,12 @@ class GeSetupText
 		}
 		line.setFontId(FontID.PLAIN_11);
 		line.setTextShadowed(true);
-		// Placed against the bottom of the screen rather than a fixed offset
-		// from the top, so the game's own lines can grow -- a longer item
-		// description, another line of tax -- without this landing on them.
-		line.setOriginalX(GAP);
-		line.setOriginalY(GAP);
-		line.setYPositionMode(WidgetPositionMode.ABSOLUTE_BOTTOM);
-		line.setOriginalWidth(GAP * 2);
-		line.setWidthMode(WidgetSizeMode.MINUS);
+		// Down from the top of the page, because where it belongs is measured
+		// from the description above it; see place.
+		line.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
+		line.setYPositionMode(WidgetPositionMode.ABSOLUTE_TOP);
 		line.setOriginalHeight(LINE * 2);
+		line.setHeightMode(WidgetSizeMode.ABSOLUTE);
 		line.revalidate();
 		return line;
 	}
@@ -204,6 +310,20 @@ class GeSetupText
 	 * by running a client.
 	 */
 	static String textFor(Quote quote)
+	{
+		return textFor(quote, true);
+	}
+
+	/**
+	 * The same, on one line when the gap under the description will not take
+	 * two.
+	 *
+	 * <p>Folded together rather than dropped: the second line is the buy limit
+	 * and how old the prices are, which is what says whether the first line
+	 * can be trusted. Losing it silently to a tight layout would leave the
+	 * confident half on screen and the qualifying half nowhere.
+	 */
+	static String textFor(Quote quote, boolean twoLines)
 	{
 		final StringBuilder out = new StringBuilder();
 		out.append("Buy ").append(FlippingRsPanel.exact(quote.getBuyAt()))
@@ -221,7 +341,7 @@ class GeSetupText
 		}
 		if (under.length() > 0)
 		{
-			out.append("<br>").append(under);
+			out.append(twoLines ? "<br>" : "  ·  ").append(under);
 		}
 		return out.toString();
 	}

@@ -114,9 +114,16 @@ the game's own lines — not drawn on top of it. How much of the buy limit you
 have left appears too, if your plan tracks buy limits; an item that has never
 traded shows no age, rather than an age of nothing.
 
-Nothing the game shows is replaced. The item's description, the guide price and
-the tax are all left exactly as they are, so if the plugin is offline or the
-item has no price you lose nothing you had before.
+It sits directly under the item's description, between what the item is and how
+much of it you want. Nothing the game shows is replaced: the description, the
+guide price and the tax are all left exactly as they are, so if the plugin is
+offline or the item has no price you lose nothing you had before.
+
+The space it goes in is measured rather than assumed, since it is a gap in
+Jagex's layout and theirs to change. A gap too small for two lines gets one,
+with the buy limit and the price age folded onto the end of it; a gap too small
+for even one gets nothing, because a line on top of the quantity buttons would
+be worse than no line.
 
 The buy limit is counted from the trades your journal has, which is not
 necessarily every trade you have made: an item bought before you installed the
@@ -362,9 +369,11 @@ fills. Everything else is a collaborator it builds in `wire()`:
 - `GeSetupText` is the one thing that writes into a game interface rather than
   over it: the offer setup screen is a single fixed layout with a build script
   to hang off, it is where the number actually gets typed, and it has room
-  under the game's own lines. Everywhere else the plugin paints on top, because
-  a caption in the wrong place after a game update is only ugly, whereas a
-  widget in the wrong place can cover something the player needed.
+  under the item's description. Everywhere else the plugin paints on top,
+  because a caption in the wrong place after a game update is only ugly,
+  whereas a widget in the wrong place can cover something the player needed --
+  which is also why the space it goes in is measured every frame rather than
+  fixed.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
   click that asked, and one click answers one message.

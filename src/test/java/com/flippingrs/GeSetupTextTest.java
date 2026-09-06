@@ -1,5 +1,6 @@
 package com.flippingrs;
 
+import java.awt.Rectangle;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -97,6 +98,64 @@ public class GeSetupTextTest
 		losing.dataAgeSeconds = 30;
 		assertFalse("and a loss is not the colour of a profit",
 			GeSetupText.colourFor(losing) == GeSetupText.colourFor(fresh));
+	}
+
+	/**
+	 * Where the line begins: directly under the description, wherever that
+	 * ended up.
+	 *
+	 * <p>Measured against the description every frame rather than fixed,
+	 * because the description is the one part of this screen whose height is
+	 * not: it wraps, so a long name or a long examine pushes what follows
+	 * down. A remembered offset would sit on top of the description for
+	 * exactly the items whose description is worth reading.
+	 */
+	@Test
+	public void theLineBeginsUnderTheDescription()
+	{
+		final Rectangle page = new Rectangle(100, 200, 300, 250);
+		final Rectangle shortDesc = new Rectangle(110, 240, 280, 12);
+		final Rectangle wrapped = new Rectangle(110, 240, 280, 36);
+
+		// The description ends 52px into the page (240 + 12 - 200), so the line
+		// begins a gap below that.
+		assertEquals("just under a one-line description",
+			52 + 4, GeSetupText.under(page, shortDesc, 4));
+		assertEquals("and further down when it wrapped to three",
+			76 + 4, GeSetupText.under(page, wrapped, 4));
+	}
+
+	/** A description above the page cannot push the line off the top of it. */
+	@Test
+	public void theLineNeverStartsAboveThePage()
+	{
+		final Rectangle page = new Rectangle(100, 200, 300, 250);
+		final Rectangle above = new Rectangle(110, 100, 280, 12);
+
+		assertEquals(0, GeSetupText.under(page, above, 4));
+	}
+
+	/**
+	 * A gap too small for two lines gets one, with everything folded onto it.
+	 *
+	 * <p>Folded rather than dropped: the second line is the buy limit and how
+	 * old the prices are, which is what says whether the first line can be
+	 * trusted. Losing it silently to a tight layout would leave the confident
+	 * half on screen and the qualifying half nowhere.
+	 */
+	@Test
+	public void aTightGapFoldsTheSecondLineOntoTheFirst()
+	{
+		final Quote quote = whip();
+		quote.limitRemaining = 3412;
+		quote.dataAgeSeconds = 250;
+
+		final String folded = GeSetupText.textFor(quote, false);
+
+		assertFalse("no second line", folded.contains("<br>"));
+		assertTrue("but nothing is lost", folded.contains("Limit 3.4K"));
+		assertTrue(folded, folded.contains("Priced 4m ago"));
+		assertTrue(folded, folded.contains("Buy 1,480,000"));
 	}
 
 	@Test
