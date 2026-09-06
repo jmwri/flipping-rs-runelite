@@ -669,18 +669,28 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	/**
-	 * "10 sold · held 5h", or just "10 sold" for a flip whose timing was
-	 * recovered rather than watched.
+	 * "10 sold · held 5h", or "10 sold · recovered, time unknown" for a flip
+	 * the plugin found already done rather than watched happen.
 	 *
 	 * <p>A recovered leg carries the time it was found rather than the time it
 	 * happened, so its hold is not a duration anybody measured. The profit is
 	 * still real; only the clock is not, and a made-up "held 3d" beside a real
 	 * profit is the kind of figure somebody would plan around.
+	 *
+	 * <p>Said rather than left blank, and the server is the reason: this list
+	 * is ordered by when a lot was sold, and a recovered lot is adopted at the
+	 * moment it is found -- so recovered flips sort to the top and the first
+	 * card somebody sees is quite likely to be one of them. A card silently
+	 * missing a line every card under it has reads as a fault rather than as a
+	 * fact about that flip. The wording is the site's own, so the two do not
+	 * become two vocabularies for the same gap.
 	 */
 	static String closedHeld(ClosedPosition p)
 	{
 		final String sold = p.getSellQty() + " sold";
-		return p.isTimesKnown() ? sold + " · held " + hours(p.getHoursHeld()) : sold;
+		return p.isTimesKnown()
+			? sold + " · held " + hours(p.getHoursHeld())
+			: sold + " · recovered, time unknown";
 	}
 
 	/**
