@@ -51,16 +51,11 @@ class GeSlotLayout
 	private static final int SPARE = 8;
 
 	/**
-	 * Everything between a box and the window, innermost first. Each grows by
-	 * the total the rows gained, or the last row of boxes ends up behind the
-	 * frame instead of inside it.
+	 * How far up the tree to follow a box looking for whatever is cutting it
+	 * off. Four or five deep is the whole exchange; the cap is only there so a
+	 * tree that loops cannot take the game thread with it.
 	 */
-	private static final int[] AROUND = {
-		InterfaceID.GeOffers.INDEX,
-		InterfaceID.GeOffers.CONTENTS,
-		InterfaceID.GeOffers.FRAME,
-		InterfaceID.GeOffers.UNIVERSE,
-	};
+	private static final int ANCESTORS = 8;
 
 	private final Client client;
 	private final FlippingRsConfig config;
@@ -74,10 +69,29 @@ class GeSlotLayout
 	private int[] baseYMode;
 	@Nullable
 	private int[] baseHeightMode;
-	@Nullable
-	private int[] aroundHeight;
-	@Nullable
-	private int[] aroundHeightMode;
+	/**
+	 * The widgets above a box, and how much spare height each already had.
+	 *
+	 * <p>Read once with everything else. A container with room in it absorbs
+	 * the boxes growing and never passes it on, so what the window is finally
+	 * asked for is the growth less whatever the chain soaked up -- which is
+	 * usually far less than the growth itself, and is the difference between
+	 * three lines fitting and none of them fitting.
+	 */
+	private final List<Integer> chainSlack = new ArrayList<>();
+
+	/**
+	 * The widgets above a box that had to grow, and what they were.
+	 *
+	 * <p>Which ones those are is not known in advance and is not worth
+	 * guessing: a widget clips its children to itself, so the one that cuts a
+	 * taller box off is whichever ancestor is too short for it, and a list
+	 * written here is a list that is wrong the first time Jagex adds a layer.
+	 * They are found by following the box up instead.
+	 */
+	private final List<Widget> grown = new ArrayList<>();
+	private final List<Integer> grownHeight = new ArrayList<>();
+	private final List<Integer> grownMode = new ArrayList<>();
 
 	/**
 	 * How many rows of text the boxes were last made room for. Read by
@@ -138,6 +152,7 @@ class GeSlotLayout
 			}
 			final int afforded = afford(deepest);
 			final int extra = afforded * LINE;
+			Widget lowest = null;
 			for (int slot = 0; slot < widgets.length; slot++)
 			{
 				if (widgets[slot] == null || baseHeight[slot] < 0)
@@ -145,21 +160,92 @@ class GeSlotLayout
 					continue;
 				}
 				put(widgets[slot], baseY[slot] + rows[slot] * extra, baseHeight[slot] + extra);
+				lowest = widgets[slot];
 			}
-			for (int i = 0; i < AROUND.length; i++)
-			{
-				final Widget holder = client.getWidget(AROUND[i]);
-				if (holder != null && !holder.isHidden() && aroundHeight[i] >= 0)
-				{
-					grow(holder, aroundHeight[i] + deepest * extra);
-				}
-			}
+			// Whatever the boxes now stick out of, all the way up until
+			// something already has the room. That is the fix for the cutting
+			// off: it is never the box that clips, it is whatever holds it.
+			openOut(lowest);
 			rowsAfforded = afforded;
 		}
 		catch (RuntimeException e)
 		{
 			log.debug("could not make room in the offer boxes", e);
 		}
+	}
+
+	/**
+	 * Grows everything above a box that is now too short for what is in it.
+	 *
+	 * <p>A widget clips its children to its own bounds, so a box made taller
+	 * than the thing holding it is simply cut off at the bottom of it -- and
+	 * the same again one level up. Following the chain and giving each one
+	 * exactly the height its children now need fixes that wherever it is,
+	 * rather than where a list here guessed it would be.
+	 *
+	 * <p>It stops at the first one that already has the room, which is also
+	 * what keeps the window from growing when it does not have to: if a
+	 * container had slack in it, nothing outside that container ever hears
+	 * about this.
+	 */
+	private void openOut(@Nullable Widget from)
+	{
+		Widget child = from;
+		for (int depth = 0; depth < ANCESTORS && child != null; depth++)
+		{
+			final Widget parent = child.getParent();
+			if (parent == null || parent.getParent() == null)
+			{
+				// The root is the screen. Nothing here is worth doing to it.
+				return;
+			}
+			final int needed = extentOf(parent);
+			if (needed <= parent.getHeight())
+			{
+				// This one already holds what is in it, so nothing above it
+				// can be cutting anything off either.
+				return;
+			}
+			remember(parent);
+			parent.setHeightMode(WidgetSizeMode.ABSOLUTE);
+			parent.setOriginalHeight(needed);
+			if (parent.getScrollHeight() > 0)
+			{
+				// A container that scrolls clips to its scroll extent as well
+				// as to itself, and leaving that behind cuts off exactly the
+				// rows the extra height was for.
+				parent.setScrollHeight(Math.max(parent.getScrollHeight(), needed));
+				parent.revalidateScroll();
+			}
+			else
+			{
+				parent.revalidate();
+			}
+			child = parent;
+		}
+	}
+
+	/** How far down its own children reach, which is the height it needs. */
+	private static int extentOf(Widget parent)
+	{
+		int extent = 0;
+		for (Widget child : RowText.under(parent))
+		{
+			extent = Math.max(extent, child.getRelativeY() + child.getHeight());
+		}
+		return extent;
+	}
+
+	/** Keeps what a widget was, the first time it is touched. */
+	private void remember(Widget widget)
+	{
+		if (grown.contains(widget))
+		{
+			return;
+		}
+		grown.add(widget);
+		grownHeight.add(widget.getHeight());
+		grownMode.add(widget.getHeightMode());
 	}
 
 	/**
@@ -183,6 +269,49 @@ class GeSlotLayout
 		{
 			return 0;
 		}
+		final int room = screenRoom();
+		for (int lines = WANTED; lines >= 1; lines--)
+		{
+			if (reachesTheWindow(rows * lines * LINE) <= room)
+			{
+				return lines;
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * How much of a growth the window is actually asked for, once the
+	 * containers between have taken what they can hold.
+	 *
+	 * <p>This is what makes the difference between three lines and none: the
+	 * exchange has spare height inside it, and growth that a container absorbs
+	 * never reaches the window at all.
+	 */
+	private int reachesTheWindow(int growth)
+	{
+		int remaining = growth;
+		for (int slack : chainSlack)
+		{
+			remaining -= slack;
+			if (remaining <= 0)
+			{
+				return 0;
+			}
+		}
+		return remaining;
+	}
+
+	/**
+	 * How much taller the window can get before it runs off the screen.
+	 *
+	 * <p>It is centred, so height added to it goes half above and half below:
+	 * what can be afforded is twice the smaller of the two gaps, less a little
+	 * to keep it off the edge. Taking more than this is what cut the title off
+	 * the top and the bottom row of offers off the bottom.
+	 */
+	private int screenRoom()
+	{
 		final Widget frame = client.getWidget(InterfaceID.GeOffers.FRAME);
 		final java.awt.Rectangle bounds = frame == null ? null : frame.getBounds();
 		if (bounds == null || bounds.height <= 0)
@@ -190,11 +319,11 @@ class GeSlotLayout
 			return 0;
 		}
 		// The frame as the game had it, not as this may have already grown it.
-		final int height = aroundHeight[2] >= 0 ? aroundHeight[2] : bounds.height;
+		final int index = grown.indexOf(frame);
+		final int height = index >= 0 ? grownHeight.get(index) : bounds.height;
 		final int top = bounds.y + (bounds.height - height) / 2;
 		final int below = client.getCanvasHeight() - (top + height);
-		final int room = 2 * Math.min(top, below) - SPARE;
-		return Math.max(0, Math.min(WANTED, room / (rows * LINE)));
+		return Math.max(0, 2 * Math.min(top, below) - SPARE);
 	}
 
 	/**
@@ -232,15 +361,14 @@ class GeSlotLayout
 					box.revalidate();
 				}
 			}
-			for (int i = 0; i < AROUND.length; i++)
+			// Outermost first, so each is put back into something still big
+			// enough to hold it.
+			for (int i = grown.size() - 1; i >= 0; i--)
 			{
-				final Widget holder = client.getWidget(AROUND[i]);
-				if (holder != null && aroundHeight[i] >= 0)
-				{
-					holder.setHeightMode(aroundHeightMode[i]);
-					holder.setOriginalHeight(aroundHeight[i]);
-					holder.revalidate();
-				}
+				final Widget holder = grown.get(i);
+				holder.setHeightMode(grownMode.get(i));
+				holder.setOriginalHeight(grownHeight.get(i));
+				holder.revalidate();
 			}
 		}
 		catch (RuntimeException e)
@@ -288,24 +416,22 @@ class GeSlotLayout
 			// than remembering a screen of zeroes as the way it should be.
 			return false;
 		}
-		final int[] holders = new int[AROUND.length];
-		final int[] holderModes = new int[AROUND.length];
-		Arrays.fill(holders, -1);
-		for (int i = 0; i < AROUND.length; i++)
-		{
-			final Widget holder = client.getWidget(AROUND[i]);
-			if (holder != null && holder.getHeight() > 0)
-			{
-				holders[i] = holder.getHeight();
-				holderModes[i] = holder.getHeightMode();
-			}
-		}
 		baseY = y;
 		baseHeight = height;
 		baseYMode = yMode;
 		baseHeightMode = heightMode;
-		aroundHeight = holders;
-		aroundHeightMode = holderModes;
+		chainSlack.clear();
+		Widget child = widgets[0];
+		for (int depth = 0; depth < ANCESTORS && child != null; depth++)
+		{
+			final Widget parent = child.getParent();
+			if (parent == null || parent.getParent() == null)
+			{
+				break;
+			}
+			chainSlack.add(Math.max(0, parent.getHeight() - extentOf(parent)));
+			child = parent;
+		}
 		return true;
 	}
 
@@ -344,17 +470,6 @@ class GeSlotLayout
 		box.revalidate();
 	}
 
-	private static void grow(Widget holder, int height)
-	{
-		if (holder.getHeight() == height)
-		{
-			return;
-		}
-		holder.setHeightMode(WidgetSizeMode.ABSOLUTE);
-		holder.setOriginalHeight(height);
-		holder.revalidate();
-	}
-
 	/**
 	 * Which row each box is on, counting from the top.
 	 *
@@ -388,8 +503,10 @@ class GeSlotLayout
 		baseHeight = null;
 		baseYMode = null;
 		baseHeightMode = null;
-		aroundHeight = null;
-		aroundHeightMode = null;
+		grown.clear();
+		grownHeight.clear();
+		grownMode.clear();
+		chainSlack.clear();
 		rowsAfforded = 0;
 	}
 }
