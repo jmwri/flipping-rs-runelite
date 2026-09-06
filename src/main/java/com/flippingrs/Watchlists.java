@@ -52,6 +52,11 @@ final class Watchlists
 	private final Runnable reread;
 	/** Hands work to the net thread. */
 	private final Consumer<Runnable> netThread;
+	/**
+	 * Hands work to the net thread once a delay has passed. False if the
+	 * thread is gone, which is a shutdown rather than a failure.
+	 */
+	private final java.util.function.BiPredicate<Long, Runnable> netThreadLater;
 	/** Says what an examined item turned out to be worth. Net thread. */
 	private final java.util.function.IntConsumer examinedPriced;
 
@@ -120,9 +125,37 @@ final class Watchlists
 	/** The last item examined that had no price, or 0. */
 	private volatile int examinedItem;
 
-	/** Whether a fetch asked for by an examine is already on its way. */
-	private final java.util.concurrent.atomic.AtomicBoolean examineFetch =
+	/**
+	 * Whether a fetch that was asked for rather than waited for is already on
+	 * its way.
+	 *
+	 * <p>One at a time. Every prompt fetch asks for everything on screen
+	 * anyway, so a second one queued behind the first would ask the same
+	 * question again for no new answer -- and these come from the client
+	 * thread, where the events that trigger them can arrive several to a tick.
+	 */
+	private final java.util.concurrent.atomic.AtomicBoolean promptFetch =
 		new java.util.concurrent.atomic.AtomicBoolean();
+
+	/**
+	 * How long to leave a failed quote fetch before trying it again, and how
+	 * many times, before falling back on the ordinary refresh.
+	 *
+	 * <p>A doubling wait rather than a fixed one: the failures worth retrying
+	 * at all are a dropped connection, a proxy hiccup or a server restarting,
+	 * and the first of those clears in a second while the last takes closer to
+	 * a minute. Three tries spans both without turning a server that is
+	 * properly down into a client hammering it.
+	 */
+	private static final long RETRY_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+	private static final int RETRIES = 3;
+
+	/**
+	 * Tries left on the fetch that is failing. Net thread only -- the tick,
+	 * the prompt fetches and the retries all run on the one executor thread,
+	 * which is what makes this safe to keep unsynchronised.
+	 */
+	private int retriesLeft = RETRIES;
 
 	/**
 	 * Set once a server has said it has no per-item quote route, so the plugin
@@ -138,7 +171,9 @@ final class Watchlists
 
 	Watchlists(Client client, ItemManager itemManager, ClientThread clientThread, FlippingRsConfig config,
 		ProfileStore store, Supplier<FlippingRsApi> api, PanelUpdates panel, IntFunction<String> itemName,
-		Runnable reread, Consumer<Runnable> netThread, java.util.function.IntConsumer examinedPriced)
+		Runnable reread, Consumer<Runnable> netThread,
+		java.util.function.BiPredicate<Long, Runnable> netThreadLater,
+		java.util.function.IntConsumer examinedPriced)
 	{
 		this.client = client;
 		this.itemManager = itemManager;
@@ -150,6 +185,7 @@ final class Watchlists
 		this.itemName = itemName;
 		this.reread = reread;
 		this.netThread = netThread;
+		this.netThreadLater = netThreadLater;
 		this.examinedPriced = examinedPriced;
 	}
 
@@ -332,12 +368,23 @@ final class Watchlists
 		}
 		offerItems.clear();
 		offerItems.addAll(itemIds);
+		if (anythingUnpriced(itemIds))
+		{
+			fetchSoon();
+		}
 	}
 
 	/** The item on the offer setup screen, or 0 when it is not open. Client thread. */
 	void showingSetup(int itemId)
 	{
+		final int was = setupItem;
 		setupItem = itemId;
+		if (itemId > 0 && itemId != was && quoteFor(itemId) == null)
+		{
+			// The one screen where a price is about to be typed, so the wait
+			// for one is the wait that matters most.
+			fetchSoon();
+		}
 	}
 
 	/**
@@ -355,10 +402,42 @@ final class Watchlists
 	void showingExamined(int itemId)
 	{
 		examinedItem = itemId;
-		if (examineFetch.compareAndSet(false, true))
+		fetchSoon();
+	}
+
+	/**
+	 * Asks for the prices of whatever is on screen now, rather than on the
+	 * next refresh.
+	 *
+	 * <p>The refresh is every thirty seconds, which is the right cadence for
+	 * prices that are already showing and quite the wrong one for prices that
+	 * are not. Opening the collection box, or clicking into an offer, changes
+	 * what is on screen; without this the new items have no prices at all
+	 * until the tick comes round, and half a minute of nothing is
+	 * indistinguishable from the plugin being broken.
+	 *
+	 * <p>Only when something on screen actually has no price, so moving
+	 * between screens whose items are already priced costs no request.
+	 */
+	private void fetchSoon()
+	{
+		if (promptFetch.compareAndSet(false, true))
 		{
 			netThread.accept(this::fetchOnDemand);
 		}
+	}
+
+	/** Whether anything the exchange is showing has no price yet. */
+	private boolean anythingUnpriced(Set<Integer> itemIds)
+	{
+		for (int itemId : itemIds)
+		{
+			if (itemId > 0 && quoteFor(itemId) == null)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -372,7 +451,7 @@ final class Watchlists
 	 */
 	void fetchOnDemand()
 	{
-		examineFetch.set(false);
+		promptFetch.set(false);
 		if (quoteRouteMissing)
 		{
 			return;
@@ -425,6 +504,7 @@ final class Watchlists
 			{
 				onDemand = got;
 			}
+			retriesLeft = RETRIES;
 			// An examine that could not be answered on the spot is answered
 			// now, as its own line. Cleared either way: an item the server had
 			// no price for is not worth asking about again on every tick.
@@ -445,8 +525,39 @@ final class Watchlists
 		}
 		catch (IOException e)
 		{
-			// A price nobody asked for out loud. The next tick tries again.
+			// Worth another go before the refresh comes round. These prices
+			// are wanted now -- somebody has the exchange open in front of
+			// them -- and waiting out the full tick for a dropped connection
+			// looks exactly like the plugin having no prices for the item.
 			log.debug("could not fetch quotes for what the exchange is showing", e);
+			retry();
+		}
+	}
+
+	/**
+	 * Tries a failed fetch again shortly, if it has tries left.
+	 *
+	 * <p>Bounded, and it gives up quietly rather than noisily: the ordinary
+	 * refresh is still running and will pick the prices up on its next pass,
+	 * so a server that is genuinely down costs a few extra requests and then
+	 * nothing at all. Net thread.
+	 */
+	private void retry()
+	{
+		if (retriesLeft <= 0)
+		{
+			// Back to the tick, and back to a full allowance the next time
+			// something works. A run of failures should not leave the retry
+			// spent for the rest of the session.
+			retriesLeft = RETRIES;
+			return;
+		}
+		final long wait = RETRY_NANOS << (RETRIES - retriesLeft);
+		retriesLeft--;
+		if (!netThreadLater.test(wait, this::fetchOnDemand))
+		{
+			// The thread is gone, which is a shutdown. Nothing to retry into.
+			retriesLeft = RETRIES;
 		}
 	}
 

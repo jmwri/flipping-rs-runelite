@@ -163,9 +163,6 @@ public class FlippingRsPlugin extends Plugin
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
-	private net.runelite.client.ui.overlay.tooltip.TooltipManager tooltipManager;
-
-	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -268,7 +265,7 @@ public class FlippingRsPlugin extends Plugin
 		overlayManager.add(infoOverlay);
 		setupText = new GeSetupText(client, config, this::watchedQuote);
 		historyText = new GeHistoryText(client, config, this::watchedQuote);
-		tooltip = new GeTooltip(client, config, this::watchedQuote, tooltipManager);
+		tooltip = new GeTooltip(client, config, this::watchedQuote);
 		examinePrices = new ExaminePrices(client, config, chatMessageManager, this::watchedQuote,
 			itemId -> watchlists.showingExamined(itemId), this::itemName);
 
@@ -417,7 +414,7 @@ public class FlippingRsPlugin extends Plugin
 			() -> reads.afterSend(), () -> shuttingDown, recordedThisSession::get, this::notifyProblem);
 		watchlists = new Watchlists(client, itemManager, clientThread, config, store, () -> api, this::onPanel,
 			this::itemName, () -> reads.refresh(PanelReads.Tab.WATCHLISTS), work -> submit(sendExecutor, work),
-			this::examinedPriced);
+			this::scheduleOnce, this::examinedPriced);
 		catchUp = new CatchUp(client, config, store, () -> api, this::onPanel, this::itemName, sender::drain,
 			() -> reads.afterSend(), work -> submit(sendExecutor, work));
 		positions = new PositionActions(config, () -> api, this::onPanel, () -> reads.refresh(PanelReads.Tab.JOURNAL));
@@ -526,7 +523,12 @@ public class FlippingRsPlugin extends Plugin
 			clientThread.invoke(history::reset);
 			historyText = null;
 		}
-		tooltip = null;
+		if (tooltip != null)
+		{
+			final GeTooltip hover = tooltip;
+			clientThread.invoke(hover::reset);
+			tooltip = null;
+		}
 		examinePrices = null;
 		if (infoOverlay != null)
 		{
@@ -919,9 +921,9 @@ public class FlippingRsPlugin extends Plugin
 	}
 
 	/**
-	 * The tooltip follows the pointer rather than the tick, so it is offered on
-	 * every frame rather than six times a second. RuneLite clears the tooltips
-	 * it was given each frame, so this has to be one of them.
+	 * The hover box follows the pointer rather than the tick, so it is brought
+	 * up to date on every frame rather than six times a second. Nothing is
+	 * written unless what it would say has changed.
 	 */
 	@Subscribe
 	public void onBeforeRender(BeforeRender event)
