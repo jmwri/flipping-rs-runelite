@@ -69,7 +69,11 @@ for one journal. It opens on **Journal**.
   the top picks which. Each item shows the exact price you can buy and sell at
   right now, the profit per item after tax, the return on what you'd pay, the
   buy limit and the profit across one limit, and the day's volume, refreshed
-  every 30 seconds. If you have an offer on the item, that is shown too and
+  every 30 seconds. The volume travels with the prices now: it is on the
+  exchange's hover box, on both offer screens and on an examine line, because a
+  wide spread on an item that trades twice a day is not an opportunity — it is
+  the reason the spread is wide, and nothing the game shows says so. An item
+  the site has no volume for says nothing rather than saying none. If you have an offer on the item, that is shown too and
   updates as it fills. **Open** goes to the item's page on the site, **Remove**
   takes it off the watchlist, and **Find flips** opens the site's flip finder.
 - **Journal** is your most recent trades, as your journal has them — the site's

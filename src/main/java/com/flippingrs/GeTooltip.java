@@ -182,7 +182,8 @@ class GeTooltip
 	/**
 	 * What the box gains: the two prices, the margin, and -- when the item is
 	 * one you have an offer on -- how far your price is from the side you are
-	 * trading, then the buy limit and how old the prices are.
+	 * trading, then the buy limit, the day's volume and how old the prices
+	 * are.
 	 *
 	 * <p>A line each rather than one line of everything, because a price and
 	 * its label stop fitting together the moment the price is long: a hundred
@@ -237,6 +238,14 @@ class GeTooltip
 		if (quote.hasLimitLeft())
 		{
 			out.append("<br>").append(own).append("Limit ").append(GeOfferText.limitLeft(quote));
+		}
+		// How much of it moves in a day, which is what says whether a margin
+		// is one anybody can take. A wide spread on an item that trades twice
+		// a day is not an opportunity; it is the reason the spread is wide.
+		final String traded = FlippingRsPanel.volume(quote);
+		if (traded != null)
+		{
+			out.append("<br>").append(own).append("Volume ").append(traded);
 		}
 		final String age = GeOfferText.age(quote.getDataAgeSeconds());
 		if (age != null)
