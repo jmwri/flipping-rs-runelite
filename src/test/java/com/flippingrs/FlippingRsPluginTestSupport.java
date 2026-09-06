@@ -277,6 +277,30 @@ final class FlippingRsPluginTestSupport
 	}
 
 	/** The panel reads the plugin built in wire(). */
+	/**
+	 * The minute tick that re-reads the sidebar, run by hand. Scheduling it for
+	 * real would make a test wait a minute to find out what it does.
+	 */
+	void panelTick() throws Exception
+	{
+		reads().panelTick();
+		settleNet();
+	}
+
+	/**
+	 * Pretends the two account tabs were last read long ago.
+	 *
+	 * <p>They share a fifteen-second throttle with the sends, and a test that
+	 * wanted to see past it honestly would have to wait fifteen real seconds.
+	 * This is that wait, without it.
+	 */
+	void forgetWhenTheAccountTabsWereRead() throws Exception
+	{
+		final Field f = PanelReads.class.getDeclaredField("accountTabsRefreshedAt");
+		f.setAccessible(true);
+		f.setLong(reads(), Long.MIN_VALUE);
+	}
+
 	private PanelReads reads() throws Exception
 	{
 		final Field f = FlippingRsPlugin.class.getDeclaredField("reads");

@@ -225,6 +225,13 @@ public class FlippingRsPlugin extends Plugin
 	private File queueDir = new File(RuneLite.RUNELITE_DIR, "flippingrs");
 
 	private ScheduledFuture<?> quoteTask;
+
+	/**
+	 * Re-reads the sidebar on a timer while it is open, so figures that
+	 * changed somewhere else -- on the website, on another computer -- turn up
+	 * without the user having to trade to shake them loose.
+	 */
+	private ScheduledFuture<?> panelTask;
 	private int loggedInTick = -1;
 
 	/**
@@ -289,6 +296,8 @@ public class FlippingRsPlugin extends Plugin
 		scheduleSync();
 		quoteTask = sendExecutor.scheduleWithFixedDelay(reads::quotesTick,
 			QUOTE_REFRESH_SECONDS, QUOTE_REFRESH_SECONDS, TimeUnit.SECONDS);
+		panelTask = sendExecutor.scheduleWithFixedDelay(reads::panelTick,
+			PanelReads.panelRefreshSeconds(), PanelReads.panelRefreshSeconds(), TimeUnit.SECONDS);
 		submit(sendExecutor, reads::connect);
 	}
 
@@ -487,6 +496,11 @@ public class FlippingRsPlugin extends Plugin
 		{
 			quoteTask.cancel(false);
 			quoteTask = null;
+		}
+		if (panelTask != null)
+		{
+			panelTask.cancel(false);
+			panelTask = null;
 		}
 		// One last attempt, so someone who disables the plugin mid-session does
 		// not leave the evening's last few trades unsent. If it fails they are

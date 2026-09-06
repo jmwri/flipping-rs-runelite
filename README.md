@@ -99,14 +99,26 @@ for one journal. It opens on **Journal**.
   this is also where you put them back in the queue and try again, which is
   worth doing after fixing whatever the site was objecting to.
 
-Each tab that shows the site's answers says at its foot how old they are and
-what brings the next read: "Updated just now · next in 22s" on the watchlist,
-whose prices are the one thing on a clock, and "Updated 4m ago · next when you
-trade" on the rest, which are read when something happens rather than on a
-timer. A tab that has read nothing yet says nothing, and nothing counts down
-while the plugin is not reading at all — a countdown to a read that is not
-coming would be the most confident thing on a tab that has just said it is not
-reading.
+While the sidebar is open it re-reads itself every minute, and each tab says at
+its foot how old what it is showing is and when the next read is due: "Updated
+just now · next in 22s" on the watchlist, whose prices keep their own faster
+thirty-second clock, and "Updated 40s ago · next in 20s or on a trade"
+elsewhere. Both, because a trade you make now refreshes the journal now — the
+timer is the floor, not the only way.
+
+The minute exists for what happens somewhere else: a sale closed on the
+website, a plan bought, a journal traded on from another computer. Everything
+else the sidebar does follows from something you did in this client, so without
+it a sidebar left open beside a quiet exchange would show the same figures all
+evening. It runs only while the sidebar is on screen — three requests a minute
+against a limit of sixty that the sends and the prices draw on too, and none of
+them worth spending on a panel nobody has open — and a tick landing just after
+a trade was recorded reads nothing, because that trade has already refreshed
+the same rows.
+
+A tab that has read nothing yet says nothing, and nothing counts down while the
+plugin is not reading at all: a countdown to a read that is not coming would be
+the most confident thing on a tab that has just said it is not reading.
 
 Positions and Analytics are two tabs from one read: the server answers with the
 week and the open lots together, so keeping them apart costs no extra request.
@@ -495,7 +507,8 @@ One read per tab, each capped and unfilterable by design:
 - `GET /api/plugin/trades?accountId=`: the last eight recorded fills.
 - `GET /api/plugin/journal?accountId=&tzOffset=`: the week's summary and the
   open positions, marked to market. This and the one above are re-read after a
-  send and when the sidebar is opened, at most once every fifteen seconds. A
+  send, when the sidebar is opened, and every minute while it stays open, at
+  most once every fifteen seconds however many of those coincide. A
   send only re-reads them while the sidebar is open: they are a picture of a
   panel, so there is nothing to read them for while nobody can see it.
   Connecting, picking a journal and logging in on another character read them

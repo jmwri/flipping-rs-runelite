@@ -1340,6 +1340,86 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
+	 * The sidebar re-reads itself on its own timer, not only when this client
+	 * does something.
+	 *
+	 * <p>The reads that already existed all follow from something happening
+	 * here -- a trade recorded, the sidebar opened, a key entered. None of
+	 * them fires for a sale closed on the website, a plan changed, or a
+	 * journal traded on from another computer, so a sidebar left open beside a
+	 * quiet exchange showed the same figures all evening.
+	 */
+	@Test
+	public void theSidebarRereadsItselfOnATimer() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		support.showSidebar();
+		// Opening it read them a moment ago, and they share a fifteen-second
+		// throttle with the sends. A minute has passed by the time the tick
+		// that matters lands.
+		support.forgetWhenTheAccountTabsWereRead();
+		clearInvocations(support.api);
+
+		support.panelTick();
+
+		verify(support.api).trades(anyString(), any());
+		verify(support.api).journal(anyString(), any(), anyInt());
+		// And the key's own tab, where a plan bought on the website would show.
+		verify(support.api).account(anyString());
+	}
+
+	/**
+	 * And not while the sidebar is shut.
+	 *
+	 * <p>Three requests a minute against a budget of sixty that the sends and
+	 * the quotes draw on too, to redraw a panel nobody has open -- and a
+	 * flipper keeps the exchange open and the sidebar shut. Opening it reads
+	 * everything anyway.
+	 */
+	@Test
+	public void theTimerSpendsNothingWhileTheSidebarIsShut() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		support.showSidebar();
+		support.hideSidebar();
+		clearInvocations(support.api);
+
+		support.panelTick();
+
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+		verify(support.api, never()).account(anyString());
+	}
+
+	/**
+	 * A tick that lands just after a send has already re-read the tabs does
+	 * not read them again.
+	 *
+	 * <p>The two account tabs share one throttle with the sends for exactly
+	 * this reason. Left ungoverned, a trade at the wrong moment would cost
+	 * four requests for two tabs' worth of rows that had not changed in
+	 * between.
+	 */
+	@Test
+	public void aTickJustAfterASendDoesNotReadTheSameRowsTwice() throws Exception
+	{
+		support.chooseJournal("acct-1");
+		support.showSidebar();
+		when(support.api.submit(anyString(), anyString(), anyList())).thenReturn(new IngestResult());
+		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
+		fire(offer(GrandExchangeOfferState.BOUGHT, 4, 4_000_000));
+		support.drain();
+		support.settleNet();
+		clearInvocations(support.api);
+
+		support.panelTick();
+
+		// The send's own re-read is seconds old, so the throttle holds this one.
+		verify(support.api, never()).trades(anyString(), any());
+		verify(support.api, never()).journal(anyString(), any(), anyInt());
+	}
+
+	/**
 	 * A refusal on a partial refresh lands on the tabs those parts belong
 	 * to, and does not undo the send that triggered it.
 	 */
