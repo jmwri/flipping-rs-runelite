@@ -136,8 +136,8 @@ would be worth doing again. Adding to the row rather than drawing beside it is
 what makes it scroll and clip with the row, which on a scrolling list is the
 difference between a note that follows its row and one that does not.
 
-Point at an item anywhere else in the exchange and you get the same numbers in
-a tooltip: the item's name, the site's buy price, its sell price, the margin
+Point at an item anywhere else in the exchange and the game's own yellow hover
+box gains the same numbers: the site's buy price, its sell price, the margin
 between them after tax, the buy limit and how old the prices are. Buy above
 sell whichever way you are trading. If the item is one of your eight open
 offers, one more line says how far your own price is from the side you are
@@ -147,22 +147,27 @@ number you asked for is still the right one. Both prices rather than only your
 side, because a buy that has filled is a sale about to be listed, and the price
 to list it at is the other one.
 
-A tooltip rather than lines inside the boxes, and it took a while to get there.
-The offer boxes are the size the game made them; six goes at making one taller
-found six separate things that had to be made taller with it — the layer, the
-containers above it, the window, the border sprite, the tiling of that sprite —
-and each was only found by somebody looking at their screen. So the exchange is
-now left exactly as the game draws it, and the prices are shown beside the
-pointer instead, where they have as much room as they need because they are not
-inside anything. Prices are exact to the coin there, since a tooltip has room
-for that and these are numbers somebody is about to type.
+The game's box rather than one of the plugin's own, and rather than lines
+inside the offer boxes. The offer boxes are the size the game made them; six
+goes at making one taller found six separate things that had to be made taller
+with it — the layer, the containers above it, the window, the border sprite,
+the tiling of that sprite — and each was only found by somebody looking at
+their screen. The exchange is now left exactly as the game draws it. The hover
+box is the exception, and an easy one: it floats, so making it taller pushes
+nothing anywhere and nothing above it has to grow to match. It is also already
+the one thing on screen that is about the single item you are pointing at, and
+it already leads with that item's name, so the prices go underneath it rather
+than being announced again beside it. Two boxes for one pointer is one too
+many.
 
-It answers a question rather than announcing one, too. Eight boxes each
-carrying three lines is a wall of numbers about seven items nobody asked about;
-pointing at one is the moment somebody wants to know. The tooltip works on
-every screen `GeItems` knows — your offer boxes, an offer you have already
-placed, the history, the collection box, the price checker, the inventory
-beside it all, and a view-only exchange.
+The prices are exact to the coin there, since the box is made as tall and as
+wide as they need and these are numbers somebody is about to type. It answers a
+question rather than asking one, too: eight boxes each carrying three lines is
+a wall of numbers about seven items nobody asked about, and pointing at one is
+the moment somebody wants to know. It works wherever the exchange has a hover
+box — your offer boxes, the collection box, and another player's view-only
+exchange. The screens without one, which are grids of pictures and nothing
+else, still get the prices painted on the items themselves.
 
 All of those — the setup screen, your offers, your history and the hover text —
 are added to text the game already draws, so the game places, sizes, wraps and clips them.
@@ -409,17 +414,23 @@ fills. Everything else is a collaborator it builds in `wire()`:
   a geometric question rather than a structural one: an exchange screen is a
   flat bag of widgets, and what makes them a row is only that they were laid
   out at the same height.
-- `GeTooltip` shows the same numbers beside the pointer, on every screen
-  `GeItems` knows. It is what is left of a long attempt to put them inside the
-  offer boxes, and the lesson is worth keeping: the exchange's own furniture is
-  sized by the game and does not want to be resized. Making one box taller
-  needed the layer, the containers above it, the window, the border sprite and
-  that sprite's tiling all made taller too, each discovered only by looking at
-  a screenshot. A tooltip needs none of them. `GeSlotText` is all that survived
-  -- the arithmetic of how far your offer is from the site's price for the side
-  you are on, which is worth a test of its own because getting it backwards
-  would call every sensible offer badly priced by exactly the width of the
-  spread, and would do it in green.
+- `GeTooltip` puts the same numbers in the exchange's own hover box, and makes
+  the box big enough to hold them. It is what is left of a long attempt to put
+  them inside the offer boxes instead, and the lesson is worth keeping: the
+  exchange's furniture is sized by the game and does not want to be resized.
+  Making one offer box taller needed the layer, the containers above it, the
+  window, the border sprite and that sprite's tiling all made taller too, each
+  discovered only by looking at a screenshot. A hover box needs none of that,
+  because it floats: nothing above it has to grow with it and nothing below it
+  gets pushed. What still applies is the rule that came out of the same
+  episode -- a size is never read back after it has been changed, or the box
+  grows from its own growth -- so the client's dimensions are taken once, when
+  the client builds the box, and what was written last is remembered so a
+  rebuild can be told from this plugin's own work. `GeSlotText` is all that
+  survived of the rest: the arithmetic of how far your offer is from the site's
+  price for the side you are on, which is worth a test of its own because
+  getting it backwards would call every sensible offer badly priced by exactly
+  the width of the spread, and would do it in green.
 - `ExaminePrices` puts the same numbers on the end of an examine line. The
   message says nothing about which item it is for, so the item comes from the
   click that asked, and one click answers one message. Which click that is is
@@ -461,10 +472,22 @@ One read per tab, each capped and unfilterable by design:
 
 `GET /api/plugin/quote?itemId=` prices particular items, whether or not they
 are on a watchlist: what the watchlist read gives for a curated list, this
-gives for whatever the exchange happens to be showing. It is asked for at most
-once every thirty seconds and only while the exchange is open. A server that
-answers 404 is taken at its word and not asked again for the rest of the
-session, so an older flippingrs.com loses the extra prices and nothing else.
+gives for whatever the exchange happens to be showing. It refreshes every
+thirty seconds while the exchange is open, and is asked at once -- rather than
+waited for -- whenever a screen appears with something on it nobody has a price
+for. Thirty seconds is the right cadence for a price already on the screen and
+quite the wrong one for a price that is not: half a minute of blank where a
+number should be is indistinguishable from the plugin being broken. A screen
+whose items are all priced already costs no request.
+
+For the same reason a fetch that fails is tried again rather than left to the
+refresh: after two seconds, then four, then eight, and then given up on. The
+failures worth retrying are a dropped connection, which clears in a second, and
+a server coming back up, which takes closer to a minute; doubling covers both
+without turning a server that is properly down into a client hammering it. A
+server that answers 404 is taken at its word and not asked again for the rest
+of the session, so an older flippingrs.com loses the extra prices and nothing
+else.
 
 A quote carries `instantBuy` and `instantSell` — the two ends of the spread, and
 what the sidebar calls sell-at and buy-at — with `netMargin`, `roi`, `buyLimit`,
