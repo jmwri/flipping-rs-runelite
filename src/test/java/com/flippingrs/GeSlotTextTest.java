@@ -78,6 +78,10 @@ public class GeSlotTextTest
 	 * <p>Showing only the side being traded left the slot unable to answer the
 	 * question after the one it was answering: a buy that has filled is a sale
 	 * about to be listed, and the price to list it at was the number missing.
+	 *
+	 * <p>Written short, because a box that already says what the item is and
+	 * which way it is going does not need the words "buy" and "sell" repeated
+	 * back at it. Which side is which is said in colour instead.
 	 */
 	@Test
 	public void aBuyIsMeasuredAgainstTheSitesBuyPrice()
@@ -86,7 +90,7 @@ public class GeSlotTextTest
 
 		assertNotNull(text);
 		assertEquals("both prices, and the difference against yours",
-			"Buy 1.48M  Sell 1.52M  +5.0K", plain(text));
+			"1.48M/1.52M +5.0K", plain(text));
 		assertTrue(text, text.contains(GOOD));
 	}
 
@@ -97,7 +101,7 @@ public class GeSlotTextTest
 		final String text = GeSlotText.textFor(offer(GrandExchangeOfferState.BUYING, 1_470_000), whip());
 
 		assertNotNull(text);
-		assertEquals("Buy 1.48M  Sell 1.52M  -10.0K", plain(text));
+		assertEquals("1.48M/1.52M -10.0K", plain(text));
 		assertTrue(text, text.contains(BAD));
 	}
 
@@ -112,13 +116,13 @@ public class GeSlotTextTest
 	{
 		final String good = GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_510_000), whip());
 		assertNotNull(good);
-		assertEquals("Buy 1.48M  Sell 1.52M  +10.0K", plain(good));
+		assertEquals("1.48M/1.52M +10.0K", plain(good));
 		assertTrue(good, good.contains(GOOD));
 
 		final String optimistic =
 			GeSlotText.textFor(offer(GrandExchangeOfferState.SELLING, 1_600_000), whip());
 		assertNotNull(optimistic);
-		assertEquals("Buy 1.48M  Sell 1.52M  -80.0K", plain(optimistic));
+		assertEquals("1.48M/1.52M -80.0K", plain(optimistic));
 		assertTrue(optimistic, optimistic.contains(BAD));
 	}
 

@@ -138,7 +138,11 @@ difference between a note that follows its row and one that does not.
 
 Each of your open offers gains a line too: both of the site's prices, and how
 far your own offer is from the one that applies to it — green when your offer
-is priced to fill sooner, red when it is priced to sit. That is what an offer
+is priced to fill sooner, red when it is priced to sit. Written short, because
+the box already says what the item is and which way you are trading it; the
+side being traded is picked out in white rather than named again. The boxes are
+made a little taller to hold the extra line, which is the only place the plugin
+moves the game's own furniture rather than adding to it. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is
@@ -386,7 +390,11 @@ fills. Everything else is a collaborator it builds in `wire()`:
   which is also why the space it goes in is measured every frame rather than
   fixed.
 - `GeHistoryText`, `GeSlotText` and `GeTooltipText` do the same for each row of
-  the history, each of the eight offer boxes, and whichever hover text is up. All three work through `Appended`, which holds
+  the history, each of the eight offer boxes, and whichever hover text is up.
+  `GeSlotLayout` is the exception to all of this: it makes the offer boxes
+  taller, so it remembers what the client last laid out and works from that
+  rather than from the value it changed, and it gives the layout back on the
+  way out. All three work through `Appended`, which holds
   what a line said before and can tell the client rewriting it from the text it
   put there -- without which a line grows another copy of its prices every time
   the screen refreshes. `RowText` is how they find the line to add to, which is

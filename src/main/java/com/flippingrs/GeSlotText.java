@@ -135,6 +135,10 @@ class GeSlotText
 	 * the one it was answering: a buy that has filled is a sale about to be
 	 * listed, and the price it should be listed at was the number not shown.
 	 *
+	 * <p>Written short. The box already says what the item is and which way it
+	 * is being traded, so naming the sides again would be repeating it back;
+	 * the one being traded is white and the other is grey.
+	 *
 	 * <p>The comparison is still against your own side, because that is the
 	 * only one your offer can be measured against.
 	 *
@@ -172,13 +176,15 @@ class GeSlotText
 		// where the profit is and also where an offer can sit all evening --
 		// so it is stated rather than judged.
 		final long edge = buying ? offer.getPrice() - market : market - offer.getPrice();
-		// The side being traded is named first, so which of the two the
-		// difference is measured against is on the line rather than implied.
-		return colour("Buy ", buying ? VALUE : MUTED)
-			+ colour(FlippingRsPanel.gp(quote.getBuyAt()), buying ? VALUE : MUTED)
-			+ colour("  Sell ", buying ? MUTED : VALUE)
+		// Short: an offer box is the smallest space any of this goes in, and it
+		// already says what the item is and which way you are trading it. The
+		// words "buy" and "sell" would be repeating the box back at itself, so
+		// the side being traded is picked out in white instead and the two
+		// prices stand on their own.
+		return colour(FlippingRsPanel.gp(quote.getBuyAt()), buying ? VALUE : MUTED)
+			+ colour("/", MUTED)
 			+ colour(FlippingRsPanel.gp(quote.getSellAt()), buying ? MUTED : VALUE)
-			+ colour("  ", MUTED)
+			+ colour(" ", MUTED)
 			+ colour(FlippingRsPanel.signed(edge), edge >= 0 ? GOOD : BAD);
 	}
 
