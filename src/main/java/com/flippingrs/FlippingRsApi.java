@@ -154,7 +154,7 @@ public class FlippingRsApi
 		return read(apiKey, url("api", "plugin", "account").newBuilder());
 	}
 
-	/** The Trades tab: the journal's newest fills for an account. Null parts without one. */
+	/** The Journal tab: the journal's newest fills for an account. Null parts without one. */
 	public PanelData trades(String apiKey, @Nullable String accountId) throws IOException
 	{
 		final HttpUrl.Builder url = url("api", "plugin", "trades").newBuilder();

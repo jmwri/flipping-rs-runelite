@@ -60,24 +60,10 @@ problem than a full key would be. Plugin keys are available on every plan.
 
 ## The sidebar
 
-Five tabs:
+Six tabs, named and ordered the way flippingrs.com names and orders its own
+screens, so moving between the site and the sidebar is not two vocabularies
+for one journal. It opens on **Journal**.
 
-- **Activity** is what the plugin itself is doing: how many trades it has
-  recorded this session, how many are waiting to be sent, when it last sent,
-  and the trades still waiting to go out. Anything about recording, such as
-  a trade the site could not accept, is reported here. If any were set aside,
-  this is also where you can put them back in the queue and try again, which
-  is worth doing after fixing whatever the site was objecting to.
-- **Trades** is your most recent trades, as your journal has them.
-- **Journal** is your last seven days, with profit, number of flips, win rate
-  and gp per hour, and everything you are currently holding: what you paid,
-  the price a sale lists at and what an instant sale would get, your profit or
-  loss so far, the price you need to sell at to break even, and a warning when
-  something has sat for much longer than it usually takes to flip. Each
-  position has **Close**, to record a sale at a price you enter, and
-  **Delete**, for a lot that was never a flip, such as supplies you bought to
-  use, so later sales of that item are not counted against it. Delete asks
-  first, and your recorded trades are kept either way.
 - **Watchlists** shows one of your flippingrs.com watchlists; the dropdown at
   the top picks which. Each item shows the exact price you can buy and sell at
   right now, the profit per item after tax, the return on what you'd pay, the
@@ -85,8 +71,30 @@ Five tabs:
   every 30 seconds. If you have an offer on the item, that is shown too and
   updates as it fills. **Open** goes to the item's page on the site, **Remove**
   takes it off the watchlist, and **Find flips** opens the site's flip finder.
+- **Journal** is your most recent trades, as your journal has them — the site's
+  Journal page, which is the ledger rather than the analysis.
+- **Positions** is everything you are currently holding: what you paid, the
+  price a sale lists at and what an instant sale would get, your profit or loss
+  so far, the price you need to sell at to break even, and a warning when
+  something has sat for much longer than it usually takes to flip. Each
+  position has **Close**, to record a sale at a price you enter, and
+  **Delete**, for a lot that was never a flip, such as supplies you bought to
+  use, so later sales of that item are not counted against it. Delete asks
+  first, and your recorded trades are kept either way.
+- **Analytics** is your last seven days: profit, number of flips, win rate and
+  gp per hour.
 - **Account** is whether the plugin is connected, which plan you are on, and
   which journal this character uses.
+- **Activity** is the one tab with no page on the site, because it is about
+  this computer rather than your journal: how many trades the plugin has
+  recorded this session, how many are waiting to be sent, when it last sent,
+  and the trades still waiting to go out. Anything about recording, such as a
+  trade the site could not accept, is reported here. If any were set aside,
+  this is also where you put them back in the queue and try again, which is
+  worth doing after fixing whatever the site was objecting to.
+
+Positions and Analytics are two tabs from one read: the server answers with the
+week and the open lots together, so keeping them apart costs no extra request.
 
 ## In the Grand Exchange
 

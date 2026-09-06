@@ -342,7 +342,7 @@ public class FlippingRsPanelTest
 			panel.setPaused("Recording is off.");
 			assertEquals("Recording is off.", panel.pausedForTest());
 
-			panel.setActivity(Collections.emptyList());
+			panel.setRecentTrades(Collections.emptyList());
 			assertNull(panel.pausedForTest());
 		});
 	}
@@ -361,17 +361,17 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			panel.selectTabForTest("Trades");
+			panel.selectTabForTest("Journal");
 			panel.setPaused("Recording is off.");
 			assertEquals("Recording is off.", panel.journalSummaryForTest());
-			assertTrue(textOnTab(panel, "Trades").contains("Recording is off."));
+			assertTrue(textOnTab(panel, "Journal").contains("Recording is off."));
 
 			panel.setWatchlistItems(Collections.emptyList());
 
 			assertNull(panel.pausedForTest());
 			assertEquals("Not loaded yet.", panel.journalSummaryForTest());
 			assertFalse("Trades stopped saying nothing was being read",
-				textOnTab(panel, "Trades").contains("Recording is off."));
+				textOnTab(panel, "Journal").contains("Recording is off."));
 		});
 	}
 
@@ -525,7 +525,7 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			assertEquals("Activity", panel.selectedTabForTest());
+			assertEquals("Journal", panel.selectedTabForTest());
 
 			final Positions open = new Positions();
 			final Position whip = new Position();
@@ -540,17 +540,17 @@ public class FlippingRsPanelTest
 			assertEquals("the position is held, so the tab has it when it is shown",
 				Arrays.asList(4151), panel.positionsForTest());
 			assertEquals("but nothing is built for a tab nobody is looking at",
-				0, panel.drawnRowsForTest("Journal"));
+				0, panel.drawnRowsForTest("Positions"));
 
-			panel.selectTabForTest("Journal");
+			panel.selectTabForTest("Positions");
 
 			assertTrue("selecting it builds what it missed",
-				panel.drawnRowsForTest("Journal") > 0);
+				panel.drawnRowsForTest("Positions") > 0);
 
 			// And a later change while it is showing is drawn straight away.
 			open.positions = new ArrayList<>();
 			panel.setJournal(new Analytics(), open);
-			assertEquals(0, panel.drawnRowsForTest("Journal"));
+			assertEquals(0, panel.drawnRowsForTest("Positions"));
 		});
 	}
 
@@ -568,20 +568,20 @@ public class FlippingRsPanelTest
 			tx.quantity = 4;
 			tx.itemName = "Abyssal whip";
 			tx.grossValue = 3_800_000;
-			panel.setActivity(Arrays.asList(tx));
+			panel.setRecentTrades(Arrays.asList(tx));
 			panel.setPending(Arrays.asList(tx));
 			panel.setWatchlists(Arrays.asList(watchlist("wl_1", "Plan")), "wl_1");
 			panel.setWatchlistItems(Arrays.asList(
 				new FlippingRsPanel.WatchedItem(4151, "Abyssal whip", null, 1_500_000, 70, 0, null, quote(4151))));
 
-			// Activity is the tab on show, so its buffer list is already built.
-			assertTrue(panel.drawnRowsForTest("Activity") > 0);
-			assertEquals(0, panel.drawnRowsForTest("Trades"));
+			// Journal is the tab on show, so its rows are already built.
+			assertTrue(panel.drawnRowsForTest("Journal") > 0);
+			assertEquals(0, panel.drawnRowsForTest("Activity"));
 			assertEquals(0, panel.drawnRowsForTest("Watchlists"));
 
-			panel.selectTabForTest("Trades");
-			assertTrue("the recorded trade appears when its tab does",
-				panel.drawnRowsForTest("Trades") > 0);
+			panel.selectTabForTest("Activity");
+			assertTrue("the waiting trade appears when its tab does",
+				panel.drawnRowsForTest("Activity") > 0);
 
 			panel.selectTabForTest("Watchlists");
 			assertTrue("and so does the watched item",
@@ -735,18 +735,71 @@ public class FlippingRsPanelTest
 		assertEquals("59m", FlippingRsPanel.hours(0.99));
 	}
 
-	// ------------------------------------------------------------------ tabs
-
+	/**
+	 * The site keeps the week's numbers and the open lots on two pages, and so
+	 * does the sidebar now -- but the server still answers with both in one
+	 * read, so the split costs no second request. One read has to fill both
+	 * tabs, and a read that failed has to be admitted on both: a tab that
+	 * silently kept the last good answer would be a stale journal presented as
+	 * a current one.
+	 */
 	@Test
-	public void thePanelOpensOnActivityAndHasTheFiveTabs() throws Exception
+	public void oneJournalReadFillsBothTabsAndOneFailureIsOwnedByBoth() throws Exception
 	{
 		onEdt(() ->
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			assertEquals("Activity", panel.selectedTabForTest());
 
-			for (String tab : new String[]{"Trades", "Journal", "Watchlists", "Account", "Activity"})
+			final Analytics week = new Analytics();
+			week.completedFlips = 12;
+			week.realisedProfit = 1_200_000;
+			final Positions open = new Positions();
+			final Position whip = new Position();
+			whip.itemId = 4151;
+			whip.remainingQty = 10;
+			open.positions = Arrays.asList(whip);
+			open.summary = new Positions.Summary();
+			open.summary.openPositions = 1;
+
+			panel.setJournal(week, open);
+
+			assertTrue("the week lands on Analytics",
+				panel.journalSummaryForTest().contains("12"));
+			assertEquals("and the lots land on Positions",
+				Arrays.asList(4151), panel.positionsForTest());
+			assertTrue("which says how many are open",
+				panel.openPositionsTextForTest().contains("1 open"));
+
+			panel.setJournalProblem("This API key is scoped to the RuneLite plugin.");
+
+			assertTrue("Analytics says so", panel.journalSummaryForTest().contains("scoped"));
+			assertTrue("and Positions says so too", panel.openPositionsTextForTest().contains("scoped"));
+			assertTrue("and drops the lots it can no longer vouch for",
+				panel.positionsForTest().isEmpty());
+		});
+	}
+
+	// ------------------------------------------------------------------ tabs
+
+	/**
+	 * The six tabs are the site's screens, under the site's names, in the
+	 * site's order -- so that moving between flippingrs.com and the sidebar is
+	 * not two vocabularies for one journal.
+	 *
+	 * <p>It opens on Journal, which is what somebody came to look at. Activity
+	 * is where you go when something looks wrong.
+	 */
+	@Test
+	public void thePanelOpensOnTheJournalAndCarriesTheSitesSixTabs() throws Exception
+	{
+		onEdt(() ->
+		{
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			assertEquals("Journal", panel.selectedTabForTest());
+
+			for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 			{
 				panel.selectTabForTest(tab);
 				assertEquals(tab, panel.selectedTabForTest());
@@ -755,12 +808,12 @@ public class FlippingRsPanelTest
 	}
 
 	/**
-	 * Four text tabs are wider than the sidebar in one row. The layout that
+	 * Six text tabs are wider than the sidebar in one row. The layout that
 	 * wrapped them silently hid the last two, so the strip's width is pinned
 	 * to what the panel actually has.
 	 */
 	@Test
-	public void allFourTabsFitTheSidebar() throws Exception
+	public void allSixTabsFitTheSidebar() throws Exception
 	{
 		onEdt(() ->
 		{
@@ -942,12 +995,12 @@ public class FlippingRsPanelTest
 			tx.itemName = "<html><b>whip</b>";
 			tx.grossValue = 5;
 			tx.occurredAt = "2026-08-31T16:10:12.482Z";
-			panel.setActivity(Collections.singletonList(tx));
+			panel.setRecentTrades(Collections.singletonList(tx));
 			panel.setWatchlistItems(Collections.singletonList(new FlippingRsPanel.WatchedItem(
 				4151, "<html><b>whip</b>", null, 10, 70, 5, "<html>buying", quote(4151))));
 			panel.setActivityNotice("<html><i>notice</i>", Color.WHITE);
 
-			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 			{
 				panel.selectTabForTest(tab);
 				final Container wrapped = panel.getWrappedPanel();
@@ -999,14 +1052,14 @@ public class FlippingRsPanelTest
 				tx.occurredAt = "2026-08-31T12:00:00Z";
 				rows.add(tx);
 			}
-			panel.setActivity(rows);
+			panel.setRecentTrades(rows);
 
 			final List<String> lines = panel.recentForTest();
 			assertEquals(FlippingRsPanel.RECENT_SHOWN, lines.size());
 			assertTrue("the server's first row is the top line: " + lines.get(0), lines.get(0).contains("Item 19"));
 
 			// A later read replaces, rather than accumulates.
-			panel.setActivity(Collections.emptyList());
+			panel.setRecentTrades(Collections.emptyList());
 			assertTrue(panel.recentForTest().isEmpty());
 		});
 	}
@@ -1169,7 +1222,7 @@ public class FlippingRsPanelTest
 			// Fixed instant, well away from now, with the nanoseconds a Go
 			// server writes.
 			tx.occurredAt = "2026-08-31T04:05:06.123456789Z";
-			panel.setActivity(Collections.singletonList(tx));
+			panel.setRecentTrades(Collections.singletonList(tx));
 
 			// Compare against the same instant rendered in this machine's zone,
 			// rather than a hardcoded hour -- otherwise the test passes or
@@ -1281,7 +1334,7 @@ public class FlippingRsPanelTest
 				tx.quantity = numbers[random.nextInt(numbers.length)];
 				tx.grossValue = numbers[random.nextInt(numbers.length)];
 				tx.occurredAt = new String[]{null, "", "not a time", "2026-08-31T16:10:12.482Z"}[random.nextInt(4)];
-				panel.setActivity(Collections.singletonList(tx));
+				panel.setRecentTrades(Collections.singletonList(tx));
 				panel.setPending(Collections.singletonList(tx));
 
 				final Position p = new Position();
@@ -1316,7 +1369,7 @@ public class FlippingRsPanelTest
 				panel.setStatus(names[random.nextInt(names.length)], Color.WHITE);
 				panel.setActivityNotice(names[random.nextInt(names.length)], Color.WHITE);
 
-				for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+				for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 				{
 					panel.selectTabForTest(tab);
 					final Container wrapped = panel.getWrappedPanel();
@@ -1347,12 +1400,12 @@ public class FlippingRsPanelTest
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 
-			panel.selectTabForTest("Trades");
-			panel.setActivityProblem("the site is having a moment");
+			panel.selectTabForTest("Journal");
+			panel.setRecentTradesProblem("the site is having a moment");
 			assertTrue("the Trades tab: " + drawnText(panel),
 				drawnText(panel).contains("the site is having a moment"));
 
-			panel.selectTabForTest("Journal");
+			panel.selectTabForTest("Positions");
 			panel.setJournalProblem("the site is having a moment");
 			assertTrue("the Journal tab: " + drawnText(panel),
 				drawnText(panel).contains("the site is having a moment"));
@@ -1416,7 +1469,7 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			panel.selectTabForTest("Trades");
+			panel.selectTabForTest("Journal");
 			final GeTransaction tx = new GeTransaction();
 			tx.itemId = 4151;
 			tx.itemName = "Abyssal whip";
@@ -1424,9 +1477,9 @@ public class FlippingRsPanelTest
 			tx.quantity = 25;
 			tx.grossValue = 30_864_175L;
 			tx.occurredAt = "2026-08-31T16:10:12.482Z";
-			panel.setActivity(Collections.singletonList(tx));
+			panel.setRecentTrades(Collections.singletonList(tx));
 
-			final String card = cardText(panel, "Trades", "Abyssal whip");
+			final String card = cardText(panel, "Journal", "Abyssal whip");
 
 			assertTrue("what happened: " + card, card.contains("Bought 25 for 30,864,175"));
 			assertTrue("and when, in the card's own wording: " + card,
@@ -1576,7 +1629,7 @@ public class FlippingRsPanelTest
 			assertTrue(panel.pendingForTest().isEmpty());
 
 			// Fills arrive while the user is looking at another tab.
-			panel.selectTabForTest("Journal");
+			panel.selectTabForTest("Positions");
 			final GeTransaction tx = new GeTransaction();
 			tx.side = "buy";
 			tx.quantity = 25;
@@ -1601,7 +1654,7 @@ public class FlippingRsPanelTest
 	 * <p>RuneLite's tabs reset their own border every time one is picked or
 	 * dropped, so the panel sets its own back afterwards. Without that every
 	 * tab looks the same and there is nothing on screen saying which of the
-	 * five is being shown.
+	 * six is being shown.
 	 */
 	@Test
 	public void theTabBeingLookedAtIsTheOneThatLooksSelected() throws Exception
@@ -1610,13 +1663,13 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			for (String name : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			for (String name : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 			{
 				panel.selectTabForTest(name);
 
 				final List<MaterialTab> tabs = new ArrayList<>();
 				collectTabs(panel.getWrappedPanel(), tabs);
-				assertEquals("all five tabs", 5, tabs.size());
+				assertEquals("all six tabs", 6, tabs.size());
 
 				final List<MaterialTab> others = new ArrayList<>();
 				MaterialTab chosen = null;
@@ -1676,14 +1729,14 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			panel.selectTabForTest("Journal");
+			panel.selectTabForTest("Positions");
 			panel.setJournal(new Analytics(), holding(position()));
-			final Component[] first = panel.cardsForTest("Journal");
+			final Component[] first = panel.cardsForTest("Positions");
 			assertTrue("expected a card", first.length > 0);
 
 			panel.setJournal(new Analytics(), holding(position()));
 
-			assertSame("the same card, not a rebuilt one", first[0], panel.cardsForTest("Journal")[0]);
+			assertSame("the same card, not a rebuilt one", first[0], panel.cardsForTest("Positions")[0]);
 		});
 	}
 
@@ -1716,7 +1769,7 @@ public class FlippingRsPanelTest
 			{
 				final TestPanelActions actions = new TestPanelActions();
 				final FlippingRsPanel panel = new FlippingRsPanel(actions);
-				panel.selectTabForTest("Journal");
+				panel.selectTabForTest("Positions");
 				panel.setJournal(new Analytics(), holding(position()));
 
 				final Position changed = position();
@@ -1746,16 +1799,16 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			panel.selectTabForTest("Journal");
+			panel.selectTabForTest("Positions");
 			panel.setJournal(new Analytics(), holding(position()));
-			final Component first = panel.cardsForTest("Journal")[0];
+			final Component first = panel.cardsForTest("Positions")[0];
 
 			final Position other = position();
 			other.id = "p2";
 			panel.setJournal(new Analytics(), holding(other));
 
 			assertNotSame("a card whose buttons close the wrong lot", first,
-				panel.cardsForTest("Journal")[0]);
+				panel.cardsForTest("Positions")[0]);
 		});
 	}
 
@@ -1834,7 +1887,7 @@ public class FlippingRsPanelTest
 			fillWithWideContent(panel);
 
 			final List<String> clipped = new ArrayList<>();
-			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 			{
 				panel.selectTabForTest(tab);
 				final Container wrapped = panel.getWrappedPanel();
@@ -1870,7 +1923,7 @@ public class FlippingRsPanelTest
 
 			final List<String> wasteful = new ArrayList<>();
 			int checked = 0;
-			for (String tab : new String[]{"Activity", "Trades", "Journal", "Watchlists", "Account"})
+			for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
 			{
 				panel.selectTabForTest(tab);
 				final Container wrapped = panel.getWrappedPanel();
@@ -1981,7 +2034,7 @@ public class FlippingRsPanelTest
 		tx.grossValue = 2_147_483_647L;
 		tx.estimated = true;
 		tx.occurredAt = "2026-08-31T16:10:12.482Z";
-		panel.setActivity(Collections.singletonList(tx));
+		panel.setRecentTrades(Collections.singletonList(tx));
 		panel.setPending(Collections.singletonList(tx));
 
 		final Quote q = quote(4151);
