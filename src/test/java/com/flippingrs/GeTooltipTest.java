@@ -23,8 +23,11 @@ import static org.mockito.Mockito.when;
  */
 public class GeTooltipTest
 {
-	private static final String GOOD = "4caf50";
-	private static final String BAD = "d32f2f";
+	private static final String GOOD = "0b6b1f";
+	private static final String BAD = "9b1c1c";
+
+	/** The colour the exchange writes its hover box in: near-black on yellow. */
+	private static final int BOX_TEXT = 0x1a1a1a;
 
 	/** The lines without their colours; the colours are asserted separately. */
 	private static String[] lines(String text)
@@ -60,7 +63,7 @@ public class GeTooltipTest
 	@Test
 	public void anItemWithNoOfferOnItGetsThePrices()
 	{
-		final String[] lines = lines(GeTooltip.textFor(whip(), null));
+		final String[] lines = lines(GeTooltip.textFor(whip(), null, BOX_TEXT));
 
 		assertEquals(4, lines.length);
 		assertEquals("Buy 1,480,000", lines[0]);
@@ -74,7 +77,7 @@ public class GeTooltipTest
 	@Test
 	public void theNameIsLeftToTheBoxThatAlreadySaysIt()
 	{
-		assertFalse(GeTooltip.textFor(whip(), null).contains("Abyssal whip"));
+		assertFalse(GeTooltip.textFor(whip(), null, BOX_TEXT).contains("Abyssal whip"));
 	}
 
 	/**
@@ -86,13 +89,13 @@ public class GeTooltipTest
 	public void yourOwnOfferIsMeasuredAgainstYourOwnSide()
 	{
 		final String buying = GeTooltip.textFor(whip(),
-			offer(GrandExchangeOfferState.BUYING, 1_485_000));
+			offer(GrandExchangeOfferState.BUYING, 1_485_000), BOX_TEXT);
 		assertEquals("a buy over the site's buy price fills sooner",
 			"Yours +5,000", lines(buying)[3]);
 		assertTrue(buying, buying.contains(GOOD));
 
 		final String selling = GeTooltip.textFor(whip(),
-			offer(GrandExchangeOfferState.SELLING, 1_600_000));
+			offer(GrandExchangeOfferState.SELLING, 1_600_000), BOX_TEXT);
 		assertEquals("and a sale over its sell price will sit",
 			"Yours -80,000", lines(selling)[3]);
 		assertTrue(selling, selling.contains(BAD));
@@ -106,7 +109,7 @@ public class GeTooltipTest
 		quote.limitRemaining = 3412;
 		quote.dataAgeSeconds = 250;
 
-		final String[] lines = lines(GeTooltip.textFor(quote, null));
+		final String[] lines = lines(GeTooltip.textFor(quote, null, BOX_TEXT));
 
 		assertEquals(5, lines.length);
 		assertEquals("Limit 3.4K", lines[3]);
@@ -120,7 +123,7 @@ public class GeTooltipTest
 		final Quote quote = whip();
 		quote.dataAgeSeconds = -1;
 
-		final String text = GeTooltip.textFor(quote, null);
+		final String text = GeTooltip.textFor(quote, null, BOX_TEXT);
 
 		assertFalse(text, text.contains("Limit"));
 		assertFalse(text, text.contains("Priced"));
@@ -149,12 +152,12 @@ public class GeTooltipTest
 	{
 		assertEquals("one line takes no extra row",
 			0, GeTooltip.Grown.rowsIn("Buy 1"));
-		assertEquals(3, GeTooltip.Grown.rowsIn(GeTooltip.textFor(whip(), null)));
+		assertEquals(3, GeTooltip.Grown.rowsIn(GeTooltip.textFor(whip(), null, BOX_TEXT)));
 
 		final Quote quote = whip();
 		quote.limitRemaining = 3412;
 		assertEquals("a limit is another row to find room for",
-			4, GeTooltip.Grown.rowsIn(GeTooltip.textFor(quote, null)));
+			4, GeTooltip.Grown.rowsIn(GeTooltip.textFor(quote, null, BOX_TEXT)));
 	}
 
 	/**
@@ -165,6 +168,36 @@ public class GeTooltipTest
 	public void aColourTagIsNotPartOfTheLineItColours()
 	{
 		assertEquals("Margin +32,000",
-			GeTooltip.Grown.plain("<col=9f9f9f>Margin <col=4caf50>+32,000"));
+			GeTooltip.Grown.plain("<col=1a1a1a>Margin <col=0b6b1f>+32,000"));
+	}
+
+	/**
+	 * The plain lines are written in whatever colour the box itself uses.
+	 *
+	 * <p>Not the sidebar's palette, which is built for pale text on a dark
+	 * panel and is the exact opposite of this box: its white came out
+	 * invisible on the yellow, which is a poor showing for the two prices.
+	 * Reading the colour off the line being added to also survives Jagex
+	 * recolouring the box.
+	 */
+	@Test
+	public void thePlainLinesTakeTheColourTheBoxAlreadyUses()
+	{
+		final String text = GeTooltip.textFor(whip(), null, 0x1a1a1a);
+
+		assertTrue(text, text.contains("<col=1a1a1a>Buy "));
+		assertTrue("and Sell, and everything that is a value rather than a verdict",
+			text.contains("<col=1a1a1a>Sell "));
+		assertFalse("the sidebar's white is nowhere near it", text.contains("ffffff"));
+	}
+
+	/** A colour is written as six hex digits, whatever the client hands over. */
+	@Test
+	public void aColourIsAlwaysSixDigits()
+	{
+		assertEquals("black is not the empty string", "<col=000000>", GeTooltip.colour(0));
+		assertEquals("<col=0b6b1f>", GeTooltip.colour(0x0b6b1f));
+		assertEquals("and whatever the client has in the high byte is not a colour",
+			"<col=ffff9b>", GeTooltip.colour(0xff_ffff9b));
 	}
 }
