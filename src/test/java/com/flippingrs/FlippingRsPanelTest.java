@@ -511,6 +511,164 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** A flip that is over: what it made, after the exchange took its cut. */
+	private static ClosedPosition sold(int itemId, String name, long buy, long sell, long profit)
+	{
+		final ClosedPosition p = new ClosedPosition();
+		p.id = "lot-" + itemId;
+		p.itemId = itemId;
+		p.itemName = name;
+		p.buyPrice = buy;
+		p.buyQty = 10;
+		p.sellPrice = sell;
+		p.sellQty = 10;
+		p.taxPaid = 12_000;
+		p.netProfit = profit;
+		p.roi = 0.022;
+		p.hoursHeld = 5;
+		p.timesKnown = true;
+		return p;
+	}
+
+	private static ClosedPositions closedWith(ClosedPosition... lots)
+	{
+		final ClosedPositions closed = new ClosedPositions();
+		closed.positions = Arrays.asList(lots);
+		closed.summary = new ClosedPositions.Summary();
+		closed.summary.closedPositions = lots.length;
+		for (ClosedPosition p : lots)
+		{
+			closed.summary.realisedProfit += p.netProfit;
+			closed.summary.taxPaid += p.taxPaid;
+		}
+		return closed;
+	}
+
+	/**
+	 * A server that has never heard of closed positions must not be reported
+	 * as a journal with none in it.
+	 *
+	 * <p>This is the whole reason the part is read separately from the week
+	 * and the open lots. An older flippingrs.com leaves it out of the reply
+	 * altogether, and a section reading "No closed positions yet" would then
+	 * be telling somebody with a year of finished flips that they have never
+	 * finished one -- a confident answer to a question nobody asked the
+	 * server.
+	 */
+	@Test
+	public void aServerThatSendsNoClosedLotsHasNoClosedSection() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+
+			panel.setJournal(new Analytics(), new Positions());
+
+			assertFalse("nothing is claimed about closed lots", panel.closedSectionShownForTest());
+			assertTrue(panel.closedPositionsForTest().isEmpty());
+		});
+	}
+
+	/** And one that sends an empty list does say so, because it would know. */
+	@Test
+	public void aServerThatSendsAnEmptyListSaysThereAreNone() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+
+			panel.setClosedPositions(closedWith());
+
+			assertTrue(panel.closedSectionShownForTest());
+			assertEquals("No closed positions yet.", plainText(panel.closedSummaryForTest()));
+		});
+	}
+
+	/** The finished lots and what they came to. */
+	@Test
+	public void theClosedLotsAreShownWithTheirTotals() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+
+			panel.setClosedPositions(closedWith(
+				sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000),
+				sold(1540, "Dragon kiteshield", 100, 90, -140)));
+
+			assertEquals(Arrays.asList(4151, 1540), panel.closedPositionsForTest());
+			final String summary = plainText(panel.closedSummaryForTest());
+			assertTrue(summary, summary.contains("2 closed"));
+			assertTrue("the totals are of the cards under them, abbreviated as the open line is: "
+				+ summary, summary.contains("+319.9K"));
+		});
+	}
+
+	/**
+	 * The two lists redraw on their own signatures.
+	 *
+	 * <p>An open lot is marked to market on every read, so the open list
+	 * changes constantly while the closed one almost never does -- and a
+	 * finished flip's figures cannot change at all. Sharing one signature
+	 * would rebuild every closed card every thirty seconds for nothing, which
+	 * on the Swing thread is the client's frame rate.
+	 */
+	@Test
+	public void aClosedListIsNotRebuiltBecauseAnOpenPriceMoved() throws Exception
+	{
+		onEdt(() ->
+		{
+			final FlippingRsPanel panel = new FlippingRsPanel(new TestPanelActions());
+			panel.selectTabForTest("Positions");
+			panel.setClosedPositions(closedWith(sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000)));
+			final Component[] before = panel.closedCardsForTest();
+			assertEquals(2, panel.drawnClosedRowsForTest());
+
+			// A read where only the open side moved.
+			final Positions open = new Positions();
+			final Position whip = new Position();
+			whip.itemId = 4151;
+			whip.currentSell = 1_530_000;
+			open.positions = Arrays.asList(whip);
+			open.summary = new Positions.Summary();
+			panel.setJournal(new Analytics(), open);
+
+			assertSame("the same card, not a rebuilt one", before[0], panel.closedCardsForTest()[0]);
+		});
+	}
+
+	/**
+	 * A flip whose timing was recovered rather than watched shows no hold.
+	 *
+	 * <p>The recovered leg carries the time it was found, not the time it
+	 * happened. The profit is real; the clock is not, and "held 3d" beside a
+	 * real profit is exactly the sort of figure somebody would plan around.
+	 */
+	@Test
+	public void aRecoveredFlipShowsNoHoldTime()
+	{
+		final ClosedPosition watched = sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000);
+		assertEquals("10 sold · held 5h", FlippingRsPanel.closedHeld(watched));
+
+		final ClosedPosition recovered = sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000);
+		recovered.timesKnown = false;
+		assertEquals("10 sold", FlippingRsPanel.closedHeld(recovered));
+	}
+
+	/** What a closed card says, to the coin. */
+	@Test
+	public void aClosedCardShowsBothEndsAndTheTax()
+	{
+		final ClosedPosition p = sold(4151, "Abyssal whip", 1_480_000, 1_520_000, 320_000);
+
+		assertEquals("Bought 1,480,000 · Sold 1,520,000", FlippingRsPanel.closedPrices(p));
+		assertEquals("P&L +320,000 (2.2%) · tax 12,000", FlippingRsPanel.closedResult(p));
+
+		p.taxPaid = 0;
+		assertEquals("a flip that paid none does not say so",
+			"P&L +320,000 (2.2%)", FlippingRsPanel.closedResult(p));
+	}
+
 	/**
 	 * A tab that is off screen does not build its list, and building it is the
 	 * expensive part of this panel: every line is a wrapped HTML label that
@@ -2127,7 +2285,12 @@ public class FlippingRsPanelTest
 
 	private static String plain(JLabel label)
 	{
-		final String text = label.getText();
+		return plainText(label.getText());
+	}
+
+	/** A wrapped label's words, without the HTML that makes it wrap. */
+	private static String plainText(String text)
+	{
 		return text == null ? "" : text.replaceAll("<[^>]*>", "").trim();
 	}
 }

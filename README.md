@@ -81,7 +81,11 @@ for one journal. It opens on **Journal**.
   position has **Close**, to record a sale at a price you enter, and
   **Delete**, for a lot that was never a flip, such as supplies you bought to
   use, so later sales of that item are not counted against it. Delete asks
-  first, and your recorded trades are kept either way.
+  first, and your recorded trades are kept either way. Underneath, **Closed
+  positions** lists the flips you have finished and what each one made after
+  tax, with the totals for the lots shown. The section only appears if the site
+  sends them, so an older flippingrs.com shows the open book exactly as it did
+  before rather than a heading claiming you have never closed anything.
 - **Analytics** is your last seven days: profit, number of flips, win rate and
   gp per hour.
 - **Account** is whether the plugin is connected, which plan you are on, and
@@ -490,6 +494,41 @@ One read per tab, each capped and unfilterable by design:
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
   for the items of one of them. Re-read every thirty seconds for the quotes,
   while the sidebar or the exchange is open.
+
+The journal reply may also carry a `closedPositions` part — the finished lots
+and what they came to — which the Positions tab shows under the open ones. It
+is read separately from the other two parts, and a server that leaves it out
+gets no closed section at all rather than an empty one. That distinction is the
+whole point: an older flippingrs.com has nothing to say about closed lots, and
+a section reading "No closed positions yet" would tell somebody with a year of
+finished flips that they have never finished one. An empty list from a server
+that does know is a different answer, and that one is shown.
+
+```json
+{
+  "closedPositions": {
+    "positions": [
+      {
+        "id": "...", "itemId": 4151, "itemName": "Abyssal whip",
+        "buyPrice": 1480000, "buyQty": 10,
+        "sellPrice": 1520000, "sellQty": 10,
+        "taxPaid": 12000, "netProfit": 320000, "roi": 0.022,
+        "hoursHeld": 5, "timesKnown": true
+      }
+    ],
+    "summary": { "closedPositions": 12, "realisedProfit": 3840000, "taxPaid": 144000 }
+  }
+}
+```
+
+`hoursHeld` is worked out by the server, which has both timestamps; the plugin
+does no date arithmetic. `timesKnown` is false for a flip with a leg the plugin
+recovered after the fact rather than watched — that leg carries the time it was
+found rather than the time it happened, so the hold is left off the card
+entirely. The profit is still real; only the clock is not, and a made-up "held
+3d" beside a real profit is the sort of figure somebody would plan around. The
+summary describes exactly the lots sent, not all time, so it cannot disagree
+with a count of what is on screen.
 
 `GET /api/plugin/quote?itemId=` prices particular items, whether or not they
 are on a watchlist: what the watchlist read gives for a curated list, this

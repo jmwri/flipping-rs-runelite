@@ -42,6 +42,20 @@ final class PositionsTab extends SidebarTab
 		e -> setPositionNotice(null, ColorScheme.LIGHT_GRAY_COLOR));
 	private final JPanel positionList = new JPanel();
 	private List<Position> positions = new ArrayList<>();
+	/**
+	 * The closed section, hidden until a server sends one.
+	 *
+	 * <p>Hidden rather than empty, and the distinction matters: a
+	 * flippingrs.com that has never heard of closed lots leaves the part out
+	 * of its reply altogether, and a section saying "No closed positions yet"
+	 * would then be telling somebody with a year of finished flips that they
+	 * have none. An empty list from a server that does know is a different
+	 * thing and does say that.
+	 */
+	private final JPanel closedSection = new JPanel();
+	private final JLabel closedSummary = new JLabel();
+	private final JPanel closedList = new JPanel();
+	private List<ClosedPosition> closed = new ArrayList<>();
 	private boolean loaded;
 	@Nullable
 	private String problem;
@@ -51,6 +65,8 @@ final class PositionsTab extends SidebarTab
 	 */
 	@Nullable
 	private String drawnPositions;
+	@Nullable
+	private String drawnClosed;
 	/** Why nothing is being read at all, if that is the case. The panel sets it. */
 	@Nullable
 	private String paused;
@@ -77,6 +93,26 @@ final class PositionsTab extends SidebarTab
 		positionList.setAlignmentX(Component.LEFT_ALIGNMENT);
 		positionList.setToolTipText("What you're holding, what it cost you, and what it's worth right now.");
 		body.add(positionList);
+
+		// Under the open ones, because the open book is the thing somebody
+		// acts on and the closed one is the thing they learn from.
+		closedSection.setLayout(new BoxLayout(closedSection, BoxLayout.Y_AXIS));
+		closedSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		closedSection.setOpaque(false);
+		closedSection.add(Box.createVerticalStrut(8));
+		closedSection.add(header("Closed positions"));
+		closedSection.add(Box.createVerticalStrut(4));
+		closedSummary.setFont(FontManager.getRunescapeSmallFont());
+		closedSummary.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		closedSummary.setAlignmentX(Component.LEFT_ALIGNMENT);
+		closedSection.add(closedSummary);
+		closedSection.add(Box.createVerticalStrut(4));
+		closedList.setLayout(new BoxLayout(closedList, BoxLayout.Y_AXIS));
+		closedList.setAlignmentX(Component.LEFT_ALIGNMENT);
+		closedList.setToolTipText("Flips you've finished: what they made after tax.");
+		closedSection.add(closedList);
+		closedSection.setVisible(false);
+		body.add(closedSection);
 		this.body = body;
 		drawSummary();
 	}
@@ -94,6 +130,10 @@ final class PositionsTab extends SidebarTab
 		if (why != null)
 		{
 			positions = new ArrayList<>();
+			// The cards go, but the section stays as it was found: whether
+			// this server has closed lots at all is not something that stops
+			// being true because the plugin stopped reading.
+			closed = new ArrayList<>();
 			loaded = false;
 			problem = null;
 		}
@@ -117,6 +157,20 @@ final class PositionsTab extends SidebarTab
 	}
 
 	/**
+	 * The finished lots, as the server has them.
+	 *
+	 * <p>Only ever called with something the server actually sent, so
+	 * reaching here is what makes the section exist at all.
+	 */
+	void setClosedPositions(ClosedPositions finished)
+	{
+		closed = finished.getPositions();
+		setWrappedText(closedSummary, closedSummaryLine(finished));
+		closedSection.setVisible(true);
+		refresh();
+	}
+
+	/**
 	 * A note about the last close or delete: done, or refused in the
 	 * server's words. Null clears it; otherwise it clears itself after
 	 * {@link #NOTICE_SECONDS}.
@@ -132,6 +186,7 @@ final class PositionsTab extends SidebarTab
 		problem = why;
 		loaded = false;
 		positions = new ArrayList<>();
+		closed = new ArrayList<>();
 		drawSummary();
 		refresh();
 	}
@@ -175,20 +230,60 @@ final class PositionsTab extends SidebarTab
 		// picked -- mostly with the same lots at the same prices. So what is
 		// already on screen is left alone when a redraw would not change it.
 		final String signature = signatureOf(positions);
-		if (signature.equals(drawnPositions))
+		if (!signature.equals(drawnPositions))
 		{
-			return;
+			drawnPositions = signature;
+			positionList.removeAll();
+			for (Position position : positions)
+			{
+				positionList.add(positionRow(position));
+				positionList.add(Box.createVerticalStrut(4));
+			}
+			positionList.revalidate();
+			positionList.repaint();
 		}
-		drawnPositions = signature;
 
-		positionList.removeAll();
-		for (Position position : positions)
+		// Its own signature, because the two lists move on their own: closing
+		// a lot changes both, but an open lot being marked to market changes
+		// only the first, and that happens on every read.
+		final String closedSignature = closedSignatureOf(closed);
+		if (!closedSignature.equals(drawnClosed))
 		{
-			positionList.add(positionRow(position));
-			positionList.add(Box.createVerticalStrut(4));
+			drawnClosed = closedSignature;
+			closedList.removeAll();
+			for (ClosedPosition finished : closed)
+			{
+				closedList.add(closedRow(finished));
+				closedList.add(Box.createVerticalStrut(4));
+			}
+			closedList.revalidate();
+			closedList.repaint();
 		}
-		positionList.revalidate();
-		positionList.repaint();
+	}
+
+	/**
+	 * One finished lot: what it was, what it cost, what it made.
+	 *
+	 * <p>No buttons. There is nothing left to do to a lot that is sold, and
+	 * the site's Journal page is where one gets corrected.
+	 */
+	private JPanel closedRow(ClosedPosition p)
+	{
+		final JPanel card = card();
+		final JLabel title = new JLabel();
+		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setForeground(Color.WHITE);
+		title.setAlignmentX(Component.LEFT_ALIGNMENT);
+		setWrappedText(title, p.getItemName().isEmpty() ? "Item " + p.getItemId() : p.getItemName());
+		card.add(title);
+		card.add(small(closedHeld(p)));
+		card.add(small(closedPrices(p)));
+		final JLabel made = small(closedResult(p));
+		made.setForeground(p.getNetProfit() < 0
+			? ColorScheme.PROGRESS_ERROR_COLOR : ColorScheme.PROGRESS_COMPLETE_COLOR);
+		card.add(made);
+		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+		return card;
 	}
 
 	/** One open position: what is held, what it cost, what it is worth now. */
@@ -319,6 +414,32 @@ final class PositionsTab extends SidebarTab
 	String openSummaryForTest()
 	{
 		return openSummary.getText();
+	}
+
+	/** The closed lots' item ids as rendered, in order. */
+	List<Integer> closedForTest()
+	{
+		final List<Integer> ids = new ArrayList<>();
+		for (ClosedPosition p : closed)
+		{
+			ids.add(p.getItemId());
+		}
+		return ids;
+	}
+
+	String closedSummaryForTest()
+	{
+		return closedSummary.getText();
+	}
+
+	boolean closedShownForTest()
+	{
+		return closedSection.isVisible();
+	}
+
+	JPanel closedListForTest()
+	{
+		return closedList;
 	}
 
 	String noticeForTest()
