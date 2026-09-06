@@ -53,6 +53,7 @@ problem than a full key would be. Plugin keys are available on every plan.
 | Record trades | on | Switch off to stop recording and stop talking to flippingrs.com |
 | Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
 | Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
+| Prices when you examine | on | Adds the site's prices to the end of an item's examine line |
 | Prices in the exchange | on | Shows the site's prices on the offer screen and on each of your open offers |
 | Trades that couldn't be recorded | on | Tells you when flippingrs.com would not record a trade |
 | An offer finishing | off | Tells you when one of your offers finishes |
@@ -108,10 +109,14 @@ the price checker. Neither entry touches the game; they only open your browser
 or update your list on the site. Both can be turned off in the settings.
 
 When you set up a buy or sell offer, the site's exact buy and sell prices, the
-margin and how old the prices are all appear in the corner of the offer screen,
-so the number to type is right there. How much of the buy limit you have left
-appears too, if your plan tracks buy limits; an item that has never traded
-shows no age, rather than an age of nothing.
+margin and how old the prices are are added to the offer screen itself, under
+the game's own lines — not drawn on top of it. How much of the buy limit you
+have left appears too, if your plan tracks buy limits; an item that has never
+traded shows no age, rather than an age of nothing.
+
+Nothing the game shows is replaced. The item's description, the guide price and
+the tax are all left exactly as they are, so if the plugin is offline or the
+item has no price you lose nothing you had before.
 
 The buy limit is counted from the trades your journal has, which is not
 necessarily every trade you have made: an item bought before you installed the
@@ -119,7 +124,7 @@ plugin, or on a client that was not reporting, does not count against the
 window. The error only ever goes one way — it can show more room than you
 really have, never less — but it is worth knowing before you trust it.
 
-Prices are drawn on the items themselves, too, on all of those same screens.
+Prices are drawn on the items themselves on all of those same screens.
 On one of your own offers the plugin knows what you asked for as well as what
 the item is, so it shows the price for the side you are on and how far your
 offer is from it — green when your offer is priced to fill sooner, red when it
@@ -134,6 +139,18 @@ both.
 All of this works for any item, not only the ones on your watchlist. Nothing
 is drawn for an item the site has no price for, which is the honest rendering
 of not knowing. It can all be turned off.
+
+## Examine
+
+Examining an item puts the site's buy and sell prices and the margin on the end
+of the examine line — in the inventory, the bank, or on the ground, none of
+which the Grand Exchange ever sees. It is one line, not two: the prices go on
+the end of the game's own text rather than following it.
+
+An item nobody has asked the site about yet says nothing the first time and is
+answered the next. A price arriving in the chat box seconds after the line it
+belongs to has scrolled away is a line about nothing in particular, so it is
+not sent.
 
 ## Catching up on trades it missed
 
@@ -341,8 +358,16 @@ fills. Everything else is a collaborator it builds in `wire()`:
   deletes positions.
 - `GeItems` answers "where is the exchange showing an item" for every one of
   its screens, once, so the right-click entries and the prices drawn on items
-  cannot drift apart. `GeItemInfoOverlay` draws on what it finds and
-  `GeQuoteOverlay` draws the fuller box on the setup page.
+  cannot drift apart. `GeItemInfoOverlay` draws on what it finds.
+- `GeSetupText` is the one thing that writes into a game interface rather than
+  over it: the offer setup screen is a single fixed layout with a build script
+  to hang off, it is where the number actually gets typed, and it has room
+  under the game's own lines. Everywhere else the plugin paints on top, because
+  a caption in the wrong place after a game update is only ugly, whereas a
+  widget in the wrong place can cover something the player needed.
+- `ExaminePrices` puts the same numbers on the end of an examine line. The
+  message says nothing about which item it is for, so the item comes from the
+  click that asked, and one click answers one message.
 - `FlippingRsPanel` is the tab strip and the shared vocabulary; each tab is a
   `SidebarTab` that owns its own widgets and draws only while it is the one on
   screen. The panel asks the plugin for things through `PanelActions`, which is

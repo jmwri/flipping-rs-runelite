@@ -61,11 +61,49 @@ final class GeItems
 		@Nullable
 		final GrandExchangeOffer offer;
 
-		Spot(int itemId, Rectangle bounds, @Nullable GrandExchangeOffer offer)
+		/**
+		 * The box this one is drawn inside, when it is drawn inside another.
+		 *
+		 * <p>Some of these screens scroll. A row scrolled out of its list is
+		 * not hidden -- the client keeps its position and lets the list clip
+		 * it -- so its bounds are a real rectangle somewhere outside the list,
+		 * and anything drawn there lands on whatever the exchange has put
+		 * above or below. The list's own box is carried along so that whatever
+		 * uses a spot can clip to it the way the client does.
+		 */
+		@Nullable
+		final Rectangle clip;
+
+		Spot(int itemId, Rectangle bounds, @Nullable GrandExchangeOffer offer, @Nullable Rectangle clip)
+		{
+			this(itemId, bounds, offer, clip, true);
+		}
+
+		Spot(int itemId, Rectangle bounds, @Nullable GrandExchangeOffer offer, @Nullable Rectangle clip,
+			boolean paint)
 		{
 			this.itemId = itemId;
 			this.bounds = bounds;
 			this.offer = offer;
+			this.clip = clip;
+			this.paint = paint;
+		}
+
+		/**
+		 * Whether this spot is worth drawing on.
+		 *
+		 * <p>False for the offer setup page, whose prices are written into the
+		 * screen itself. It is still a spot, because it is still an item the
+		 * exchange is showing and so still an item worth having a price for --
+		 * but painting one on it as well would put the same numbers on the
+		 * same screen twice.
+		 */
+		final boolean paint;
+
+		/** Whether a point is on this spot, and inside the list holding it. */
+		boolean contains(int x, int y)
+		{
+			return bounds.contains(x, y) && (clip == null || clip.contains(x, y));
 		}
 	}
 
@@ -110,7 +148,7 @@ final class GeItems
 		}
 		for (Spot spot : onScreen(client))
 		{
-			if (spot.bounds.contains(mouse.getX(), mouse.getY()))
+			if (spot.contains(mouse.getX(), mouse.getY()))
 			{
 				return spot.itemId;
 			}
@@ -194,7 +232,8 @@ final class GeItems
 			final Rectangle bounds = boundsOf(client.getWidget(SLOTS[slot]));
 			if (bounds != null)
 			{
-				into.add(new Spot(offer.getItemId(), bounds, offer));
+				// A slot is its own box on a screen that does not scroll.
+				into.add(new Spot(offer.getItemId(), bounds, offer, null));
 			}
 		}
 	}
@@ -226,7 +265,9 @@ final class GeItems
 		final int itemId = client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH);
 		if (itemId > 0)
 		{
-			into.add(new Spot(itemId, bounds, null));
+			// Not painted on: GeSetupText writes this screen's prices into the
+			// screen. Reported all the same, so a price is fetched for it.
+			into.add(new Spot(itemId, bounds, null, null, false));
 		}
 	}
 
@@ -244,8 +285,10 @@ final class GeItems
 		{
 			return;
 		}
-		final Rectangle across = rows ? boundsOf(container) : null;
-		add(container, into, across);
+		final Rectangle inside = boundsOf(container);
+		final Rectangle across = rows ? inside : null;
+		// The container itself is not clipped by itself.
+		add(container, into, across, null);
 		for (Widget[] children : new Widget[][]{
 			container.getDynamicChildren(), container.getStaticChildren(), container.getNestedChildren()})
 		{
@@ -263,7 +306,7 @@ final class GeItems
 				{
 					continue;
 				}
-				add(child, into, across);
+				add(child, into, across, inside);
 			}
 		}
 	}
@@ -273,8 +316,11 @@ final class GeItems
 	 *
 	 * @param across the list this widget is a row of, if it is one, so the
 	 *               row's box spans the list's width rather than the icon's
+	 * @param clip   the container drawing it, so a row scrolled out of a list
+	 *               is not treated as being where its bounds say it is
 	 */
-	private static void add(Widget widget, List<Spot> into, @Nullable Rectangle across)
+	private static void add(Widget widget, List<Spot> into, @Nullable Rectangle across,
+		@Nullable Rectangle clip)
 	{
 		final int itemId = widget.getItemId();
 		if (itemId <= 0)
@@ -288,7 +334,7 @@ final class GeItems
 		}
 		into.add(new Spot(itemId,
 			across == null ? bounds : new Rectangle(across.x, bounds.y, across.width, bounds.height),
-			null));
+			null, clip));
 	}
 
 	/** A widget's box on the canvas, or null if it has none worth drawing in. */

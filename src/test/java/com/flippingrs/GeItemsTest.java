@@ -167,6 +167,32 @@ public class GeItemsTest
 			4151, GeItems.under(client, client.getMouseCanvasPosition()));
 	}
 
+	/**
+	 * A row scrolled out of its list is not somewhere the mouse can be.
+	 *
+	 * <p>The client does not hide a scrolled-out child: it keeps its position
+	 * and lets the list clip it, so its bounds are a real rectangle somewhere
+	 * outside the list. Going by bounds alone would hand back an item for a
+	 * row nobody can see -- and would paint that row's price over whatever the
+	 * exchange has drawn above or below the list.
+	 */
+	@Test
+	public void aRowScrolledOutOfItsListIsNotUnderTheMouse()
+	{
+		noWidgets();
+		// The row sits above the top of the list, as one scrolled off does.
+		final Widget list = holding(10, 100, 400, 90, item(4151, 12, 40, 32, 32));
+		when(client.getWidget(InterfaceID.GeHistory.LIST)).thenReturn(list);
+
+		final List<GeItems.Spot> spots = GeItems.onScreen(client);
+		assertEquals("it is still a spot, because it is still a row", 1, spots.size());
+		assertEquals("and it carries the list to clip against", new Rectangle(10, 100, 400, 90),
+			spots.get(0).clip);
+
+		assertEquals("but the mouse over it is not over the list",
+			-1, GeItems.under(client, new Point(200, 50)));
+	}
+
 	/** And a click outside every box finds nothing rather than the nearest thing. */
 	@Test
 	public void aClickOnNothingFindsNothing()
