@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -54,10 +55,10 @@ final class Watchlists
 
 	/** The owner's watchlists, as last read from the server. Null until the first read. */
 	@Nullable
-	private volatile List<FlippingRsApi.Watchlist> lists;
+	private volatile List<Watchlist> lists;
 
 	/** The site's quotes for the watched items, as last read from the panel endpoint. */
-	private volatile Map<Integer, FlippingRsApi.Quote> quotes = Collections.emptyMap();
+	private volatile Map<Integer, Quote> quotes = Collections.emptyMap();
 
 	/**
 	 * The shown watchlist's items, as a set, kept in step with {@link #lists}.
@@ -76,12 +77,55 @@ final class Watchlists
 	 * open, or the Grand Exchange is, where the overlay draws them. While
 	 * neither is, the refresh is skipped. It is the one call that would
 	 * otherwise run for every user, every half minute, for as long as the
-	 * client is open, against a rate limit of thirty requests a minute that
+	 * client is open, against a rate limit of sixty requests a minute that
 	 * the sends also draw on. Opening the sidebar refreshes at once, so
 	 * nothing stale is shown for longer than a tick.
 	 */
 	private volatile boolean sidebarShown;
 	private volatile boolean exchangeOpen;
+
+	/**
+	 * Quotes for items the exchange is showing that are not on the watchlist.
+	 *
+	 * <p>The watchlist is a curated list, and the moment a price is actually
+	 * wanted is the moment one is being typed -- which is for whatever item is
+	 * in front of you, not only the ones somebody thought to add to a list
+	 * beforehand. So the exchange says which items it is showing and these are
+	 * fetched for those, on the same tick the watchlist's own quotes are
+	 * refreshed on.
+	 *
+	 * <p>Separate from {@link #quotes} rather than merged into it, because
+	 * that map is what the sidebar's cards are drawn from and it is replaced
+	 * wholesale by every watchlist read.
+	 */
+	private volatile Map<Integer, Quote> onDemand = Collections.emptyMap();
+
+	/**
+	 * The items the exchange is showing right now: the open offers, and the
+	 * one being set up. Written from the client thread, read from the net one.
+	 *
+	 * <p>Two fields rather than one set, because two overlays report them and
+	 * each draws on its own frame. Sharing one collection had them overwrite
+	 * each other -- the setup screen's item replacing the slots' and then being
+	 * replaced back -- so which items got a price depended on which overlay
+	 * happened to render last.
+	 */
+	private final Set<Integer> offerItems = ConcurrentHashMap.newKeySet();
+
+	/** The item on the offer setup screen, or 0 when it is not open. */
+	private volatile int setupItem;
+
+	/**
+	 * Set once a server has said it has no per-item quote route, so the plugin
+	 * stops asking.
+	 *
+	 * <p>An older flippingrs.com will answer every one of these the same way
+	 * forever, and asking twice a minute for the life of the client spends the
+	 * budget on a question already answered. Everything the plugin needs to do
+	 * its job goes through routes that have always been there, so this costs
+	 * the extra prices and nothing else.
+	 */
+	private volatile boolean quoteRouteMissing;
 
 	Watchlists(Client client, ItemManager itemManager, ClientThread clientThread, FlippingRsConfig config,
 		ProfileStore store, Supplier<FlippingRsApi> api, PanelUpdates panel, IntFunction<String> itemName,
@@ -105,6 +149,9 @@ final class Watchlists
 		lists = null;
 		watchedIds = Collections.emptySet();
 		quotes = Collections.emptyMap();
+		onDemand = Collections.emptyMap();
+		offerItems.clear();
+		setupItem = 0;
 		sidebarShown = false;
 		exchangeOpen = false;
 	}
@@ -124,6 +171,12 @@ final class Watchlists
 		lists = null;
 		watchedIds = Collections.emptySet();
 		quotes = Collections.emptyMap();
+		onDemand = Collections.emptyMap();
+		// A different server may well have the route this one did not. Holding
+		// the refusal across a change of server would leave a developer's
+		// local instance unable to price anything, for a decision made about
+		// somebody else's.
+		quoteRouteMissing = false;
 	}
 
 	void sidebarShown(boolean shown)
@@ -160,7 +213,7 @@ final class Watchlists
 	 * case what was already held is kept; if either is present the sidebar is
 	 * redrawn.
 	 */
-	void accept(@Nullable List<FlippingRsApi.Watchlist> fromServer, @Nullable Map<Integer, FlippingRsApi.Quote> prices)
+	void accept(@Nullable List<Watchlist> fromServer, @Nullable Map<Integer, Quote> prices)
 	{
 		if (fromServer != null)
 		{
@@ -186,15 +239,15 @@ final class Watchlists
 	 * to a watchlist with no id, which is not a request that can be built.
 	 */
 	@Nullable
-	private FlippingRsApi.Watchlist currentOf(List<FlippingRsApi.Watchlist> known)
+	private Watchlist currentOf(List<Watchlist> known)
 	{
 		if (known.isEmpty())
 		{
 			return null;
 		}
 		final String remembered = store.rememberedWatchlistId();
-		FlippingRsApi.Watchlist first = null;
-		for (FlippingRsApi.Watchlist watchlist : known)
+		Watchlist first = null;
+		for (Watchlist watchlist : known)
 		{
 			if (watchlist == null || watchlist.id == null || watchlist.id.isEmpty())
 			{
@@ -219,18 +272,121 @@ final class Watchlists
 	}
 
 	/**
-	 * The site's quote for an item, if it is on the shown watchlist and the
-	 * setting allows the overlay; else null. Client thread, from the overlay,
-	 * once per frame.
+	 * The site's quote for an item, whether or not it is on the watchlist.
+	 *
+	 * <p>The watchlist's own price first, because that is the one the sidebar
+	 * is showing and the two must not disagree; then whatever was fetched
+	 * because the exchange put the item on screen. Null when there is neither,
+	 * or when the setting that draws these is off.
+	 *
+	 * <p>Client thread, from the overlays, once per frame. Both maps are
+	 * replaced rather than mutated, so this never blocks the frame.
 	 */
 	@Nullable
-	FlippingRsApi.Quote watchedQuote(int itemId)
+	Quote quoteFor(int itemId)
 	{
-		if (!config.setupOverlay() || !isWatched(itemId))
+		if (!config.setupOverlay())
 		{
 			return null;
 		}
-		return quotes.get(itemId);
+		// The shown watchlist first, and only if the item is actually on it.
+		// The quote map is whatever the last watchlist read returned, which
+		// can still hold the previous list's items; answering from it for an
+		// item that has since been taken off would have the offer screen
+		// pricing something the sidebar no longer lists.
+		if (isWatched(itemId))
+		{
+			final Quote watched = quotes.get(itemId);
+			if (watched != null)
+			{
+				return watched;
+			}
+		}
+		return onDemand.get(itemId);
+	}
+
+	/**
+	 * The items your open offers are on. Client thread, once a frame.
+	 *
+	 * <p>Recorded rather than fetched here. A price is a request, the frame
+	 * path is the game thread, and the tick that refreshes the watchlist's
+	 * quotes is already going to the server on a sensible cadence anyway.
+	 */
+	void showingOffers(Set<Integer> itemIds)
+	{
+		if (offerItems.equals(itemIds))
+		{
+			return;
+		}
+		offerItems.clear();
+		offerItems.addAll(itemIds);
+	}
+
+	/** The item on the offer setup screen, or 0 when it is not open. Client thread. */
+	void showingSetup(int itemId)
+	{
+		setupItem = itemId;
+	}
+
+	/**
+	 * Fetches quotes for what the exchange is showing and the watchlist does
+	 * not cover. Net thread, on the quote tick.
+	 *
+	 * <p>Everything on screen is asked for, not only what is missing, because
+	 * a price that is already held is a price that is getting older: this is
+	 * the refresh as much as it is the first fetch. It is one request however
+	 * many items are on screen, and there are at most nine.
+	 */
+	void fetchOnDemand()
+	{
+		if (quoteRouteMissing || !config.setupOverlay() || !exchangeOpen)
+		{
+			return;
+		}
+		final Set<Integer> wanted = new java.util.LinkedHashSet<>(offerItems);
+		final int setup = setupItem;
+		if (setup > 0)
+		{
+			wanted.add(setup);
+		}
+		wanted.removeAll(watchedIds);
+		if (wanted.isEmpty())
+		{
+			if (!onDemand.isEmpty())
+			{
+				onDemand = Collections.emptyMap();
+			}
+			return;
+		}
+		final String key = FlippingRsApi.trimmedKey(config.apiKey());
+		if (key.isEmpty())
+		{
+			return;
+		}
+		try
+		{
+			// The journal, so the server can say how much of each buy limit
+			// this character has left. Limits are counted per journal, which
+			// is the whole reason a main and an alt must not share one.
+			final String accountId = store.chosenAccountFor(client.getAccountHash());
+			final Map<Integer, Quote> got = api.get().quotes(key, accountId, wanted).getQuotes();
+			// A reply with the part absent is "nothing changed", the same as
+			// everywhere else, so what is held stays held.
+			if (got != null)
+			{
+				onDemand = got;
+			}
+		}
+		catch (FlippingRsApi.NotHereException e)
+		{
+			log.info("this flippingrs.com has no per-item quotes; the offer screen will only price watched items");
+			quoteRouteMissing = true;
+		}
+		catch (IOException e)
+		{
+			// A price nobody asked for out loud. The next tick tries again.
+			log.debug("could not fetch quotes for what the exchange is showing", e);
+		}
 	}
 
 	/**
@@ -305,7 +461,7 @@ final class Watchlists
 		{
 			// A combo box fires its action on any pick, including re-picking
 			// what was already selected, and that would cost a settings write,
-			// a rebuild of every card and a request against a thirty-a-minute
+			// a rebuild of every card and a request against a sixty-a-minute
 			// limit to arrive back where it started.
 			return;
 		}
@@ -353,14 +509,16 @@ final class Watchlists
 					ColorScheme.BRAND_ORANGE));
 				return;
 			}
-			List<FlippingRsApi.Watchlist> known = lists;
+			List<Watchlist> known = lists;
 			if (known == null)
 			{
-				final List<FlippingRsApi.Watchlist> fromServer = api.get().watchlists(key, null).getWatchlists();
+				// Only the lists are wanted here, so neither a watchlist to
+				// price nor a journal to count limits against is worth naming.
+				final List<Watchlist> fromServer = api.get().watchlists(key, null, null).getWatchlists();
 				known = fromServer == null ? Collections.emptyList() : fromServer;
 			}
-			final FlippingRsApi.Watchlist current = currentOf(known);
-			final FlippingRsApi.Watchlist updated;
+			final Watchlist current = currentOf(known);
+			final Watchlist updated;
 			if (current == null)
 			{
 				if (!add)
@@ -440,11 +598,11 @@ final class Watchlists
 		return out;
 	}
 
-	private static List<FlippingRsApi.Watchlist> replacing(
-		List<FlippingRsApi.Watchlist> known, FlippingRsApi.Watchlist updated)
+	private static List<Watchlist> replacing(
+		List<Watchlist> known, Watchlist updated)
 	{
-		final List<FlippingRsApi.Watchlist> out = new ArrayList<>(known.size());
-		for (FlippingRsApi.Watchlist watchlist : known)
+		final List<Watchlist> out = new ArrayList<>(known.size());
+		for (Watchlist watchlist : known)
 		{
 			out.add(updated.id.equals(watchlist.id) ? updated : watchlist);
 		}
@@ -454,12 +612,12 @@ final class Watchlists
 	/** Puts the cached watchlists on the panel, with the chosen one's items named. */
 	private void show()
 	{
-		final List<FlippingRsApi.Watchlist> known = lists;
+		final List<Watchlist> known = lists;
 		if (known == null)
 		{
 			return;
 		}
-		final FlippingRsApi.Watchlist current = currentOf(known);
+		final Watchlist current = currentOf(known);
 		final String selected = current == null ? null : current.id;
 		final List<Integer> ids = current == null ? Collections.emptyList() : current.getItemIds();
 		// Kept in step here, because this is the one place that settles which

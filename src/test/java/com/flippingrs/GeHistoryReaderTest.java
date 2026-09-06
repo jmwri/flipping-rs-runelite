@@ -95,7 +95,7 @@ public class GeHistoryReaderTest
 				item(10, 5280, 1);
 			}
 
-			final List<FlippingRsApi.HistoryRow> rows =
+			final List<HistoryRow> rows =
 				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 			final String order = looseFirst ? "loose sprite first" : "loose sprite last";
@@ -171,13 +171,13 @@ public class GeHistoryReaderTest
 				onScreen.add(itemId + "/" + (buy ? "buy" : "sell") + "/" + quantity + "/" + gross);
 			}
 
-			final List<FlippingRsApi.HistoryRow> read =
+			final List<HistoryRow> read =
 				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 			assertTrue("run " + run + ": more rows than the screen had", read.size() <= rows);
 			for (int i = 0; i < read.size(); i++)
 			{
-				final FlippingRsApi.HistoryRow got = read.get(i);
+				final HistoryRow got = read.get(i);
 				final String actual = got.itemId + "/" + got.side + "/" + got.quantity + "/" + got.grossValue;
 				assertTrue("run " + run + ": this row is on no line of the screen: " + actual,
 					onScreen.contains(actual));
@@ -203,7 +203,7 @@ public class GeHistoryReaderTest
 		text(40, "Toadflax seedx 8");
 		text(40, "8,760 coins= 1,095 each");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(2, rows.size());
 		assertEquals(5280, rows.get(0).itemId);
@@ -233,7 +233,7 @@ public class GeHistoryReaderTest
 		text(40, "Toadflax seedx 8");
 		text(40, "8,760 coins(8,936 - 176)= 1,095 each");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(2, rows.size());
 		assertEquals(9242, rows.get(0).itemId);
@@ -265,7 +265,7 @@ public class GeHistoryReaderTest
 		text(0, "Abyssal whip");
 		text(0, "4,500,000 coins= 1,500,000 each");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(3L, rows.get(0).quantity);
 	}
@@ -281,7 +281,7 @@ public class GeHistoryReaderTest
 		text(40, "Sold");
 		text(40, "4,560,000 coins");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(2, rows.size());
 		assertEquals(0, rows.get(0).position);
@@ -304,7 +304,7 @@ public class GeHistoryReaderTest
 		text(0, "Bought x 25");
 		text(0, "37,500,000 coins");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(25L, rows.get(0).quantity);
 	}
@@ -317,7 +317,7 @@ public class GeHistoryReaderTest
 		text(0, "Sold 10");
 		text(0, "15,000,000");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(15_000_000L, rows.get(0).grossValue);
 	}
@@ -354,7 +354,7 @@ public class GeHistoryReaderTest
 		text(0, "Abyssal whip");
 		text(0, "1,500,000 coins");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(1, rows.size());
 		assertEquals(1L, rows.get(0).quantity);
@@ -409,7 +409,7 @@ public class GeHistoryReaderTest
 		text(40, "Bought");
 		text(40, "3,000,000 coins");
 
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 		assertEquals(1, rows.size());
 		assertEquals("the one good row is first, since the bad one was not numbered", 0, rows.get(0).position);
@@ -511,14 +511,14 @@ public class GeHistoryReaderTest
 				expected.add(new long[]{itemId, buy ? 1 : 0, quantity, gross});
 			}
 
-			final List<FlippingRsApi.HistoryRow> read =
+			final List<HistoryRow> read =
 				GeHistoryReader.read(list(), GeHistoryReaderTest::name);
 
 			assertEquals("run " + run + ": every row must be read", expected.size(), read.size());
 			for (int i = 0; i < expected.size(); i++)
 			{
 				final long[] want = expected.get(i);
-				final FlippingRsApi.HistoryRow got = read.get(i);
+				final HistoryRow got = read.get(i);
 				final String where = "run " + run + ", row " + i;
 				assertEquals(where + ": item", want[0], got.itemId);
 				assertEquals(where + ": side", want[1] == 1 ? "buy" : "sell", got.side);

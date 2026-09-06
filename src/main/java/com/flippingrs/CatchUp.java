@@ -160,7 +160,7 @@ final class CatchUp
 		// Read here, on the thread the slots and the baselines are read on, and
 		// checked again before the send. See sendOffers.
 		final long accountHash = client.getAccountHash();
-		final List<FlippingRsApi.OfferState> open = new ArrayList<>();
+		final List<OfferState> open = new ArrayList<>();
 		for (int slot = 0; slot < offers.length; slot++)
 		{
 			final GrandExchangeOffer offer = offers[slot];
@@ -169,7 +169,7 @@ final class CatchUp
 				continue;
 			}
 			final SavedOffer saved = store.loadOffer(slot);
-			final FlippingRsApi.OfferState state = new FlippingRsApi.OfferState();
+			final OfferState state = new OfferState();
 			state.slot = slot;
 			state.offerRef = saved == null ? null : saved.offerRef;
 			state.itemId = offer.getItemId();
@@ -198,7 +198,7 @@ final class CatchUp
 	 *
 	 * @param accountHash whose slots these are, as read when they were read
 	 */
-	private void sendOffers(List<FlippingRsApi.OfferState> open, long accountHash)
+	private void sendOffers(List<OfferState> open, long accountHash)
 	{
 		try
 		{
@@ -208,7 +208,7 @@ final class CatchUp
 			}
 			drain.run();
 			final String key = FlippingRsApi.trimmedKey(config.apiKey());
-			final String accountId = store.chosenAccount();
+			final String accountId = store.chosenAccountFor(client.getAccountHash());
 			if (key.isEmpty() || accountId == null)
 			{
 				return;
@@ -217,7 +217,7 @@ final class CatchUp
 			{
 				return;
 			}
-			final FlippingRsApi.Reconciliation result = api.get().submitOffers(key, accountId, open);
+			final Reconciliation result = api.get().submitOffers(key, accountId, open);
 			if (!result.getProblems().isEmpty())
 			{
 				log.warn("flippingrs.com could not read {} of the open offers: {}",
@@ -290,7 +290,7 @@ final class CatchUp
 			return;
 		}
 		final Widget list = client.getWidget(InterfaceID.GeHistory.LIST);
-		final List<FlippingRsApi.HistoryRow> rows = GeHistoryReader.read(list, itemName);
+		final List<HistoryRow> rows = GeHistoryReader.read(list, itemName);
 		if (rows.isEmpty() && ++historyReadAttempts < HISTORY_READ_ATTEMPTS)
 		{
 			historyReadDueTick = tick + 1;
@@ -321,7 +321,7 @@ final class CatchUp
 	 *
 	 * @param accountHash whose history screen this was, as read when it was read
 	 */
-	private void sendHistory(List<FlippingRsApi.HistoryRow> rows, long accountHash)
+	private void sendHistory(List<HistoryRow> rows, long accountHash)
 	{
 		try
 		{
@@ -331,7 +331,7 @@ final class CatchUp
 			}
 			drain.run();
 			final String key = FlippingRsApi.trimmedKey(config.apiKey());
-			final String accountId = store.chosenAccount();
+			final String accountId = store.chosenAccountFor(client.getAccountHash());
 			if (key.isEmpty() || accountId == null)
 			{
 				return;
@@ -347,13 +347,13 @@ final class CatchUp
 				// history is a click, and there is no gap between one open and the
 				// next: without this, a user flicking between their offers and
 				// their history spent a request on each one, against a limit of
-				// thirty a minute that the sends themselves draw on. The screen
+				// sixty a minute that the sends themselves draw on. The screen
 				// changes when an offer completes and is collected, and that is
 				// exactly when this stops matching.
 				log.debug("the history screen has not changed since it was last sent");
 				return;
 			}
-			final FlippingRsApi.Reconciliation result = api.get().submitHistory(key, accountId, rows);
+			final Reconciliation result = api.get().submitHistory(key, accountId, rows);
 			lastHistorySent = screen;
 			if (!result.getProblems().isEmpty())
 			{
@@ -391,11 +391,11 @@ final class CatchUp
 	 * an alt whose history happens to read the same is still sent. Only set
 	 * after a send that went through, so a failed one is tried again.
 	 */
-	private static String signatureOf(long accountHash, String accountId, List<FlippingRsApi.HistoryRow> rows)
+	private static String signatureOf(long accountHash, String accountId, List<HistoryRow> rows)
 	{
 		final StringBuilder out = new StringBuilder(rows.size() * 24);
 		out.append(accountHash).append('/').append(accountId);
-		for (FlippingRsApi.HistoryRow row : rows)
+		for (HistoryRow row : rows)
 		{
 			out.append('|').append(row.itemId).append(',').append(row.side).append(',')
 				.append(row.quantity).append(',').append(row.grossValue);

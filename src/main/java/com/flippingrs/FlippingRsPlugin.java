@@ -7,20 +7,15 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
-import java.util.TimeZone;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -40,9 +35,11 @@ import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.client.Notifier;
 import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
@@ -83,9 +80,10 @@ import okhttp3.OkHttpClient;
  * </ul>
  *
  * <p>What lives here is the plugin's lifecycle, the capture of fills from the
- * client's events, the sending of what is queued, and the reads that fill the
- * side panel. The rest is delegated: {@link OfferTracker} turns slot updates
- * into fills, {@link TransactionQueue} keeps them on disk, {@link ProfileStore}
+ * client's events, and the reads that fill the side panel. The rest is
+ * delegated: {@link OfferTracker} turns slot updates into fills,
+ * {@link TransactionQueue} keeps them on disk, {@link TransactionSender} gets
+ * them to the server and says what became of them, {@link ProfileStore}
  * remembers what is per character, {@link Watchlists} owns the watchlist and
  * quote caches, {@link CatchUp} reports the open slots and the history screen,
  * and {@link PositionActions} closes and deletes positions.
@@ -98,11 +96,8 @@ import okhttp3.OkHttpClient;
 )
 public class FlippingRsPlugin extends Plugin
 {
-	/** Matches the server's cap on one ingest call. */
-	private static final int MAX_BATCH = 500;
-
 	/** What {@link Client#getAccountHash()} returns when nobody is logged in. */
-	private static final long NO_ACCOUNT = -1L;
+	static final long NO_ACCOUNT = -1L;
 
 	/**
 	 * Worlds whose exchange is not the real economy. A Deadman, Leagues or beta
@@ -125,32 +120,6 @@ public class FlippingRsPlugin extends Plugin
 	 * RuneLite's own Grand Exchange plugin uses for the same burst.
 	 */
 	private static final int LOGIN_BURST_TICKS = 2;
-
-	/**
-	 * How often the account tabs are re-read after sends, at most.
-	 *
-	 * <p>The plugin scope is rate limited at thirty requests a minute, and a
-	 * "Send every" of five seconds with slots filling continuously would be
-	 * twelve ingests plus twenty-four re-reads. Coalescing the re-reads keeps
-	 * that near twenty. A re-read that comes too soon is deferred, not
-	 * dropped, so the last send of a burst still gets its refresh.
-	 */
-	private static final long ACCOUNT_TABS_REFRESH_SECONDS = 15;
-
-	/**
-	 * "Not read yet", on the nanoTime clock. That clock's origin is arbitrary
-	 * and it may well be negative, so zero is a time it is allowed to return
-	 * and cannot stand in for "never". Every comparison against it is a
-	 * subtraction rather than a sum, so a wrap comes out right instead of
-	 * deferring a refresh for the next three hundred years.
-	 */
-	private static final long NEVER = Long.MIN_VALUE;
-
-	/** The tabs that are re-read on their own; Account is only read by connect. */
-	private enum PanelTab
-	{
-		TRADES, JOURNAL, WATCHLISTS
-	}
 
 	@Inject
 	private Client client;
@@ -182,6 +151,9 @@ public class FlippingRsPlugin extends Plugin
 	private OverlayManager overlayManager;
 
 	@Inject
+	private Notifier notifier;
+
+	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -211,38 +183,27 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private ScheduledExecutorService sendExecutor;
 
-	/**
-	 * Pending fills, one queue per RuneScape account.
-	 *
-	 * <p>Separate queues because the FlippingRS journal a trade belongs to is
-	 * remembered per RuneScape account, so a main's fills and an alt's cannot be
-	 * sent in the same batch or under the same id. It also stops two clients
-	 * logged into two accounts overwriting each other's file.
-	 */
-	private final Map<Long, TransactionQueue> queues = new ConcurrentHashMap<>();
-
-	/**
-	 * Guards the sender against re-entry. Every drain -- the scheduled tick,
-	 * the panel's button, the offer and history catch-ups, shutdown -- runs on
-	 * {@link #sendExecutor}, which has one thread, so today this is never
-	 * contended. It stays because the invariant it protects matters: two
-	 * threads draining the same queue would send the same batch twice, and
-	 * while the server would drop the repeat, the panel's counts would be
-	 * nonsense. A future caller on another thread hits this rather than that.
-	 */
-	private final AtomicBoolean sending = new AtomicBoolean();
-
 	private volatile FlippingRsApi api;
 	private FlippingRsPanel panel;
 	private GeMenu geMenu;
 	private GeQuoteOverlay quoteOverlay;
+	private GeItemInfoOverlay infoOverlay;
 
 	// The collaborators. Built by wire(), from the fields above, once those
 	// are in place: in startUp, or by a test that sets them directly.
 	private ProfileStore store;
+	private TransactionSender sender;
+	private PanelReads reads;
 	private Watchlists watchlists;
 	private CatchUp catchUp;
 	private PositionActions positions;
+
+	/**
+	 * Where the pending-queue files live. RuneLite's own directory in normal
+	 * use; a test redirects it so it never writes into real client data. Read
+	 * by {@link #wire()}, so a test sets it before calling that.
+	 */
+	private File queueDir = new File(RuneLite.RUNELITE_DIR, "flippingrs");
 
 	private ScheduledFuture<?> quoteTask;
 	private int loggedInTick = -1;
@@ -263,33 +224,11 @@ public class FlippingRsPlugin extends Plugin
 	 */
 	private volatile boolean shuttingDown;
 
-	/**
-	 * Whether the sidebar is currently showing this panel. Set from the
-	 * panel's own activate and deactivate, and read on the net thread to
-	 * decide whether a tab is worth re-reading at all.
-	 */
-	private volatile boolean sidebarShown;
-
-	private volatile long accountTabsRefreshedAt = NEVER;
-	private final AtomicBoolean accountTabsRefreshPending = new AtomicBoolean();
-
-	/**
-	 * The journals the key can file under, as last loaded. Kept so that a
-	 * login on a different RuneScape account can re-point the picker at that
-	 * account's remembered journal without another round trip. Null until the
-	 * first successful load.
-	 */
-	@Nullable
-	private volatile List<FlippingRsApi.GameAccount> knownAccounts;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> syncTask;
 
 	/** Incremented on the game thread, read on the Swing and io threads. */
 	private final AtomicInteger recordedThisSession = new AtomicInteger();
-	@Nullable
-	// Written on the net thread, read on the Swing thread. Without volatile the
-	// panel can keep showing a stale "last sent" indefinitely.
-	private volatile Instant lastSyncAt;
 
 	@Provides
 	FlippingRsConfig provideConfig(ConfigManager configManager)
@@ -310,11 +249,12 @@ public class FlippingRsPlugin extends Plugin
 
 		geMenu = new GeMenu(client, itemManager, this::openItem,
 			itemId -> submit(sendExecutor, () -> addToWatchlist(itemId)));
-		quoteOverlay = new GeQuoteOverlay(client, this::watchedQuote);
+		quoteOverlay = new GeQuoteOverlay(client, this::watchedQuote, itemId -> watchlists.showingSetup(itemId));
 		overlayManager.add(quoteOverlay);
+		infoOverlay = new GeItemInfoOverlay(client, config, this::watchedQuote, watchlists::showingOffers);
+		overlayManager.add(infoOverlay);
 
-		panel = new FlippingRsPanel();
-		wirePanel();
+		panel = new FlippingRsPanel(new SidebarActions());
 
 		navButton = NavigationButton.builder()
 			.tooltip("FlippingRS")
@@ -325,9 +265,9 @@ public class FlippingRsPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 
 		scheduleSync();
-		quoteTask = sendExecutor.scheduleWithFixedDelay(this::quotesTick,
+		quoteTask = sendExecutor.scheduleWithFixedDelay(reads::quotesTick,
 			QUOTE_REFRESH_SECONDS, QUOTE_REFRESH_SECONDS, TimeUnit.SECONDS);
-		submit(sendExecutor, this::connect);
+		submit(sendExecutor, reads::connect);
 	}
 
 	/**
@@ -345,41 +285,103 @@ public class FlippingRsPlugin extends Plugin
 	void newSession()
 	{
 		recordedThisSession.set(0);
-		lastSyncAt = null;
-		knownAccounts = null;
 		shuttingDown = false;
 		loggedInTick = -1;
 		arrivingInWorld = true;
-		// The deferred re-read these two coalesce was scheduled on the executor
-		// the last shutDown stopped, so it will never run and never clear the
-		// flag. Left set, it swallows the first coalesced re-read of the new
-		// session.
-		accountTabsRefreshedAt = NEVER;
-		accountTabsRefreshPending.set(false);
-		sidebarShown = false;
+		if (reads != null)
+		{
+			reads.newSession();
+		}
+		if (sender != null)
+		{
+			// Null on the first startUp, which calls this before wire() builds
+			// the collaborators. On a re-enable the sender is the one from last
+			// time, still holding when it last sent.
+			sender.newSession();
+		}
 	}
 
 	/**
-	 * Hands the sidebar the things it can ask the plugin to do.
+	 * The things the sidebar can ask the plugin to do.
 	 *
-	 * <p>Separate from building the panel so that it is reachable without
-	 * starting the whole plugin up: every one of these is a button or a
-	 * dropdown, and wiring one to the wrong thing is not something the panel
-	 * or the plugin can notice on its own.
+	 * <p>An inner class rather than a lambda apiece, so that adding a button to
+	 * the panel does not compile until this says what pressing it does. Every
+	 * method is on the Swing thread and hands its work straight to another one:
+	 * the panel must not wait on a disk write or a request.
 	 */
-	void wirePanel()
+	final class SidebarActions implements PanelActions
 	{
-		panel.onSyncNow(() -> submit(sendExecutor, this::drain));
-		panel.onReconnect(() -> submit(sendExecutor, this::connect));
-		panel.onAccountChosen(this::rememberChosenAccount);
-		panel.onWatchlistChosen(this::rememberChosenWatchlist);
-		panel.onOpenItem(this::openItem);
-		panel.onRemoveItem(itemId -> submit(sendExecutor, () -> removeFromWatchlist(itemId)));
-		panel.onFindFlips(() -> LinkBrowser.browse(api.finderUrl()));
-		panel.onClosePosition((id, price, qty) -> submit(sendExecutor, () -> closePosition(id, price, qty)));
-		panel.onDeletePosition(id -> submit(sendExecutor, () -> deletePosition(id)));
-		panel.onShown(() -> sidebarShown(true));
-		panel.onHidden(() -> sidebarShown(false));
+		@Override
+		public void sendNow()
+		{
+			submit(sendExecutor, sender::drain);
+		}
+
+		@Override
+		public void retrySetAside()
+		{
+			submit(sendExecutor, sender::retrySetAside);
+		}
+
+		@Override
+		public void reconnect()
+		{
+			submit(sendExecutor, reads::connect);
+		}
+
+		@Override
+		public void accountChosen()
+		{
+			rememberChosenAccount();
+		}
+
+		@Override
+		public void watchlistChosen()
+		{
+			rememberChosenWatchlist();
+		}
+
+		@Override
+		public void openItem(int itemId)
+		{
+			FlippingRsPlugin.this.openItem(itemId);
+		}
+
+		@Override
+		public void removeItem(int itemId)
+		{
+			submit(sendExecutor, () -> removeFromWatchlist(itemId));
+		}
+
+		@Override
+		public void findFlips()
+		{
+			LinkBrowser.browse(api.finderUrl());
+		}
+
+		@Override
+		public void closePosition(String positionId, long sellPrice, @Nullable Long sellQty)
+		{
+			submit(sendExecutor, () -> FlippingRsPlugin.this.closePosition(positionId, sellPrice, sellQty));
+		}
+
+		@Override
+		public void deletePosition(String positionId)
+		{
+			submit(sendExecutor, () -> FlippingRsPlugin.this.deletePosition(positionId));
+		}
+
+		@Override
+		public void shown()
+		{
+			reads.sidebarShown(true);
+		}
+
+		@Override
+		public void hidden()
+		{
+			reads.sidebarShown(false);
+		}
 	}
 
 	/**
@@ -393,11 +395,21 @@ public class FlippingRsPlugin extends Plugin
 	void wire()
 	{
 		store = new ProfileStore(configManager, gson);
+		sender = new TransactionSender(client, config, store, () -> api, this::onPanel, gson, queueDir,
+			() -> reads.afterSend(), () -> shuttingDown, recordedThisSession::get, this::notifyProblem);
 		watchlists = new Watchlists(client, itemManager, clientThread, config, store, () -> api, this::onPanel,
-			this::itemName, () -> refresh(PanelTab.WATCHLISTS), work -> submit(sendExecutor, work));
-		catchUp = new CatchUp(client, config, store, () -> api, this::onPanel, this::itemName, this::drain,
-			this::refreshAccountTabsAfterSend, work -> submit(sendExecutor, work));
-		positions = new PositionActions(config, () -> api, this::onPanel, () -> refresh(PanelTab.JOURNAL));
+			this::itemName, () -> reads.refresh(PanelReads.Tab.WATCHLISTS), work -> submit(sendExecutor, work));
+		catchUp = new CatchUp(client, config, store, () -> api, this::onPanel, this::itemName, sender::drain,
+			() -> reads.afterSend(), work -> submit(sendExecutor, work));
+		positions = new PositionActions(config, () -> api, this::onPanel, () -> reads.refresh(PanelReads.Tab.JOURNAL));
+		// Last, because it is the one that needs all of the others. The four
+		// above reach back to it through lambdas rather than references, so
+		// the cycle is closed at call time instead of at construction.
+		reads = new PanelReads(client, clientThread, itemManager, config, store, () -> api, this::onPanel,
+			watchlists, sender::drain, sender::retrySetAside, catchUp::snapshotAfterSend,
+			sender::queueFor,
+			work -> submit(sendExecutor, work), this::scheduleOnce,
+			work -> submit(diskExecutor, work), recordedThisSession::get);
 	}
 
 	/**
@@ -463,7 +475,7 @@ public class FlippingRsPlugin extends Plugin
 		// disable and on exit -- the exact failure this whole arrangement is
 		// meant to avoid. shutdown() lets already-queued disk work finish.
 		shuttingDown = true;
-		submit(sendExecutor, this::drain);
+		submit(sendExecutor, sender::drain);
 		// Null-guarded because startUp can throw part way through -- a toolbar
 		// that will not take the nav button, say -- and RuneLite still calls
 		// shutDown on a plugin whose startUp failed. An NPE here would bury the
@@ -486,6 +498,11 @@ public class FlippingRsPlugin extends Plugin
 		{
 			overlayManager.remove(quoteOverlay);
 			quoteOverlay = null;
+		}
+		if (infoOverlay != null)
+		{
+			overlayManager.remove(infoOverlay);
+			infoOverlay = null;
 		}
 		panel = null;
 		geMenu = null;
@@ -562,9 +579,9 @@ public class FlippingRsPlugin extends Plugin
 
 	/** Client thread, from the overlay, once per frame. */
 	@Nullable
-	private FlippingRsApi.Quote watchedQuote(int itemId)
+	private Quote watchedQuote(int itemId)
 	{
-		return watchlists.watchedQuote(itemId);
+		return watchlists.quoteFor(itemId);
 	}
 
 	/** Swing thread, from the picker. */
@@ -688,6 +705,14 @@ public class FlippingRsPlugin extends Plugin
 			tx.occurredAt = null;
 		}
 
+		// A finished offer, watched happening rather than replayed on login.
+		// Said out loud only if asked for: the client shows it too, and a fast
+		// flipper would get one of these every few seconds.
+		if (GeTransaction.SOURCE_LIVE.equals(tx.source) && (tx.completed || tx.cancelled))
+		{
+			notifyOfferDone(tx);
+		}
+
 		if (!config.enabled())
 		{
 			// Off means the plugin is not recording as it goes: the fill is
@@ -726,7 +751,7 @@ public class FlippingRsPlugin extends Plugin
 		// be a disk read on the game thread as well.
 		final boolean handedOver = submit(diskExecutor, () ->
 		{
-			final TransactionQueue queue = queueFor(accountHash);
+			final TransactionQueue queue = sender.queueFor(accountHash);
 			queue.add(tx);
 			// Read here rather than inside the Swing lambda: size() takes the
 			// queue's monitor, and the Swing thread should not wait on a disk
@@ -752,7 +777,7 @@ public class FlippingRsPlugin extends Plugin
 			// the plugin is stopping: a stall nobody is playing through beats a
 			// trade nobody recorded. It goes out on the next login.
 			log.debug("the io thread is gone; writing {} through from the game thread", tx);
-			queueFor(accountHash).add(tx);
+			sender.queueFor(accountHash).add(tx);
 		}
 	}
 
@@ -816,7 +841,7 @@ public class FlippingRsPlugin extends Plugin
 			// braces: logging out tears the widget tree down without a
 			// WidgetClosed for each of its interfaces, so with only that one
 			// the flag stuck on, and the quote timer went on making a request
-			// every thirty seconds, forever, against a thirty-a-minute limit,
+			// every thirty seconds, forever, against a sixty-a-minute limit,
 			// for an offer screen that had been gone since the last session.
 			watchlists.exchangeOpen(false);
 		}
@@ -864,29 +889,9 @@ public class FlippingRsPlugin extends Plugin
 	@Subscribe
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
-		final List<FlippingRsApi.GameAccount> accounts = knownAccounts;
-		if (accounts == null)
-		{
-			// Nothing loaded yet; connect will do this when it succeeds.
-			return;
-		}
-		final String chosen = store.chosenAccount();
-		onPanel(p ->
-		{
-			p.setAccounts(accounts, chosen);
-			if (chosen == null)
-			{
-				rememberChosenAccountFrom(p, false);
-			}
-		});
-		// The recent trades, the journal and the buffer are the account's, so
-		// they change with it.
-		submit(sendExecutor, () ->
-		{
-			refresh(PanelTab.TRADES);
-			refresh(PanelTab.JOURNAL);
-		});
-		refreshPending();
+		// False when nothing has been loaded yet; connect does this when it
+		// succeeds.
+		reads.accountChanged();
 	}
 
 	/**
@@ -910,7 +915,7 @@ public class FlippingRsPlugin extends Plugin
 			{
 				try
 				{
-					drain();
+					sender.drain();
 				}
 				finally
 				{
@@ -939,10 +944,16 @@ public class FlippingRsPlugin extends Plugin
 		switch (event.getKey())
 		{
 			case "apiKey":
+				// A key that has just been changed is the likeliest reason the
+				// server refused a batch over something that was never the
+				// rows' fault, so what was filed gets another go.
+				submit(sendExecutor, sender::retrySetAside);
+				submit(sendExecutor, reads::connect);
+				break;
 			// Turning recording back on has to re-check the key and reload the
 			// journals, because nothing was contacted while it was off.
 			case "enabled":
-				submit(sendExecutor, this::connect);
+				submit(sendExecutor, reads::connect);
 				break;
 			case "syncSeconds":
 				scheduleSync();
@@ -952,7 +963,7 @@ public class FlippingRsPlugin extends Plugin
 				{
 					api = newApi();
 					watchlists.forget();
-					submit(sendExecutor, this::connect);
+					submit(sendExecutor, reads::connect);
 				}
 				break;
 			default:
@@ -976,841 +987,98 @@ public class FlippingRsPlugin extends Plugin
 			return;
 		}
 		final long seconds = Math.max(5, config.syncSeconds());
-		syncTask = sendExecutor.scheduleWithFixedDelay(this::drain, seconds, seconds, TimeUnit.SECONDS);
-	}
-
-	/**
-	 * Sends whatever is waiting for the account that is logged in.
-	 *
-	 * <p>Only that account's queue: which FlippingRS journal a trade belongs to
-	 * is remembered per RuneScape account, and that setting is only readable for
-	 * the profile that is currently active. Another account's pending fills wait
-	 * on disk until it next logs in, which is the only way to file them
-	 * correctly rather than quickly.
-	 *
-	 * <p>Never throws. It runs as a {@code scheduleWithFixedDelay} task on
-	 * {@link #sendExecutor}, and an exception escaping such a task cancels it
-	 * for good -- the plugin would go quiet with nothing in the log to say why.
-	 */
-	private void drain()
-	{
-		// The claim above that this never throws has to hold for every line of
-		// it, so the only thing outside the try is the one statement that
-		// cannot throw. Reading a setting goes through a config proxy, and an
-		// exception from that used to escape and cancel the schedule.
-		if (!sending.compareAndSet(false, true))
-		{
-			return;
-		}
-		try
-		{
-			// Checked before anything else, and before connect's equivalent
-			// check, because "Record trades" being off is a promise that the
-			// plugin is not talking to flippingrs.com at all -- not merely that
-			// it has stopped capturing. Anything already queued stays on disk
-			// and goes out when recording is turned back on; it was captured
-			// while the user wanted it recorded, so discarding it would be its
-			// own kind of surprise.
-			if (!config.enabled())
-			{
-				return;
-			}
-			final long accountHash = client.getAccountHash();
-			if (accountHash == NO_ACCOUNT)
-			{
-				return;
-			}
-			final TransactionQueue queue = queueFor(accountHash);
-			if (queue.isEmpty())
-			{
-				return;
-			}
-
-			final String key = FlippingRsApi.trimmedKey(config.apiKey());
-			if (key.isEmpty())
-			{
-				onPanel(p -> p.setStatus(
-					"No API key yet. Add one in the plugin settings. Your trades are being kept safe until you do.",
-					ColorScheme.BRAND_ORANGE));
-				return;
-			}
-			final String accountId = store.chosenAccount();
-			if (accountId == null)
-			{
-				onPanel(p -> p.setStatus(
-					"No journal chosen for this character yet. Pick one on the Account tab. Your trades are being "
-						+ "kept safe until you do.",
-					ColorScheme.BRAND_ORANGE));
-				return;
-			}
-
-			// The queue was chosen from the account hash; the journal id came
-			// from whichever RuneScape profile is active *now*. Those are two
-			// separate reads of state that changes when somebody hops or
-			// relogs, and pairing a mismatched two would post one account's
-			// trades into the other's journal. Ingestion is idempotent by id,
-			// so re-sending would not undo it -- the entries would simply stay
-			// under the wrong account, which is precisely what storing the
-			// choice per profile exists to prevent. Cheaper to notice and wait
-			// for the next tick.
-			if (client.getAccountHash() != accountHash)
-			{
-				log.debug("account changed while preparing a batch; leaving it queued");
-				return;
-			}
-
-			final List<GeTransaction> batch = queue.peek(MAX_BATCH);
-
-			final Sent sent = new Sent();
-			if (!send(queue, key, accountId, batch, sent))
-			{
-				// Retrying cannot help, and leaving this at the head of the
-				// queue would wedge every later trade behind it forever. Find
-				// the rows at fault, set those aside, and let the rest through.
-				// See narrow for what "the rows at fault" can widen to.
-				narrow(queue, key, accountId, batch, sent);
-			}
-
-			if (sent.accepted > 0)
-			{
-				lastSyncAt = Instant.now();
-			}
-			final int waiting = queue.size();
-			final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
-
-			log.debug("sent {} fills: {} flips opened, {} closed, {} unmatched",
-				sent.accepted, sent.flipsOpened, sent.flipsClosed, sent.unmatchedSellQty);
-
-			// A 200 can still refuse individual rows, and the batch is dropped
-			// from the queue regardless -- so if this is not surfaced here, the
-			// trade is gone and nobody is ever told. Silently losing one is far
-			// worse than a blunt warning, because the journal then disagrees
-			// with what the player remembers doing and nothing explains why.
-			if (sent.rejected > 0)
-			{
-				log.warn("flippingrs.com refused {} of {} fills: {}", sent.rejected, batch.size(), sent.problems);
-			}
-			if (sent.setAside > 0)
-			{
-				log.warn("set aside {} fills that flippingrs.com will not accept; they are in {}",
-					sent.setAside, queue.droppedFile(), sent.cause);
-			}
-
-			if (sent.accepted > 0 && !shuttingDown)
-			{
-				refreshAccountTabsAfterSend();
-			}
-
-			final Instant syncedAt = lastSyncAt;
-			final String droppedFile = whereItIs(queue.droppedFile());
-			onPanel(p -> {
-				p.setCounts(recordedThisSession.get(), waiting);
-				p.setPending(buffered);
-				if (sent.accepted > 0)
-				{
-					p.setLastSync(syncedAt, null);
-					p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR);
-				}
-				else
-				{
-					p.setLastSync(null, FlippingRsApi.describe(sent.cause));
-				}
-				if (sent.setAside > 0)
-				{
-					p.setActivityNotice("flippingrs.com couldn't accept " + sent.setAside + " trade(s). They have been "
-						+ "set aside in " + droppedFile + " in your RuneLite folder so nothing is lost. The client log "
-						+ "says why.", ColorScheme.PROGRESS_ERROR_COLOR);
-				}
-				else if (sent.rejected > 0)
-				{
-					// Not "set aside": the reply says how many rows it refused, not
-					// which, so there is nothing to file. This notice is the only
-					// time anybody is told, so it has to say that they are gone.
-					p.setActivityNotice("flippingrs.com couldn't record " + sent.rejected
-						+ " trade(s), and they won't be sent again. The client log says why.",
-						ColorScheme.PROGRESS_ERROR_COLOR);
-				}
-				else if (sent.unmatchedSellQty > 0)
-				{
-					p.setActivityNotice(sent.unmatchedSellQty
-							+ " item(s) were sold without a recorded purchase, so they can't be counted as a flip yet.",
-						ColorScheme.BRAND_ORANGE);
-				}
-				// A send with nothing to report leaves whatever is up alone.
-				// Clearing here wiped every notice, and the one it wiped most
-				// reliably was the explanation of an adopted offer: adopting
-				// queues a recovered fill, so the very next send is the one
-				// carrying it, and it removed the sentence saying why that
-				// trade has no purchase behind it. Every notice expires on its
-				// own after twenty seconds, which is what that interval is for.
-			});
-		}
-		catch (IOException e)
-		{
-			// Worth retrying: the batch stays queued for the next tick.
-			log.debug("could not send to flippingrs.com; will retry", e);
-			final String why = FlippingRsApi.describe(e);
-			onPanel(p -> p.setLastSync(null, why));
-		}
-		catch (RuntimeException e)
-		{
-			log.warn("unexpected failure while sending", e);
-			onPanel(p -> p.setLastSync(null, "Something went wrong while sending. Details are in the client log."));
-		}
-		finally
-		{
-			sending.set(false);
-		}
-	}
-
-	/**
-	 * Where to tell someone a set-aside file is, relative to the RuneLite
-	 * folder the panel names.
-	 *
-	 * <p>The file sits in a subfolder, and naming it alone sent a user who had
-	 * just been told nothing was lost to look in the wrong place -- from where
-	 * the only reasonable conclusion is that it was.
-	 */
-	private static String whereItIs(File file)
-	{
-		final File folder = file.getParentFile();
-		return folder == null ? file.getName() : folder.getName() + "/" + file.getName();
-	}
-
-	/** What one drain achieved, added up over however many sends it took. */
-	private static final class Sent
-	{
-		/** Rows the server took, whatever it then made of them. */
-		int accepted;
-		/** Rows the server took and then refused individually, in a 200. They are gone. */
-		int rejected;
-		/** Rows set aside on disk after a refusal that retrying cannot fix. */
-		int setAside;
-		int flipsOpened;
-		int flipsClosed;
-		long unmatchedSellQty;
-		final List<String> problems = new java.util.ArrayList<>();
-		/** The last permanent refusal, for the panel and the log. */
-		@Nullable
-		FlippingRsApi.PermanentException cause;
-
-		void took(int rows, FlippingRsApi.IngestResult result)
-		{
-			accepted += rows;
-			rejected += result.getRejected();
-			flipsOpened += result.getFlipsOpened();
-			flipsClosed += result.getFlipsClosed();
-			unmatchedSellQty += result.getUnmatchedSellQty();
-			problems.addAll(result.getProblems());
-		}
-	}
-
-	/**
-	 * One send of one batch. On a 2xx the rows are confirmed out of the queue
-	 * and the result is added up.
-	 *
-	 * @return false if the server refused the batch for good, with the cause
-	 *         recorded on {@code sent}; anything retryable propagates
-	 */
-	private boolean send(TransactionQueue queue, String key, String accountId, List<GeTransaction> batch, Sent sent)
-		throws IOException
-	{
-		try
-		{
-			final FlippingRsApi.IngestResult result = api.submit(key, accountId, batch);
-			queue.confirm(batch);
-			sent.took(batch.size(), result);
-			return true;
-		}
-		catch (FlippingRsApi.PermanentException e)
-		{
-			sent.cause = e;
-			return false;
-		}
-	}
-
-	/**
-	 * Finds the rows behind a refused batch and sets exactly those aside.
-	 *
-	 * <p>A 400 or 422 says the server will not take this batch. It does not
-	 * say which row is at fault, and setting aside five hundred fills for one
-	 * bad row is a lot of journal to lose. So a refused batch of more than one
-	 * is split in half and each half sent on its own; one bad row is found in
-	 * about nine rounds of that, and every good row goes through.
-	 *
-	 * <p>What it does not do is keep halving when both halves are refused. At
-	 * that point the batch either has a bad row in each half, where halving
-	 * further would save the good ones, or is a batch nothing will take -- a
-	 * journal id that is not this owner's, a lapsed plan -- where halving
-	 * further asks about every row to be told the same thing each time. The
-	 * two cannot be told apart without spending requests: a single row sent on
-	 * its own answers only if it happens to be a good one.
-	 *
-	 * <p>So the second reading is assumed and the batch is set aside whole,
-	 * which keeps a refusal that no split can fix to three requests rather
-	 * than a thousand. That is the wrong guess when several rows are bad, and
-	 * it costs the good rows beside them -- they go to the set-aside file
-	 * rather than the journal, and the user is told the count. It is the right
-	 * guess for a misconfiguration, which is both the likelier cause and the
-	 * one that repeats: every batch after it is refused the same way, so a
-	 * search that asks about every row would spend the whole rate limit, every
-	 * sync, for as long as the setting stays wrong.
-	 *
-	 * <p>The batch is the one that was sent, not a fresh read of the queue.
-	 * Fills arrive on the disk thread while a request is in flight, and peek
-	 * returns from the head, so re-reading would set aside trades that had
-	 * never been sent.
-	 *
-	 * @param batch a batch the server has just refused as a whole
-	 */
-	private void narrow(TransactionQueue queue, String key, String accountId, List<GeTransaction> batch, Sent sent)
-		throws IOException
-	{
-		if (batch.size() <= 1)
-		{
-			setAside(queue, batch, sent);
-			return;
-		}
-		final int mid = batch.size() / 2;
-		final List<GeTransaction> first = batch.subList(0, mid);
-		final List<GeTransaction> second = batch.subList(mid, batch.size());
-		final boolean firstTaken = send(queue, key, accountId, first, sent);
-		final boolean secondTaken = send(queue, key, accountId, second, sent);
-		if (!firstTaken && !secondTaken)
-		{
-			setAside(queue, batch, sent);
-			return;
-		}
-		if (!firstTaken)
-		{
-			narrow(queue, key, accountId, first, sent);
-		}
-		if (!secondTaken)
-		{
-			narrow(queue, key, accountId, second, sent);
-		}
-	}
-
-	/**
-	 * Takes refused fills out of the queue and onto the sibling file, where a
-	 * user who is told a trade could not be recorded can still find it.
-	 */
-	private static void setAside(TransactionQueue queue, List<GeTransaction> batch, Sent sent)
-	{
-		queue.reject(batch);
-		sent.setAside += batch.size();
-	}
-
-	/** The machine's UTC offset, so the server's daily buckets fall on the player's calendar. */
-	private static int tzOffsetMinutes()
-	{
-		return TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000;
-	}
-
-	/**
-	 * Shows what is still buffered for the logged-in account. Disk thread,
-	 * because opening the queue reads its file.
-	 */
-	private void refreshPending()
-	{
-		final long accountHash = client.getAccountHash();
-		if (accountHash == NO_ACCOUNT)
-		{
-			onPanel(p ->
-			{
-				p.setPending(Collections.emptyList());
-				p.setCounts(recordedThisSession.get(), 0);
-			});
-			return;
-		}
-		submit(diskExecutor, () ->
-		{
-			final TransactionQueue queue = queueFor(accountHash);
-			final int waiting = queue.size();
-			final List<GeTransaction> buffered = queue.newest(FlippingRsPanel.RECENT_SHOWN);
-			onPanel(p ->
-			{
-				p.setCounts(recordedThisSession.get(), waiting);
-				p.setPending(buffered);
-			});
-		});
-	}
-
-	// ------------------------------------------------------------ panel reads
-
-	/**
-	 * Puts a panel reply on the screen. Only the parts present are touched,
-	 * so a partial read leaves the rest of the sidebar as it was.
-	 *
-	 * @param connecting true for the read that doubles as the connection
-	 *                   test, which also sets the connection status
-	 */
-	private void applyPanel(FlippingRsApi.Panel reply, boolean connecting)
-	{
-		final FlippingRsApi.Me me = reply.getMe();
-		if (me != null)
-		{
-			final String plan = "Plan: " + me.describePlan();
-			onPanel(p -> p.setSubscription(plan));
-		}
-
-		final List<FlippingRsApi.GameAccount> accounts = reply.getAccounts();
-		if (accounts != null)
-		{
-			knownAccounts = accounts;
-			final String chosen = store.chosenAccount();
-
-			// The remembered journal is gone -- deleted on the site, or the key
-			// now belongs to a different FlippingRS account. Sending to it
-			// would be refused every tick, and the picker would meanwhile show
-			// whichever entry sorted first. Forget the choice and say so, and
-			// hold the trades until a real one is made.
-			final boolean orphaned = chosen != null && !accounts.isEmpty() && !contains(accounts, chosen);
-			if (orphaned)
-			{
-				log.warn("the journal remembered for this account ({}) no longer exists; forgetting it", chosen);
-				store.forgetChosenAccount();
-			}
-
-			onPanel(p -> {
-				// The orphaned id is passed through on purpose: the panel shows
-				// no selection for a remembered journal it cannot find, where a
-				// null would have it select the default as if nothing had ever
-				// been chosen.
-				p.setAccounts(accounts, chosen);
-				if (orphaned)
-				{
-					p.setStatus("The journal this character was using no longer exists on flippingrs.com. Pick "
-						+ "another below. Your trades are being kept safe until you do.", ColorScheme.BRAND_ORANGE);
-					return;
-				}
-				if (connecting)
-				{
-					p.setStatus(accounts.isEmpty()
-							? "Connected, but your flippingrs.com account has no journals yet. Create one on the site first."
-							: "Connected and recording.",
-						accounts.isEmpty() ? ColorScheme.BRAND_ORANGE : ColorScheme.PROGRESS_COMPLETE_COLOR);
-				}
-				// A RuneScape account seen for the first time has nothing chosen
-				// yet. Adopting whatever the panel selected saves a setup step,
-				// and it can still be changed. If nobody is logged in yet, the
-				// profile-changed event does this on login instead. (An orphaned
-				// choice returned above, so this never adopts over one.)
-				if (chosen == null)
-				{
-					rememberChosenAccountFrom(p, false);
-				}
-			});
-		}
-		else if (connecting)
-		{
-			onPanel(p -> p.setStatus("Connected and recording.", ColorScheme.PROGRESS_COMPLETE_COLOR));
-		}
-
-		watchlists.accept(reply.getWatchlists(), reply.getQuotes());
-
-		final List<GeTransaction> all = reply.getRecentTransactions();
-		if (all != null)
-		{
-			// Only the rows that will actually be drawn. The tab shows the
-			// newest few and drops the rest, and resolving a sprite for a row
-			// nobody will see is item-manager work on the game thread for
-			// nothing -- however many the server decides to send back.
-			final List<GeTransaction> rows = all.size() > FlippingRsPanel.RECENT_SHOWN
-				? all.subList(0, FlippingRsPanel.RECENT_SHOWN)
-				: all;
-			// Sprites come from the item manager, which wants the client thread.
-			clientThread.invoke(() ->
-			{
-				final Map<Integer, net.runelite.client.util.AsyncBufferedImage> images = new java.util.HashMap<>();
-				for (GeTransaction tx : rows)
-				{
-					if (!images.containsKey(tx.itemId))
-					{
-						images.put(tx.itemId, spriteOf(tx.itemId));
-					}
-				}
-				onPanel(p -> p.setActivity(rows, images));
-			});
-		}
-
-		final FlippingRsApi.Analytics week = reply.getWeek();
-		final FlippingRsApi.Positions open = reply.getPositions();
-		if (week != null && open != null)
-		{
-			onPanel(p -> p.setJournal(week, open));
-		}
-	}
-
-	/**
-	 * Checks the key and loads every tab.
-	 *
-	 * <p>The Account read is the connection test: if it fails, nothing else
-	 * is tried and the Account tab says why. The other tabs are then read one
-	 * by one, and each reports its own failure on its own tab, since a key
-	 * that just worked is not a broken connection.
-	 *
-	 * <p>Never throws. Not because anything schedules it -- nothing does --
-	 * but because this is the read that puts the reason on the Account tab,
-	 * and a failure that escapes leaves that tab saying whatever it said
-	 * before while the plugin quietly does nothing.
-	 */
-	private void connect()
-	{
-		try
-		{
-			if (!config.enabled())
-			{
-				onPanel(p -> {
-					p.setAccounts(Collections.emptyList(), null);
-					p.setStatus("Recording is off. Nothing is being recorded or sent to flippingrs.com. Switch "
-						+ "\"Record trades\" back on in the plugin settings to carry on.",
-						ColorScheme.LIGHT_GRAY_COLOR);
-					// Old rows next to a status that says nothing is being read
-					// would be a picture of a journal the plugin is not looking at.
-					p.setPaused("Recording is off, so nothing is being read from flippingrs.com.");
-				});
-				// The list the picker was drawn from goes too. It is not read
-				// again while this is the state, and a login on another character
-				// would otherwise re-point the picker from it -- filling in a
-				// journal on a tab that has just said nothing is being read.
-				knownAccounts = null;
-				// And the offer screen, which draws the same quotes the sidebar
-				// does. Left alone it would go on showing the site's prices, frozen
-				// at whatever they were when recording was switched off, in front
-				// of the box where a price gets typed.
-				watchlists.forget();
-				return;
-			}
-
-			final String key = FlippingRsApi.trimmedKey(config.apiKey());
-			if (key.isEmpty())
-			{
-				onPanel(p -> {
-					p.setAccounts(Collections.emptyList(), null);
-					p.setStatus("Add your API key in the plugin settings. You can create one on flippingrs.com "
-						+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
-					p.setPaused("Add an API key to see your journal here.");
-				});
-				knownAccounts = null;
-				watchlists.forget();
-				return;
-			}
-
-			try
-			{
-				applyPanel(api.account(key), true);
-			}
-			catch (IOException e)
-			{
-				log.debug("could not reach flippingrs.com", e);
-				final String why = FlippingRsApi.describe(e);
-				onPanel(p -> p.setStatus("Could not connect: " + why, ColorScheme.PROGRESS_ERROR_COLOR));
-				return;
-			}
-			refresh(PanelTab.TRADES);
-			refresh(PanelTab.JOURNAL);
-			accountTabsRefreshedAt = System.nanoTime();
-			refresh(PanelTab.WATCHLISTS);
-			refreshPending();
-			// The key may have been missing or wrong while trades piled up.
-			submit(sendExecutor, this::drain);
-		}
-		catch (RuntimeException e)
-		{
-			// The Account tab is where the plugin explains itself, and this is
-			// the read that fills it in. Anything unexpected out of here left
-			// it saying whatever it said last -- "Not connected", on a client
-			// that had just been given a key -- with the reason in the log and
-			// nowhere else, which is the one failure this tab exists to
-			// prevent. The sender and the tab reads are wrapped the same way.
-			log.warn("unexpected failure while connecting to flippingrs.com", e);
-			onPanel(p -> p.setStatus("Something went wrong while connecting. Details are in the client log.",
-				ColorScheme.PROGRESS_ERROR_COLOR));
-		}
-	}
-
-	/**
-	 * The sidebar opened on this panel, or closed. Swing thread.
-	 *
-	 * <p>Opening reads everything the sidebar shows, because while it was shut
-	 * none of it was. The two account tabs go through the same throttle the
-	 * sends use, so opening and closing it repeatedly cannot become a burst of
-	 * requests against a limit of thirty a minute.
-	 */
-	private void sidebarShown(boolean shown)
-	{
-		sidebarShown = shown;
-		watchlists.sidebarShown(shown);
-		if (!shown)
-		{
-			return;
-		}
-		submit(sendExecutor, () ->
-		{
-			refresh(PanelTab.WATCHLISTS);
-			refreshAccountTabs();
-		});
-	}
-
-	/**
-	 * What a successful send sets going: the open-slot snapshot always, and a
-	 * re-read of the two account tabs if anyone can see them. Net thread.
-	 */
-	private void refreshAccountTabsAfterSend()
-	{
-		// Not a panel read, and so not conditional on anyone looking: this is
-		// how the server learns what the open slots hold and recovers a fill
-		// the plugin never saw. CatchUp keeps its own, longer, minimum gap.
-		clientThread.invoke(catchUp::snapshotAfterSend);
-
-		if (!sidebarShown)
-		{
-			// Nobody can see the two tabs. Reading them anyway is two requests
-			// per send against a limit of thirty a minute that the sends
-			// themselves draw on, to redraw a panel that is shut -- and a
-			// flipper keeps the exchange open and the sidebar shut. Opening it
-			// reads them.
-			return;
-		}
-		refreshAccountTabs();
-	}
-
-	/**
-	 * Re-reads Trades and Journal, no more often than the limit allows. Net
-	 * thread. A read that comes too soon is deferred rather than dropped, so
-	 * the last send of a burst still gets its refresh.
-	 */
-	private void refreshAccountTabs()
-	{
-		final long now = System.nanoTime();
-		final long since = now - accountTabsRefreshedAt;
-		final long window = TimeUnit.SECONDS.toNanos(ACCOUNT_TABS_REFRESH_SECONDS);
-		if (accountTabsRefreshedAt == NEVER || since >= window)
-		{
-			accountTabsRefreshedAt = now;
-			refresh(PanelTab.TRADES);
-			refresh(PanelTab.JOURNAL);
-			return;
-		}
-		final long wait = window - since;
-		if (!accountTabsRefreshPending.compareAndSet(false, true))
-		{
-			// One is already on its way, and it will see this send's rows too.
-			return;
-		}
-		try
-		{
-			sendExecutor.schedule(() ->
-			{
-				accountTabsRefreshPending.set(false);
-				accountTabsRefreshedAt = System.nanoTime();
-				refresh(PanelTab.TRADES);
-				refresh(PanelTab.JOURNAL);
-			}, wait, TimeUnit.NANOSECONDS);
-		}
-		catch (RejectedExecutionException e)
-		{
-			// Shutting down; the next connect re-reads everything anyway.
-			accountTabsRefreshPending.set(false);
-		}
-	}
-
-	/**
-	 * Re-reads one tab from its endpoint and redraws it. Net thread. Never
-	 * throws, because the watchlist refresh also runs on a fixed-delay
-	 * schedule, where an escaping exception would cancel it for good.
-	 *
-	 * <p>A failure is reported on that tab, not as a failed connection: the
-	 * key was good a moment ago and the fills are still going out.
-	 */
-	private void refresh(PanelTab tab)
-	{
-		try
-		{
-			if (!config.enabled())
-			{
-				return;
-			}
-			final String key = FlippingRsApi.trimmedKey(config.apiKey());
-			if (key.isEmpty())
-			{
-				return;
-			}
-			final String accountId = store.chosenAccount();
-			final FlippingRsApi.Panel part;
-			switch (tab)
-			{
-				case TRADES:
-					if (accountId == null)
-					{
-						return;
-					}
-					part = api.trades(key, accountId);
-					break;
-				case JOURNAL:
-					if (accountId == null)
-					{
-						return;
-					}
-					part = api.journal(key, accountId, tzOffsetMinutes());
-					break;
-				case WATCHLISTS:
-					part = api.watchlists(key, store.rememberedWatchlistId());
-					break;
-				default:
-					return;
-			}
-			applyPanel(part, false);
-		}
-		catch (IOException e)
-		{
-			log.warn("could not refresh the {} tab: {}", tab, e.getMessage());
-			final String why = FlippingRsApi.describe(e);
-			onPanel(p ->
-			{
-				switch (tab)
-				{
-					case TRADES:
-						p.setActivityProblem(why);
-						break;
-					case JOURNAL:
-						p.setJournalProblem(why);
-						break;
-					case WATCHLISTS:
-						p.setWatchlistProblem(why);
-						break;
-					default:
-						break;
-				}
-			});
-		}
-		catch (RuntimeException e)
-		{
-			log.warn("unexpected failure refreshing the {} tab", tab, e);
-		}
-	}
-
-	/**
-	 * The tick that keeps quotes current, while there is something to quote
-	 * and somewhere it is shown.
-	 *
-	 * <p>Guarded for the same reason {@link #drain} is: this runs as a
-	 * fixed-delay task, and an exception escaping one cancels it for good --
-	 * the quotes would stop refreshing for the rest of the session with
-	 * nothing in the log to say why. Deciding whether there is anything to
-	 * quote reads nothing that can throw today; the guard is here so that it
-	 * stays true of whatever this comes to ask, because the cost of being
-	 * wrong about it is silent and lasts all session.
-	 */
-	private void quotesTick()
-	{
-		try
-		{
-			if (watchlists.wantsQuotes())
-			{
-				refresh(PanelTab.WATCHLISTS);
-			}
-		}
-		catch (RuntimeException e)
-		{
-			log.warn("unexpected failure deciding whether to refresh the quotes", e);
-		}
-	}
-
-	private static boolean contains(List<FlippingRsApi.GameAccount> accounts, String id)
-	{
-		for (FlippingRsApi.GameAccount account : accounts)
-		{
-			if (account != null && id.equals(account.id))
-			{
-				return true;
-			}
-		}
-		return false;
+		syncTask = sendExecutor.scheduleWithFixedDelay(sender::drain, seconds, seconds, TimeUnit.SECONDS);
 	}
 
 	// ------------------------------------------------------------ the journal
 
+	/**
+	 * The journal picker changed. Swing thread.
+	 *
+	 * <p>Here rather than in {@link PanelReads} because the panel reference is
+	 * the plugin's, and it is nulled on shutdown: everything else asks for the
+	 * panel through {@link #onPanel}, which hops to the Swing thread, and this
+	 * is already on it.
+	 */
 	private void rememberChosenAccount()
 	{
 		final FlippingRsPanel target = panel;
 		if (target != null)
 		{
-			rememberChosenAccountFrom(target, true);
+			reads.rememberChosenAccountFrom(target, true);
 		}
-	}
-
-	/**
-	 * Stores the panel's selection as this RuneScape account's journal.
-	 *
-	 * <p>The journal is what Trades and Journal are read for, so a change of
-	 * one has to re-read both. Without that, picking a different journal left
-	 * the two tabs showing the previous one's rows until something else
-	 * happened to refresh them -- a sidebar naming one journal over another
-	 * journal's numbers, which is the one thing this panel exists to get
-	 * right. The same call covers the first journal a character adopts: the
-	 * adoption is handed to the Swing thread and lands after the connect that
-	 * asked for it has already read both tabs and found nothing chosen.
-	 *
-	 * <p>And whatever is queued goes out, because the panel has been telling
-	 * the user their trades are being kept safe until they pick one.
-	 *
-	 * @param interactive true when the user just picked it, in which case a
-	 *                    choice that cannot be stored is worth telling them
-	 *                    about. The automatic adoptions pass false: on a client
-	 *                    started before login there is nothing to attach the
-	 *                    choice to yet, and that is not something to nag over.
-	 */
-	private void rememberChosenAccountFrom(FlippingRsPanel from, boolean interactive)
-	{
-		final String id = from.selectedAccountId();
-		if (id == null)
-		{
-			return;
-		}
-		if (client.getAccountHash() == NO_ACCOUNT)
-		{
-			// There is no RuneScape profile to attach the choice to yet. Saying
-			// so beats writing it somewhere it will never be read back from.
-			if (interactive)
-			{
-				from.setStatus("Log in first, so this choice can be saved for that character.",
-					ColorScheme.BRAND_ORANGE);
-			}
-			return;
-		}
-		if (id.equals(store.chosenAccount()))
-		{
-			// Repopulating the picker on every reconnect re-selects the same
-			// entry, and re-reading two tabs for that would be two requests
-			// against a thirty-a-minute limit for no news.
-			return;
-		}
-		store.rememberChosenAccount(id);
-		submit(sendExecutor, () ->
-		{
-			refresh(PanelTab.TRADES);
-			refresh(PanelTab.JOURNAL);
-			drain();
-		});
-	}
-
-	// ------------------------------------------------------------- the queue
-
-	/**
-	 * Where the pending-queue files live. RuneLite's own directory in normal
-	 * use; a test redirects it so it never writes into real client data.
-	 */
-	private File queueDir = new File(RuneLite.RUNELITE_DIR, "flippingrs");
-
-	private TransactionQueue queueFor(long accountHash)
-	{
-		return queues.computeIfAbsent(accountHash,
-			hash -> new TransactionQueue(gson, new File(queueDir, "queue-" + hash + ".json")));
 	}
 
 	// ---------------------------------------------------------------- helpers
+
+	/**
+	 * Runs work on the net thread once a delay has passed, tolerating a
+	 * shutdown that has already stopped it.
+	 *
+	 * @return false if the executor is gone, so the caller can undo whatever
+	 *         it set up in expectation of the work running
+	 */
+	private boolean scheduleOnce(long nanos, Runnable work)
+	{
+		if (sendExecutor == null || sendExecutor.isShutdown())
+		{
+			return false;
+		}
+		try
+		{
+			sendExecutor.schedule(work, nanos, TimeUnit.NANOSECONDS);
+			return true;
+		}
+		catch (RejectedExecutionException e)
+		{
+			log.debug("dropped a deferred re-read submitted during shutdown", e);
+			return false;
+		}
+	}
+
+	/**
+	 * Gets the user's attention about a trade that could not be recorded.
+	 *
+	 * <p>Never throws. It is called from the sender, which promises the same,
+	 * and a notifier that fails is not worth cancelling the schedule over.
+	 */
+	private void notifyOfferDone(GeTransaction tx)
+	{
+		final String what = tx.cancelled ? "cancelled" : ("buy".equals(tx.side) ? "bought" : "sold");
+		notify(config.notifyOfferComplete(), "Your " + nameFor(tx) + " offer " + what + ".");
+	}
+
+	/** The item's name if the client gave one, else something that still reads. */
+	private static String nameFor(GeTransaction tx)
+	{
+		return tx.itemName == null || tx.itemName.isEmpty() ? "Grand Exchange" : tx.itemName;
+	}
+
+	private void notifyProblem(String message)
+	{
+		notify(config.notifyProblems(), message);
+	}
+
+	/**
+	 * Raises a notification, if the setting asks for one.
+	 *
+	 * <p>Never throws. One caller is the sender, which promises the same and
+	 * runs on a schedule an escaping exception would cancel for good; another
+	 * is the game thread's capture, where an exception lands in RuneLite's
+	 * event bus as an uncaught subscriber error. Neither is worth a
+	 * notification failing.
+	 */
+	private void notify(Notification when, String message)
+	{
+		try
+		{
+			notifier.notify(when, message);
+		}
+		catch (RuntimeException e)
+		{
+			log.debug("could not raise a notification", e);
+		}
+	}
 
 	/** Item names come from the item manager, which wants the client thread. */
 	private String itemName(int itemId)
@@ -1826,21 +1094,6 @@ public class FlippingRsPlugin extends Plugin
 			// missing one costs nothing but a less readable panel line.
 			log.debug("could not resolve a name for item {}", itemId, e);
 			return "";
-		}
-	}
-
-	/** The item's sprite, or null if the client will not give one. Client thread. */
-	@Nullable
-	private net.runelite.client.util.AsyncBufferedImage spriteOf(int itemId)
-	{
-		try
-		{
-			return itemManager.getImage(itemId);
-		}
-		catch (RuntimeException e)
-		{
-			log.debug("no sprite for item {}", itemId, e);
-			return null;
 		}
 	}
 

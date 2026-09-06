@@ -8,6 +8,8 @@ import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
 import org.junit.Before;
 import org.junit.Test;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertFalse;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -24,14 +26,16 @@ public class GeQuoteOverlayTest
 {
 	private final Client client = mock(Client.class);
 	private final Widget setup = mock(Widget.class);
-	private final Map<Integer, FlippingRsApi.Quote> watched = new HashMap<>();
+	private final Map<Integer, Quote> watched = new HashMap<>();
 	private GeQuoteOverlay overlay;
+	/** The items the overlay said were on screen, so a price can be fetched. */
+	private final java.util.List<Integer> asked = new java.util.ArrayList<>();
 
 	@Before
 	public void setUp()
 	{
-		overlay = new GeQuoteOverlay(client, watched::get);
-		final FlippingRsApi.Quote whip = new FlippingRsApi.Quote();
+		overlay = new GeQuoteOverlay(client, watched::get, itemId -> asked.add(itemId));
+		final Quote whip = new Quote();
 		whip.id = 4151;
 		whip.instantSell = 1_480_000;
 		whip.instantBuy = 1_520_000;
@@ -117,5 +121,80 @@ public class GeQuoteOverlayTest
 		assertEquals("+9,600", FlippingRsPanel.signedExact(9_600));
 		assertEquals("-500", FlippingRsPanel.signedExact(-500));
 		assertEquals("0", FlippingRsPanel.signedExact(0));
+	}
+
+	/**
+	 * The box shows prices to the gp, and exactness implies a freshness it
+	 * does not have. A figure that is forty minutes old, drawn beside the box
+	 * where a number gets typed, is a trap a rounder figure never sets -- so
+	 * the age is said, in as much precision as the answer deserves.
+	 */
+	@Test
+	public void theAgeOfThePricesIsSaidPlainly()
+	{
+		assertEquals("just now", GeQuoteOverlay.age(0));
+		assertEquals("a minute is still now", "just now", GeQuoteOverlay.age(60));
+		assertEquals("4m ago", GeQuoteOverlay.age(4 * 60 + 30));
+		assertEquals("59m ago", GeQuoteOverlay.age(59 * 60));
+		assertEquals("1h ago", GeQuoteOverlay.age(3600));
+		assertEquals("2h ago", GeQuoteOverlay.age(2 * 3600 + 1800));
+	}
+
+	/**
+	 * An item that has never traded has no age, and the server says so with a
+	 * negative one.
+	 *
+	 * <p>Reading that as "just now" because it is a small number would put the
+	 * most reassuring words on the screen in the one case where nothing at all
+	 * is known -- which is the exact false freshness this line was added to
+	 * prevent. Nothing is drawn instead.
+	 */
+	@Test
+	public void anItemThatHasNeverTradedHasNoAge()
+	{
+		assertNull(GeQuoteOverlay.age(-1));
+		assertNotNull("and a real age still reads", GeQuoteOverlay.age(0));
+	}
+
+	/**
+	 * The buy limit is the one number a flipper cannot work out in their head,
+	 * and the reset only matters once there is nothing left to buy: while
+	 * there is, the number to act on is what is remaining.
+	 */
+	@Test
+	public void theBuyLimitLeftIsWhatThereIsToActOn()
+	{
+		final Quote quote = new Quote();
+		quote.limitRemaining = 3412;
+		assertEquals("3.4K", GeQuoteOverlay.limitLeft(quote));
+
+		quote.limitRemaining = 0;
+		quote.limitResetsInSeconds = 2 * 3600 + 14 * 60;
+		assertEquals("none for 2h 14m", GeQuoteOverlay.limitLeft(quote));
+
+		quote.limitResetsInSeconds = 0;
+		assertEquals("a reset it does not know about is not invented",
+			"none", GeQuoteOverlay.limitLeft(quote));
+	}
+
+	@Test
+	public void howLongUntilTheLimitResets()
+	{
+		assertEquals("under a minute", GeQuoteOverlay.until(30));
+		assertEquals("12m", GeQuoteOverlay.until(12 * 60 + 59));
+		assertEquals("1h 12m", GeQuoteOverlay.until(3600 + 12 * 60));
+		assertEquals("an exact number of hours does not trail a 0m", "4h", GeQuoteOverlay.until(4 * 3600));
+	}
+
+	/**
+	 * A server that does not send the limit is not the same as one saying
+	 * there is none left, and drawing "0" for the first would tell a user to
+	 * stop buying an item they can buy.
+	 */
+	@Test
+	public void aServerThatSaysNothingAboutTheLimitDrawsNoLimitLine()
+	{
+		final Quote quote = new Quote();
+		assertFalse(quote.hasLimitLeft());
 	}
 }

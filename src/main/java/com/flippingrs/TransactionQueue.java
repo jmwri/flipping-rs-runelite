@@ -100,6 +100,12 @@ public class TransactionQueue
 	 */
 	private final File staging;
 
+	/**
+	 * How many fills are in {@link #dropped}, or -1 for "not counted yet".
+	 * Counting means reading the file, and it is nearly always absent.
+	 */
+	private int setAside = -1;
+
 	public TransactionQueue(Gson gson, File file)
 	{
 		this(gson, file, CAPACITY);
@@ -230,7 +236,14 @@ public class TransactionQueue
 		{
 			return;
 		}
-		if (!writeDropped(refused))
+		if (writeDropped(refused))
+		{
+			if (setAside >= 0)
+			{
+				setAside += refused.size();
+			}
+		}
+		else
 		{
 			// These are about to leave the queue whether or not they could be
 			// filed -- holding them would wedge every later trade -- and the
@@ -280,6 +293,125 @@ public class TransactionQueue
 	public File droppedFile()
 	{
 		return dropped;
+	}
+
+	/**
+	 * How many fills are set aside, so the sidebar can offer to try them
+	 * again.
+	 *
+	 * <p>Counted off the file the first time it is asked for and kept from
+	 * then on, because this is read on every panel refresh and the answer is
+	 * nearly always zero. A file that cannot be read counts as empty: the
+	 * button it decides is an offer to retry, and offering to retry something
+	 * that cannot be read would fail in a way that explains nothing.
+	 */
+	public synchronized int setAsideCount()
+	{
+		if (setAside < 0)
+		{
+			setAside = countDropped();
+		}
+		return setAside;
+	}
+
+	/**
+	 * Puts the set-aside fills back in the queue for another go, and forgets
+	 * the file.
+	 *
+	 * <p>The only reason to ask for this is that whatever the server was
+	 * refusing them over has been changed: a key that was wrong, a journal
+	 * that was not this owner's, a plan that had lapsed. Those are properties
+	 * of the account rather than of the rows, and the rows were only ever set
+	 * aside because the plugin could not tell the two apart. Retrying is safe
+	 * however wrong that guess was, because every fill carries the id the
+	 * server de-duplicates on.
+	 *
+	 * <p>The rows go into the queue before the file is forgotten, never the
+	 * other way round. A client killed in between restores them twice, which
+	 * the server drops as repeats; the other order loses them for good.
+	 *
+	 * @return how many went back, which is zero if there were none or the
+	 *         file could not be read
+	 */
+	public synchronized int restoreSetAside()
+	{
+		if (!dropped.isFile())
+		{
+			setAside = 0;
+			return 0;
+		}
+		final List<GeTransaction> restored = new ArrayList<>();
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(
+			Files.newInputStream(dropped.toPath()), StandardCharsets.UTF_8)))
+		{
+			String line;
+			while ((line = in.readLine()) != null)
+			{
+				if (line.trim().isEmpty())
+				{
+					continue;
+				}
+				final GeTransaction tx = parse(line);
+				// The same bar a restored fill has to clear: without an id the
+				// server could not de-duplicate it, so it can only be sent once
+				// and never safely again.
+				if (tx != null && tx.id != null && !tx.id.isEmpty())
+				{
+					restored.add(tx);
+				}
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			log.warn("could not read the set-aside fills in {}: {}", dropped, e.toString());
+			return 0;
+		}
+		for (GeTransaction tx : restored)
+		{
+			// Through add, so each is written to the queue file as it goes and
+			// the cap is honoured the same way a fresh fill is.
+			add(tx);
+		}
+		if (!dropped.delete() && dropped.isFile())
+		{
+			// They are in the queue and will be sent; leaving the file would
+			// only mean restoring them a second time, which the server drops.
+			// Worth a line, because the count the sidebar shows comes from it.
+			log.warn("restored {} set-aside fill(s) but could not remove {}", restored.size(), dropped);
+			setAside = -1;
+			return restored.size();
+		}
+		setAside = 0;
+		log.info("put {} set-aside fill(s) back in the queue", restored.size());
+		return restored.size();
+	}
+
+	/** Lines in the set-aside file, or zero if there is not one to read. */
+	private int countDropped()
+	{
+		if (!dropped.isFile())
+		{
+			return 0;
+		}
+		int rows = 0;
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(
+			Files.newInputStream(dropped.toPath()), StandardCharsets.UTF_8)))
+		{
+			String line;
+			while ((line = in.readLine()) != null)
+			{
+				if (!line.trim().isEmpty())
+				{
+					rows++;
+				}
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			log.debug("could not count the set-aside fills in {}", dropped, e);
+			return 0;
+		}
+		return rows;
 	}
 
 	/**

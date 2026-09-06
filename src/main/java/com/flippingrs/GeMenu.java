@@ -19,18 +19,24 @@ import net.runelite.client.game.ItemManager;
 /**
  * Right-click entries on items in the Grand Exchange interface.
  *
- * <p>Two entries, wherever the exchange shows an item: the eight offer slots,
- * the inventory beside them, the offer setup page, and the rows of the
- * history view. One opens the item's page on the site in the browser, the
- * other adds it to the watchlist shown in the side panel. Both are
+ * <p>Two entries, wherever the exchange shows an item, which is every screen
+ * it has: the eight offer slots, the offer setup page, the page you get by
+ * clicking an offer you have already placed, your history, the collection
+ * box, the inventory beside it all, another player's offers in a view-only
+ * exchange, and the price checker. One opens the item's page on the site in
+ * the browser, the other adds it to the watchlist shown in the side panel.
+ * Where the item comes from on each of those is {@link GeItems}'s business,
+ * not this class's. Both are
  * {@link MenuAction#RUNELITE} entries, which is the line Jagex's third-party
  * client guidelines draw: a menu entry may not cause an action to be sent to
  * the game server, and these never touch it. RuneLite's own Grand Exchange
  * plugin adds its "Search Grand Exchange" entry the same way.
  *
  * <p>Hooked on the menu opening rather than on each entry being added,
- * because history rows have no options of their own and so never raise an
- * entry to hang off. The row is found from the mouse position instead.
+ * because most of those screens are display only: a history row has no
+ * options of its own and so never raises an entry to hang one off. Where the
+ * leading entry does say which widget it is on that is used, because it is
+ * exact; otherwise the item is found from where the mouse is.
  *
  * <p>Runs on the client thread, because menu events do. The browser and the
  * watchlist are handed to it as callbacks so that this can be tested without
@@ -60,7 +66,11 @@ class GeMenu
 		int itemId = itemUnderMenu(event.getFirstEntry());
 		if (itemId <= 0)
 		{
-			itemId = itemInHistoryRowUnderMouse();
+			// Every other screen the exchange has. The menu over one of those
+			// says nothing about where it was opened, so the item is found
+			// from the boxes the exchange is drawing and where the mouse is
+			// among them.
+			itemId = GeItems.under(client, client.getMouseCanvasPosition());
 		}
 		if (itemId <= 0)
 		{
@@ -179,46 +189,5 @@ class GeMenu
 		}
 		final Widget widget = entry.getWidget();
 		return widget == null ? -1 : widget.getItemId();
-	}
-
-	/**
-	 * The item in the history row the mouse is over.
-	 *
-	 * <p>History rows are display only, so the menu over one is just "Cancel"
-	 * and says nothing about where it was opened. Each row does carry an item
-	 * icon, though, and the icon's vertical extent is the row's. The mouse
-	 * only has to be somewhere in the list at that height.
-	 */
-	private int itemInHistoryRowUnderMouse()
-	{
-		final Widget list = client.getWidget(InterfaceID.GeHistory.LIST);
-		if (list == null || list.isHidden())
-		{
-			return -1;
-		}
-		final Point mouse = client.getMouseCanvasPosition();
-		final Rectangle area = list.getBounds();
-		if (mouse == null || area == null || !area.contains(mouse.getX(), mouse.getY()))
-		{
-			return -1;
-		}
-		final Widget[] rows = list.getDynamicChildren();
-		if (rows == null)
-		{
-			return -1;
-		}
-		for (Widget child : rows)
-		{
-			if (child == null || child.getItemId() <= 0 || child.isHidden())
-			{
-				continue;
-			}
-			final Rectangle bounds = child.getBounds();
-			if (bounds != null && mouse.getY() >= bounds.y && mouse.getY() < bounds.y + bounds.height)
-			{
-				return child.getItemId();
-			}
-		}
-		return -1;
 	}
 }
