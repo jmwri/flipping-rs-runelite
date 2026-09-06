@@ -289,7 +289,7 @@ final class PanelReads
 						images.put(tx.itemId, spriteOf(tx.itemId));
 					}
 				}
-				panel.onPanel(p -> p.setActivity(rows, images));
+				panel.onPanel(p -> p.setRecentTrades(rows, images));
 			});
 		}
 
@@ -532,7 +532,7 @@ final class PanelReads
 				switch (tab)
 				{
 					case TRADES:
-						p.setActivityProblem(why);
+						p.setRecentTradesProblem(why);
 						break;
 					case JOURNAL:
 						p.setJournalProblem(why);

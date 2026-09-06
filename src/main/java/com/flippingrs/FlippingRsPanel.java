@@ -34,19 +34,22 @@ import net.runelite.client.util.AsyncBufferedImage;
  * The side panel, in five tabs.
  *
  * <ul>
- *   <li><b>Activity</b> is the plugin's own doing: what it has captured this
- *       session, what is still buffered waiting to send, and when it last
- *       sent. The buffered fills are listed, because a fill sitting here is
- *       the one thing the plugin holds that the journal does not yet.
- *   <li><b>Trades</b> is the journal's recent rows, read back from the
- *       server: what was actually recorded, not what the plugin remembers
- *       sending. The two differ exactly when something went wrong.
- *   <li><b>Journal</b> is the journal's verdict: the last week's realised
- *       profit and the open positions, marked to market by the server.
  *   <li><b>Watchlists</b> is one of the owner's watchlists on the site, each
  *       item with the site's buy and sell prices, margin after tax and ROI.
+ *   <li><b>Journal</b> is the journal's recent rows, read back from the
+ *       server: what was actually recorded, not what the plugin remembers
+ *       sending. The two differ exactly when something went wrong.
+ *   <li><b>Positions</b> is what is still held, marked to market by the
+ *       server, with the two actions the site's own Positions page has.
+ *   <li><b>Analytics</b> is the last week's verdict: realised profit, flips,
+ *       win rate and gp per hour, all worked out on the site.
  *   <li><b>Account</b> is the connection: whether the key works, what plan it
  *       is on, and which journal this RuneScape account files under.
+ *   <li><b>Activity</b> is the plugin's own doing, and the one tab with no
+ *       page on the site: what it has captured this session, what is still
+ *       buffered waiting to send, and when it last sent. The buffered fills
+ *       are listed, because a fill sitting here is the one thing the plugin
+ *       holds that the journal does not yet.
  * </ul>
  *
  * <p>Every number about money on any of these tabs is the server's. The
@@ -165,19 +168,31 @@ public class FlippingRsPanel extends PluginPanel
 	@Nullable
 	private MaterialTab showing;
 
-	/** The five tabs, each owning its own widgets and its own deferred redraw. */
-	private final ActivityTab activity;
-	private final TradesTab trades;
-	private final JournalTab journal;
+	/**
+	 * The six tabs, each owning its own widgets and its own deferred redraw.
+	 *
+	 * <p>Named and ordered as flippingrs.com names and orders its own screens,
+	 * so that moving between the site and the sidebar is not two vocabularies
+	 * for one journal. Its Market group comes first, then its Journal group --
+	 * where the ledger, the open lots and the week's numbers are three pages
+	 * and used to be two tabs here -- then Account. Activity is last because
+	 * it is the one thing here with no page on the site: it is what the plugin
+	 * on this computer is doing, which the site cannot know.
+	 */
 	private final WatchlistTab watchlist;
+	private final JournalTab journal;
+	private final PositionsTab positions;
+	private final AnalyticsTab analytics;
 	private final AccountTab account;
+	private final ActivityTab activity;
 
 	private final MaterialTabGroup tabs;
-	private final MaterialTab activityTab;
-	private final MaterialTab tradesTab;
-	private final MaterialTab journalTab;
 	private final MaterialTab watchlistTab;
+	private final MaterialTab journalTab;
+	private final MaterialTab positionsTab;
+	private final MaterialTab analyticsTab;
 	private final MaterialTab accountTab;
+	private final MaterialTab activityTab;
 
 	/**
 	 * Set while the plugin is not reading from the server at all: recording
@@ -193,11 +208,12 @@ public class FlippingRsPanel extends PluginPanel
 	public FlippingRsPanel(PanelActions actions)
 	{
 		this.actions = actions;
-		activity = new ActivityTab(actions);
-		trades = new TradesTab();
-		journal = new JournalTab(actions);
 		watchlist = new WatchlistTab(actions);
+		journal = new JournalTab();
+		positions = new PositionsTab(actions);
+		analytics = new AnalyticsTab();
 		account = new AccountTab(actions);
+		activity = new ActivityTab(actions);
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(PANEL_PADDING, PANEL_PADDING, PANEL_PADDING, PANEL_PADDING));
 
@@ -207,17 +223,20 @@ public class FlippingRsPanel extends PluginPanel
 
 		final JPanel display = new JPanel();
 		tabs = new MaterialTabGroup(display);
-		activityTab = new Tab("Activity", tabs, activity.body());
-		tradesTab = new Tab("Trades", tabs, trades.body());
-		journalTab = new Tab("Journal", tabs, journal.body());
 		watchlistTab = new Tab("Watchlists", tabs, watchlist.body());
+		journalTab = new Tab("Journal", tabs, journal.body());
+		positionsTab = new Tab("Positions", tabs, positions.body());
+		analyticsTab = new Tab("Analytics", tabs, analytics.body());
 		accountTab = new Tab("Account", tabs, account.body());
-		for (MaterialTab tab : new MaterialTab[]{activityTab, tradesTab, journalTab, watchlistTab, accountTab})
+		activityTab = new Tab("Activity", tabs, activity.body());
+		for (MaterialTab tab : new MaterialTab[]{
+			watchlistTab, journalTab, positionsTab, analyticsTab, accountTab, activityTab})
 		{
 			tabs.addTab(tab);
 		}
-		// Two rows of three. The group's own layout is a FlowLayout, which
-		// wraps what does not fit onto a second row and then reports the
+		// Two rows of three, which the six tabs now fill exactly; the fifth
+		// used to leave a cell empty. The group's own layout is a FlowLayout,
+		// which wraps what does not fit onto a second row and then reports the
 		// height of one, so anything past the first row was laid out below
 		// the visible strip and never painted.
 		tabs.setLayout(new GridLayout(2, 3, 2, 2));
@@ -240,11 +259,14 @@ public class FlippingRsPanel extends PluginPanel
 		setWatchlists(new ArrayList<>(), null);
 		// Every tab is now holding data it has not drawn. Selecting the first
 		// draws that one; the other four draw when they are selected.
-		for (SidebarTab tab : new SidebarTab[]{activity, trades, journal, watchlist, account})
+		for (SidebarTab tab : new SidebarTab[]{watchlist, journal, positions, analytics, account, activity})
 		{
 			tab.refresh();
 		}
-		tabs.select(activityTab);
+		// Opens on the journal, which is what somebody came to look at. It
+		// opened on Activity while that was the first tab; that is the tab you
+		// go to when something looks wrong, not the one to greet you with.
+		tabs.select(journalTab);
 	}
 
 	static JPanel column()
@@ -268,11 +290,12 @@ public class FlippingRsPanel extends PluginPanel
 	 */
 	private void drawWhatIsShowing()
 	{
-		activity.showing(showing == activityTab);
-		trades.showing(showing == tradesTab);
-		journal.showing(showing == journalTab);
 		watchlist.showing(showing == watchlistTab);
+		journal.showing(showing == journalTab);
+		positions.showing(showing == positionsTab);
+		analytics.showing(showing == analyticsTab);
 		account.showing(showing == accountTab);
+		activity.showing(showing == activityTab);
 	}
 
 	/** RuneLite calls this when the panel becomes the sidebar's content. */
@@ -365,47 +388,55 @@ public class FlippingRsPanel extends PluginPanel
 		activity.setSetAside(count);
 	}
 
-	void setActivity(List<GeTransaction> newestFirst)
+	void setRecentTrades(List<GeTransaction> newestFirst)
 	{
 		resumed();
-		trades.setActivity(newestFirst);
+		journal.setRecentTrades(newestFirst);
 	}
 
-	void setActivity(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
+	void setRecentTrades(List<GeTransaction> newestFirst, Map<Integer, AsyncBufferedImage> images)
 	{
 		resumed();
-		trades.setActivity(newestFirst, images);
+		journal.setRecentTrades(newestFirst, images);
 	}
 
-	void setActivityProblem(String why)
+	void setRecentTradesProblem(String why)
 	{
-		trades.setActivityProblem(why);
+		journal.setRecentTradesProblem(why);
 	}
 
+	/**
+	 * One read of the journal fills two tabs: the server answers with the
+	 * week and the open lots together, and splitting them here costs no
+	 * second request.
+	 */
 	void setJournal(Analytics week, Positions open)
 	{
 		resumed();
-		journal.setJournal(week, open);
+		analytics.setWeek(week);
+		positions.setPositions(open);
 	}
 
 	void setJournalNotice(@Nullable String text, Color colour)
 	{
-		journal.setJournalNotice(text, colour);
+		positions.setPositionNotice(text, colour);
 	}
 
+	/** That one read failed, so both of the tabs it fills have to say so. */
 	void setJournalProblem(String why)
 	{
-		journal.setJournalProblem(why);
+		analytics.setProblem(why);
+		positions.setProblem(why);
 	}
 
 	void closeAsTyped(Position p, String priceText, String quantityText)
 	{
-		journal.closeAsTyped(p, priceText, quantityText);
+		positions.closeAsTyped(p, priceText, quantityText);
 	}
 
 	void closePosition(String positionId, long sellPrice, @Nullable Long sellQty)
 	{
-		journal.closePosition(positionId, sellPrice, sellQty);
+		positions.closePosition(positionId, sellPrice, sellQty);
 	}
 
 	void setWatchlists(List<Watchlist> available, @Nullable String selectedId)
@@ -443,17 +474,19 @@ public class FlippingRsPanel extends PluginPanel
 	// ---------------------------------------------------------------- account
 
 	/**
-	 * Nothing is being read from the server, for the reason given. Trades,
-	 * Journal and Watchlists show the reason instead of whatever they last
-	 * held, and the plan line is cleared.
+	 * Nothing is being read from the server, for the reason given. The four
+	 * tabs that show the server's data -- Journal, Positions, Analytics and
+	 * Watchlists -- show the reason instead of whatever they last held, and
+	 * the plan line is cleared.
 	 */
 	void setPaused(String why)
 	{
 		paused = why;
 		setWatchlists(new ArrayList<>(), null);
 		setSubscription(null);
-		trades.paused(why);
 		journal.paused(why);
+		positions.paused(why);
+		analytics.paused(why);
 		watchlist.paused(why);
 	}
 
@@ -461,7 +494,7 @@ public class FlippingRsPanel extends PluginPanel
 	 * The plugin is reading from the server again, so the tabs that were
 	 * showing the reason it was not are redrawn.
 	 *
-	 * <p>All three, not only the one whose data has just arrived. The reason
+	 * <p>All four, not only the one whose data has just arrived. The reason
 	 * was put on every tab at once by {@link #setPaused}, but it was taken off
 	 * by whichever tab was read first, and the other two went on saying that
 	 * nothing was being read from flippingrs.com while it plainly was. For a
@@ -476,8 +509,9 @@ public class FlippingRsPanel extends PluginPanel
 			return;
 		}
 		paused = null;
-		trades.paused(null);
 		journal.paused(null);
+		positions.paused(null);
+		analytics.paused(null);
 		watchlist.paused(null);
 	}
 
@@ -902,7 +936,7 @@ public class FlippingRsPanel extends PluginPanel
 	/** The recent trades as one line each, the way the buffer list shows them. */
 	List<String> recentForTest()
 	{
-		return trades.recentForTest();
+		return journal.recentForTest();
 	}
 
 	List<String> pendingForTest()
@@ -939,23 +973,36 @@ public class FlippingRsPanel extends PluginPanel
 	/** The open positions' item ids as rendered, in order. */
 	List<Integer> positionsForTest()
 	{
-		return journal.positionsForTest();
+		return positions.positionsForTest();
 	}
 
+	/** The week's line, on Analytics. */
 	String journalSummaryForTest()
 	{
-		return journal.summaryForTest();
+		return analytics.summaryForTest();
+	}
+
+	/** The open-lots line, on Positions. */
+	String openPositionsTextForTest()
+	{
+		return positions.openSummaryForTest();
 	}
 
 	String journalNoticeForTest()
 	{
-		return journal.noticeForTest();
+		return positions.noticeForTest();
 	}
 
 	@Nullable
 	String journalProblemForTest()
 	{
-		return journal.problemForTest();
+		return positions.problemForTest();
+	}
+
+	@Nullable
+	String analyticsProblemForTest()
+	{
+		return analytics.problemForTest();
 	}
 
 	/** The "Recorded this session" line, which a new session starts over. */
@@ -1007,7 +1054,7 @@ public class FlippingRsPanel extends PluginPanel
 		return new Timer[]{
 			activity.noticeTimerForTest(),
 			watchlist.noticeTimerForTest(),
-			journal.noticeTimerForTest(),
+			positions.noticeTimerForTest(),
 		};
 	}
 
@@ -1063,9 +1110,9 @@ public class FlippingRsPanel extends PluginPanel
 	}
 
 	@Nullable
-	String activityProblemForTest()
+	String recentTradesProblemForTest()
 	{
-		return trades.problemForTest();
+		return journal.problemForTest();
 	}
 
 	/** The list a tab draws its rows into. */
@@ -1073,10 +1120,10 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		switch (tab)
 		{
-			case "Trades":
-				return trades.listForTest();
 			case "Journal":
 				return journal.listForTest();
+			case "Positions":
+				return positions.listForTest();
 			case "Watchlists":
 				return watchlist.listForTest();
 			default:
@@ -1098,12 +1145,12 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		switch (tab)
 		{
-			case "Trades":
-				return trades.listForTest().getComponents();
+			case "Journal":
+				return journal.listForTest().getComponents();
 			case "Watchlists":
 				return watchlist.listForTest().getComponents();
 			default:
-				return journal.listForTest().getComponents();
+				return positions.listForTest().getComponents();
 		}
 	}
 
@@ -1116,43 +1163,50 @@ public class FlippingRsPanel extends PluginPanel
 	/** Which tab is showing. */
 	String selectedTabForTest()
 	{
-		if (tradesTab.isSelected())
-		{
-			return "Trades";
-		}
-		if (journalTab.isSelected())
-		{
-			return "Journal";
-		}
 		if (watchlistTab.isSelected())
 		{
 			return "Watchlists";
+		}
+		if (positionsTab.isSelected())
+		{
+			return "Positions";
+		}
+		if (analyticsTab.isSelected())
+		{
+			return "Analytics";
 		}
 		if (accountTab.isSelected())
 		{
 			return "Account";
 		}
-		return "Activity";
+		if (activityTab.isSelected())
+		{
+			return "Activity";
+		}
+		return "Journal";
 	}
 
 	void selectTabForTest(String name)
 	{
 		switch (name)
 		{
-			case "Trades":
-				tabs.select(tradesTab);
-				break;
-			case "Journal":
-				tabs.select(journalTab);
-				break;
 			case "Watchlists":
 				tabs.select(watchlistTab);
+				break;
+			case "Positions":
+				tabs.select(positionsTab);
+				break;
+			case "Analytics":
+				tabs.select(analyticsTab);
 				break;
 			case "Account":
 				tabs.select(accountTab);
 				break;
-			default:
+			case "Activity":
 				tabs.select(activityTab);
+				break;
+			default:
+				tabs.select(journalTab);
 				break;
 		}
 	}

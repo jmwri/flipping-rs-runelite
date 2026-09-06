@@ -1360,7 +1360,7 @@ public class FlippingRsPluginBehaviourTest
 		support.drain();
 		support.settleSwing();
 
-		assertEquals("This API key is scoped to the RuneLite plugin.", support.panel.activityProblemForTest());
+		assertEquals("This API key is scoped to the RuneLite plugin.", support.panel.recentTradesProblemForTest());
 		assertEquals("This API key is scoped to the RuneLite plugin.", support.panel.journalProblemForTest());
 		assertTrue("the send itself went through", support.queue().isEmpty());
 	}
