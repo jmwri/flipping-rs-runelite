@@ -21,9 +21,15 @@ public class GeSlotLayoutTest
 	{
 		final GeSlotLayout layout =
 			new GeSlotLayout(mock(Client.class), mock(FlippingRsConfig.class));
-		final Field field = GeSlotLayout.class.getDeclaredField("baseY");
-		field.setAccessible(true);
-		field.set(layout, tops);
+		final Field boxes = GeSlotLayout.class.getDeclaredField("boxes");
+		boxes.setAccessible(true);
+		final Object[] changes = (Object[]) boxes.get(layout);
+		for (int i = 0; i < tops.length; i++)
+		{
+			final Field baseY = changes[i].getClass().getDeclaredField("baseY");
+			baseY.setAccessible(true);
+			baseY.setInt(changes[i], tops[i]);
+		}
 		return layout;
 	}
 

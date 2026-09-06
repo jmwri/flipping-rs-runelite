@@ -141,8 +141,9 @@ far your own offer is from the one that applies to it — green when your offer
 is priced to fill sooner, red when it is priced to sit. Written short, because
 the box already says what the item is and which way you are trading it; the
 side being traded is picked out in white rather than named again. The boxes are
-made a little taller to hold the extra line, which is the only place the plugin
-moves the game's own furniture rather than adding to it. That is what an offer
+made a little taller to hold the extra line, and the container and window round
+them grow to match — the only place the plugin moves the game's own furniture
+rather than adding to it. That is what an offer
 box cannot tell you on its own: whether the number you asked for is still the
 right one. Both prices rather than only the side you are trading, because a buy
 that has filled is a sale about to be listed, and the price to list it at is
