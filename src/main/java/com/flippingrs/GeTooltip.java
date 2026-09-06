@@ -213,9 +213,9 @@ class GeTooltip
 		if (quote.hasLimitLeft())
 		{
 			out.append("<br>").append(ColourText.MUTED).append("Limit ")
-				.append(ColourText.VALUE).append(GeSetupText.limitLeft(quote));
+				.append(ColourText.VALUE).append(GeOfferText.limitLeft(quote));
 		}
-		final String age = GeSetupText.age(quote.getDataAgeSeconds());
+		final String age = GeOfferText.age(quote.getDataAgeSeconds());
 		if (age != null)
 		{
 			out.append("<br>").append(ColourText.MUTED).append("Priced ").append(age);
@@ -239,9 +239,17 @@ class GeTooltip
 	/**
 	 * A hover box made big enough for what was put in it.
 	 *
-	 * <p>The box itself, and whatever inside it is the size of the box -- the
-	 * yellow fill and the border round it, which are children rather than the
-	 * box's own painting and so do not follow it on their own.
+	 * <p>The box, and whatever inside it is the size of the box: the yellow
+	 * fill and the border round it.
+	 *
+	 * <p>Those two are the whole difficulty, and getting them wrong is what
+	 * made the box briefly transparent. A child that is the size of its parent
+	 * is usually not told to be that size -- it is told to be the parent's
+	 * size minus nothing, which is a mode rather than a number, and its own
+	 * declared width is zero. Sizing it from that zero makes it vanish. So a
+	 * child is measured as the client laid it out, and only the dimensions it
+	 * actually states for itself are restated; the ones it expresses in terms
+	 * of its parent are left alone, because those already follow.
 	 *
 	 * <p>Every dimension is taken from the client's, once, when the client
 	 * builds the box. A size read back after this has changed it is this
@@ -261,6 +269,14 @@ class GeTooltip
 		/** One row of the font the exchange writes these in. */
 		private static final int LINE = 14;
 
+		/** Where each of a span's remembered numbers is kept. */
+		private static final int WIDTH = 0;
+		private static final int HEIGHT = 1;
+		private static final int WIDTH_MODE = 2;
+		private static final int HEIGHT_MODE = 3;
+		private static final int LAID_WIDTH = 4;
+		private static final int LAID_HEIGHT = 5;
+
 		@Nullable
 		private Widget widget;
 
@@ -269,6 +285,14 @@ class GeTooltip
 		private int baseHeight;
 		private int baseWidthMode;
 		private int baseHeightMode;
+
+		/**
+		 * And as the client laid it out, which is what a child's own size can
+		 * be compared against. The two differ whenever a size is a mode rather
+		 * than a number.
+		 */
+		private int laidWidth;
+		private int laidHeight;
 
 		/** What was written last, so a rebuild by the client can be told from it. */
 		private int wroteWidth = -1;
@@ -299,6 +323,8 @@ class GeTooltip
 				baseHeight = tooltip.getOriginalHeight();
 				baseWidthMode = tooltip.getWidthMode();
 				baseHeightMode = tooltip.getHeightMode();
+				laidWidth = tooltip.getWidth();
+				laidHeight = tooltip.getHeight();
 				takeSpans(tooltip);
 			}
 			final int rows = 1 + rowsIn(extra);
@@ -312,11 +338,7 @@ class GeTooltip
 			resize(tooltip, width, height);
 			for (int i = 0; i < spans.size(); i++)
 			{
-				// Each keeps whatever inset it had from the box's edges, which
-				// is how a border a pixel outside a fill stays a pixel outside
-				// it however far the box is taken.
-				final int[] was = spansWere.get(i);
-				resize(spans.get(i), width - (baseWidth - was[0]), height - (baseHeight - was[1]));
+				follow(spans.get(i), spansWere.get(i), width, height);
 			}
 			tooltip.revalidate();
 			wroteWidth = width;
@@ -333,11 +355,19 @@ class GeTooltip
 				// Only if it is still as this left it. A box the client has
 				// since rebuilt is already the game's, and writing an old size
 				// into it would size it for an item that is no longer there.
-				restore(widget, baseWidth, baseHeight, baseWidthMode, baseHeightMode);
+				widget.setWidthMode(baseWidthMode);
+				widget.setHeightMode(baseHeightMode);
+				widget.setOriginalWidth(baseWidth);
+				widget.setOriginalHeight(baseHeight);
 				for (int i = 0; i < spans.size(); i++)
 				{
+					final Widget span = spans.get(i);
 					final int[] was = spansWere.get(i);
-					restore(spans.get(i), was[0], was[1], was[2], was[3]);
+					// Only the numbers this restated. A mode was never
+					// touched, so there is nothing there to put back.
+					span.setOriginalWidth(was[WIDTH]);
+					span.setOriginalHeight(was[HEIGHT]);
+					span.revalidate();
 				}
 				widget.revalidate();
 			}
@@ -364,15 +394,13 @@ class GeTooltip
 		 */
 		private void takeSpans(Widget tooltip)
 		{
-			final int width = tooltip.getWidth();
-			final int height = tooltip.getHeight();
 			for (Widget child : RowText.under(tooltip))
 			{
 				if (child == null || RowText.isText(child))
 				{
 					continue;
 				}
-				if (child.getWidth() < width - PAD || child.getHeight() < height - PAD)
+				if (child.getWidth() < laidWidth - PAD || child.getHeight() < laidHeight - PAD)
 				{
 					continue;
 				}
@@ -380,16 +408,39 @@ class GeTooltip
 				spansWere.add(new int[]{
 					child.getOriginalWidth(), child.getOriginalHeight(),
 					child.getWidthMode(), child.getHeightMode(),
+					child.getWidth(), child.getHeight(),
 				});
-				// A sprite stretched while it is tiled repeats itself instead
-				// of growing, which on a border draws the frame's edge over
-				// and over across the middle of the box.
-				child.setSpriteTiling(false);
 			}
 		}
 
 		/**
-		 * Sets a size outright.
+		 * Takes one of the box's own children with it.
+		 *
+		 * <p>Only the dimensions the child states as numbers. A dimension it
+		 * expresses in terms of its parent already follows the box, and
+		 * restating that as a number is exactly the mistake that made the
+		 * yellow fill zero pixels wide.
+		 *
+		 * <p>What it does restate keeps whatever inset the child had from the
+		 * box's edges, measured as the client laid the two of them out, which
+		 * is how a border a pixel outside a fill stays a pixel outside it
+		 * however far the box is taken.
+		 */
+		private void follow(Widget span, int[] was, int width, int height)
+		{
+			if (was[WIDTH_MODE] == WidgetSizeMode.ABSOLUTE)
+			{
+				span.setOriginalWidth(width - (laidWidth - was[LAID_WIDTH]));
+			}
+			if (was[HEIGHT_MODE] == WidgetSizeMode.ABSOLUTE)
+			{
+				span.setOriginalHeight(height - (laidHeight - was[LAID_HEIGHT]));
+			}
+			span.revalidate();
+		}
+
+		/**
+		 * Sets the box's own size outright.
 		 *
 		 * <p>Absolute rather than whatever mode the client had, because a size
 		 * expressed relative to a parent is not a size this can set. The mode
@@ -399,15 +450,6 @@ class GeTooltip
 		{
 			widget.setWidthMode(WidgetSizeMode.ABSOLUTE);
 			widget.setHeightMode(WidgetSizeMode.ABSOLUTE);
-			widget.setOriginalWidth(width);
-			widget.setOriginalHeight(height);
-			widget.revalidate();
-		}
-
-		private static void restore(Widget widget, int width, int height, int widthMode, int heightMode)
-		{
-			widget.setWidthMode(widthMode);
-			widget.setHeightMode(heightMode);
 			widget.setOriginalWidth(width);
 			widget.setOriginalHeight(height);
 			widget.revalidate();

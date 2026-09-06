@@ -90,7 +90,8 @@ public interface FlippingRsConfig extends Config
 	@ConfigItem(
 		keyName = "setupOverlay",
 		name = "Prices in the exchange",
-		description = "Shows flippingrs.com's prices where you need them. On the offer setup screen: the exact buy "
+		description = "Shows flippingrs.com's prices where you need them. On the offer setup screen and on a "
+			+ "placed offer's status page: the exact buy "
 			+ "and sell prices, the margin, how old the prices are, and how much of the buy limit you have left "
 			+ "if your plan tracks that. And on any item the exchange shows, point at it and the game's own "
 			+ "hover box gains the same, plus how far your offer is from the side you are trading if it is "

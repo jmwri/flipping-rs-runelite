@@ -58,7 +58,7 @@ public class ExaminePricesTest
 	}
 
 	/** Examining an item in an interface: the inventory, the bank, the exchange. */
-	/** The text without its colour tags; see GeSetupTextTest. */
+	/** The text without its colour tags; see GeOfferTextTest. */
 	private static String plain(String text)
 	{
 		return text.replaceAll("</?col[^>]*>", "");

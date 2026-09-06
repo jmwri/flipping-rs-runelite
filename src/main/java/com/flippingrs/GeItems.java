@@ -121,6 +121,10 @@ final class GeItems
 		final List<Spot> spots = new ArrayList<>();
 		offerSlots(client, spots);
 		setupPage(client, spots);
+		// The page you get by clicking an offer you have already placed. Not
+		// painted on, for the same reason the setup page is not: GeOfferText
+		// writes this screen's prices into the screen itself.
+		collect(client.getWidget(InterfaceID.GeOffers.DETAILS), spots, false, false);
 		for (int container : CONTAINERS)
 		{
 			collect(client.getWidget(container), spots, false, true);
@@ -166,8 +170,6 @@ final class GeItems
 	 * the item on the widget.
 	 */
 	private static final int[] CONTAINERS = {
-		// The page you get by clicking an offer you have already placed.
-		InterfaceID.GeOffers.DETAILS,
 		// The collection box, both of its slots.
 		InterfaceID.GeCollect.COLLECT_0,
 		InterfaceID.GeCollect.COLLECT_1,
@@ -258,6 +260,21 @@ final class GeItems
 	};
 
 	/**
+	 * The one item a screen of the exchange is about, or 0.
+	 *
+	 * <p>For the screens that show a single item rather than a grid of them.
+	 * The client puts the id on a widget there, so which item it is need not
+	 * be worked out from the slot the offer is in -- which is just as well,
+	 * because the status page does not say which slot that was.
+	 */
+	static int itemIn(Client client, int container)
+	{
+		final List<Spot> spots = new ArrayList<>();
+		collect(client.getWidget(container), spots, false, false);
+		return spots.isEmpty() ? 0 : spots.get(0).itemId;
+	}
+
+	/**
 	 * The offer setup page, whose item comes from the varp that drives it --
 	 * the same one RuneLite's own exchange plugin reads to put the buy limit
 	 * on that page.
@@ -272,7 +289,7 @@ final class GeItems
 		final int itemId = client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH);
 		if (itemId > 0)
 		{
-			// Not painted on: GeSetupText writes this screen's prices into the
+			// Not painted on: GeOfferText writes this screen's prices into the
 			// screen. Reported all the same, so a price is fetched for it.
 			into.add(new Spot(itemId, bounds, null, null, false));
 		}

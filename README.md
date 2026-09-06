@@ -114,6 +114,14 @@ the game's own lines — not drawn on top of it. How much of the buy limit you
 have left appears too, if your plan tracks buy limits; an item that has never
 traded shows no age, rather than an age of nothing.
 
+The status page you get by clicking an offer you have already placed reads
+exactly the same way. The client builds the two pages alike, and the question
+they answer is the same one from either end: on the setup page, what to type;
+on the status page, whether what you typed is still right. Each page prices its
+own item — the status page asks the offer, not the search box, so looking
+something up and then clicking a slot does not price the offer at whatever you
+last searched for.
+
 It sits directly under the item's description, between what the item is and how
 much of it you want. Nothing the game shows is replaced: the description, the
 guide price and the tax are all left exactly as they are, so if the plugin is
@@ -169,7 +177,8 @@ box — your offer boxes, the collection box, and another player's view-only
 exchange. The screens without one, which are grids of pictures and nothing
 else, still get the prices painted on the items themselves.
 
-All of those — the setup screen, your offers, your history and the hover text —
+All of those — the setup and status screens, your offers, your history and the
+hover box —
 are added to text the game already draws, so the game places, sizes, wraps and clips them.
 The screens that are grids of pictures with nothing written on them, like the
 collection box, a view-only exchange and the price checker, have no line to add
@@ -399,11 +408,15 @@ fills. Everything else is a collaborator it builds in `wire()`:
 - `GeItems` answers "where is the exchange showing an item" for every one of
   its screens, once, so the right-click entries and the prices drawn on items
   cannot drift apart. `GeItemInfoOverlay` draws on what it finds.
-- `GeSetupText` is the one thing that writes into a game interface rather than
-  over it: the offer setup screen is a single fixed layout with a build script
-  to hang off, it is where the number actually gets typed, and it has room
-  under the item's description. Everywhere else the plugin paints on top,
-  because a caption in the wrong place after a game update is only ugly,
+- `GeOfferText` writes into the exchange's two full-page offer screens rather
+  than over them: the setup page and the status page you get by clicking a
+  placed offer. Each is a single fixed layout with a build script to hang off,
+  each is where the price is actually decided, and each has room under the
+  item's description. One appender each rather than one shared, because the
+  client builds both pages together and hides the one you are not on -- a
+  single record of "the line being added to" would hand one page's text to the
+  other's description on the way past. Everywhere else the plugin paints on
+  top, because a caption in the wrong place after a game update is only ugly,
   whereas a widget in the wrong place can cover something the player needed --
   which is also why the space it goes in is measured every frame rather than
   fixed.

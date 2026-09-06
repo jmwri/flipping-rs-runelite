@@ -9,8 +9,15 @@ import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
 
 /**
- * The site's prices on the offer setup screen, added to the screen's own text
- * rather than drawn on top of it or placed beside it.
+ * The site's prices on the exchange's two full-page offer screens, added to
+ * each screen's own text rather than drawn on top of it or placed beside it.
+ *
+ * <p>Two screens because they are the same screen twice: the setup page, where
+ * an offer is priced, and the status page you get by clicking an offer you
+ * have already placed, where you decide whether the price you chose is still
+ * the right one. That second question is the one this plugin exists to answer,
+ * and the client builds both pages the same way -- an item, a description, the
+ * guide price and the tax -- so both are written into identically.
  *
  * <p>Put on the end of the item's description, which is the line that already
  * sits between what the item is and how much of it you want. Appending to a
@@ -27,7 +34,7 @@ import net.runelite.api.widgets.Widget;
  * <p>Client thread only. Widgets may not be touched from anywhere else.
  */
 @Slf4j
-class GeSetupText
+class GeOfferText
 {
 	/**
 	 * Past this, the age of the prices is called out rather than merely
@@ -47,10 +54,19 @@ class GeSetupText
 	private final FlippingRsConfig config;
 	private final IntFunction<Quote> quoteFor;
 
-	/** What has been added to the description, and what it said before. */
-	private final Appended line = new Appended();
+	/**
+	 * What has been added to each screen's description, and what it said
+	 * before.
+	 *
+	 * <p>One each rather than one shared. Both pages exist at once -- the
+	 * client builds them together and hides the one you are not on -- so a
+	 * single record of "the line being added to" would hand the setup page's
+	 * text back to the status page's description on the way past.
+	 */
+	private final Appended setup = new Appended();
+	private final Appended status = new Appended();
 
-	GeSetupText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor)
+	GeOfferText(Client client, FlippingRsConfig config, IntFunction<Quote> quoteFor)
 	{
 		this.client = client;
 		this.config = config;
@@ -73,46 +89,62 @@ class GeSetupText
 	{
 		try
 		{
-			final Widget description = client.getWidget(InterfaceID.GeOffers.SETUP_DESC);
-			if (description == null || description.isHidden() || !config.setupOverlay())
-			{
-				// The screen is gone, or the setting is off. The addition goes
-				// with it: prices frozen at whatever they were, on a screen
-				// they no longer belong to, are worse than no prices.
-				line.clear();
-				return;
-			}
-			final int itemId = client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH);
-			final Quote quote = itemId > 0 ? quoteFor.apply(itemId) : null;
-			if (quote == null)
-			{
-				// No price for this item, which is every item before the first
-				// fetch lands. The description goes back to being the game's.
-				line.clear();
-				return;
-			}
-			line.to(description, "<br>" + textFor(quote));
+			// The setup page's item comes from the varp that drives it, the
+			// same one RuneLite's own exchange plugin reads for the buy limit.
+			write(setup, InterfaceID.GeOffers.SETUP_DESC,
+				client.getVarpValue(VarPlayerID.TRADINGPOST_SEARCH));
+			// The status page's comes off the screen, because the varp holds
+			// whatever was last searched for rather than what this offer is
+			// on -- which after a search and a click on a different slot is a
+			// different item, and the price of the wrong one is worse than no
+			// price at all.
+			write(status, InterfaceID.GeOffers.DETAILS_DESC,
+				GeItems.itemIn(client, InterfaceID.GeOffers.DETAILS));
 		}
 		catch (RuntimeException e)
 		{
-			log.debug("could not put the prices on the offer setup screen", e);
+			log.debug("could not put the prices on an offer screen", e);
 		}
 	}
 
+	/** Brings one screen's addition in line with the item it is showing. */
+	private void write(Appended line, int descriptionId, int itemId)
+	{
+		final Widget description = client.getWidget(descriptionId);
+		if (description == null || description.isHidden() || !config.setupOverlay())
+		{
+			// The screen is gone, or the setting is off. The addition goes
+			// with it: prices frozen at whatever they were, on a screen they
+			// no longer belong to, are worse than no prices.
+			line.clear();
+			return;
+		}
+		final Quote quote = itemId > 0 ? quoteFor.apply(itemId) : null;
+		if (quote == null)
+		{
+			// No price for this item, which is every item before the first
+			// fetch lands. The description goes back to being the game's.
+			line.clear();
+			return;
+		}
+		line.to(description, "<br>" + textFor(quote));
+	}
+
 	/**
-	 * The client has just rebuilt the setup screen. {@link Appended} copes with
-	 * that on its own; doing it here as well is what stops the line flickering
-	 * as the screen opens.
+	 * The client has just rebuilt one of these screens. {@link Appended} copes
+	 * with that on its own; doing it here as well is what stops the line
+	 * flickering as the screen opens.
 	 */
 	void rebuilt()
 	{
 		update();
 	}
 
-	/** Puts the description back the way the game had it. */
+	/** Puts both descriptions back the way the game had them. */
 	void reset()
 	{
-		line.clear();
+		setup.clear();
+		status.clear();
 	}
 
 	/**
@@ -228,10 +260,17 @@ class GeSetupText
 		return minutes == 0 ? hours + "h" : hours + "h " + minutes + "m";
 	}
 
-	/** The description as it now reads, for a test that has a client. */
+	/** The setup page's description as it now reads, for a test with a client. */
 	@Nullable
 	String textForTest()
 	{
-		return line.textForTest();
+		return setup.textForTest();
+	}
+
+	/** And the status page's. */
+	@Nullable
+	String statusTextForTest()
+	{
+		return status.textForTest();
 	}
 }
