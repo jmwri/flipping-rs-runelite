@@ -25,6 +25,8 @@ public class PanelData
 	@Nullable
 	Positions positions;
 	@Nullable
+	ClosedPositions closedPositions;
+	@Nullable
 	List<Watchlist> watchlists;
 	@Nullable
 	List<Quote> quotes;
@@ -52,6 +54,12 @@ public class PanelData
 	public Analytics getWeek()
 	{
 		return week;
+	}
+
+	@Nullable
+	public ClosedPositions getClosedPositions()
+	{
+		return closedPositions;
 	}
 
 	@Nullable

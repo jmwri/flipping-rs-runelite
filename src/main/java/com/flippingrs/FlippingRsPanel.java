@@ -40,7 +40,8 @@ import net.runelite.client.util.AsyncBufferedImage;
  *       server: what was actually recorded, not what the plugin remembers
  *       sending. The two differ exactly when something went wrong.
  *   <li><b>Positions</b> is what is still held, marked to market by the
- *       server, with the two actions the site's own Positions page has.
+ *       server, with the two actions the site's own Positions page has, and
+ *       under it what has been sold and what each of those made.
  *   <li><b>Analytics</b> is the last week's verdict: realised profit, flips,
  *       win rate and gp per hour, all worked out on the site.
  *   <li><b>Account</b> is the connection: whether the key works, what plan it
@@ -417,6 +418,19 @@ public class FlippingRsPanel extends PluginPanel
 		positions.setPositions(open);
 	}
 
+	/**
+	 * The finished lots, when the server sends them.
+	 *
+	 * <p>Its own call rather than another argument to {@link #setJournal},
+	 * because a server that has never heard of closed lots leaves the part out
+	 * of the reply entirely and must go on filling the two tabs it does know
+	 * about.
+	 */
+	void setClosedPositions(ClosedPositions closed)
+	{
+		positions.setClosedPositions(closed);
+	}
+
 	void setJournalNotice(@Nullable String text, Color colour)
 	{
 		positions.setPositionNotice(text, colour);
@@ -640,6 +654,88 @@ public class FlippingRsPanel extends PluginPanel
 			+ (week.getCompletedFlips() == 1 ? " flip" : " flips")
 			+ " · " + pct(week.getWinRate()) + " wins"
 			+ (week.getGpPerHour() != 0 ? " · " + gp(week.getGpPerHour()) + " gp/h" : "");
+	}
+
+	/**
+	 * "Bought 1,480,000 · Sold 1,520,000": the two ends of a finished flip,
+	 * which is the whole of what it did.
+	 *
+	 * <p>Exact, like the open card's prices. Somebody reading a closed lot is
+	 * usually deciding whether to do it again at those numbers.
+	 */
+	static String closedPrices(ClosedPosition p)
+	{
+		return "Bought " + exact(p.getBuyPrice()) + " · Sold " + exact(p.getSellPrice());
+	}
+
+	/**
+	 * "10 sold · held 5h", or just "10 sold" for a flip whose timing was
+	 * recovered rather than watched.
+	 *
+	 * <p>A recovered leg carries the time it was found rather than the time it
+	 * happened, so its hold is not a duration anybody measured. The profit is
+	 * still real; only the clock is not, and a made-up "held 3d" beside a real
+	 * profit is the kind of figure somebody would plan around.
+	 */
+	static String closedHeld(ClosedPosition p)
+	{
+		final String sold = p.getSellQty() + " sold";
+		return p.isTimesKnown() ? sold + " · held " + hours(p.getHoursHeld()) : sold;
+	}
+
+	/**
+	 * "P&L +320,000 (2.2%) · tax 12,000".
+	 *
+	 * <p>The tax is shown rather than folded away because it is the one cost a
+	 * flipper can do something about: it scales with the sale price, so a
+	 * margin that looks fine gross can be most of the way to nothing net, and
+	 * seeing what it took is how somebody learns which items that happens on.
+	 */
+	static String closedResult(ClosedPosition p)
+	{
+		return "P&L " + signedExact(p.getNetProfit()) + " (" + pct(p.getRoi()) + ")"
+			+ (p.getTaxPaid() > 0 ? " · tax " + exact(p.getTaxPaid()) : "");
+	}
+
+	/**
+	 * "12 closed · realised +1,234,567 · tax 56,000", or that there are none.
+	 *
+	 * <p>The totals are of the cards underneath, not of all time. The week's
+	 * figures on the Analytics tab are a seven-day window and would disagree
+	 * with a count of what is on screen, which is the reading somebody will
+	 * check first.
+	 */
+	static String closedSummaryLine(ClosedPositions closed)
+	{
+		final ClosedPositions.Summary totals = closed.getSummary();
+		if (closed.getPositions().isEmpty())
+		{
+			return "No closed positions yet.";
+		}
+		return totals.getClosedPositions() + " closed · realised " + signed(totals.getRealisedProfit())
+			+ (totals.getTaxPaid() > 0 ? " · tax " + gp(totals.getTaxPaid()) : "");
+	}
+
+	/**
+	 * The closed lots as one string, on the same terms as {@link #signatureOf}.
+	 *
+	 * <p>Shorter than the open one has to be, because none of these figures
+	 * can move: a finished flip is finished. What changes is which lots are in
+	 * the list, so the list is what this describes.
+	 */
+	static String closedSignatureOf(List<ClosedPosition> positions)
+	{
+		final StringBuilder out = new StringBuilder(positions.size() * 40);
+		for (ClosedPosition p : positions)
+		{
+			out.append(p.getId()).append(SEP).append(p.getItemId()).append(SEP)
+				.append(p.getItemName()).append(SEP).append(p.getSellQty()).append(SEP)
+				.append(p.getBuyPrice()).append(SEP).append(p.getSellPrice()).append(SEP)
+				.append(p.getNetProfit()).append(SEP).append(p.getRoi()).append(SEP)
+				.append(p.getTaxPaid()).append(SEP).append(p.getHoursHeld()).append(SEP)
+				.append(p.isTimesKnown()).append(ROW);
+		}
+		return out.toString();
 	}
 
 	/**
@@ -974,6 +1070,35 @@ public class FlippingRsPanel extends PluginPanel
 	List<Integer> positionsForTest()
 	{
 		return positions.positionsForTest();
+	}
+
+	/** The closed positions' item ids as rendered, in order. */
+	List<Integer> closedPositionsForTest()
+	{
+		return positions.closedForTest();
+	}
+
+	/** The closed-lots line, and whether that section exists at all. */
+	String closedSummaryForTest()
+	{
+		return positions.closedSummaryForTest();
+	}
+
+	boolean closedSectionShownForTest()
+	{
+		return positions.closedShownForTest();
+	}
+
+	/** How many closed cards have actually been built. */
+	int drawnClosedRowsForTest()
+	{
+		return positions.closedListForTest().getComponentCount();
+	}
+
+	/** The closed cards as drawn, so a test can tell a rebuild from a redraw. */
+	Component[] closedCardsForTest()
+	{
+		return positions.closedListForTest().getComponents();
 	}
 
 	/** The week's line, on Analytics. */

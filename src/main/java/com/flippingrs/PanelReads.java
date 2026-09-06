@@ -299,6 +299,16 @@ final class PanelReads
 		{
 			panel.onPanel(p -> p.setJournal(week, open));
 		}
+		// Separately from the two above, and only when the server sent it. A
+		// flippingrs.com that does not know about closed lots leaves the part
+		// out, and the tab then has no closed section at all rather than an
+		// empty one -- which is the difference between a server that has
+		// nothing to say and one that says you have never finished a flip.
+		final ClosedPositions closed = reply.getClosedPositions();
+		if (closed != null)
+		{
+			panel.onPanel(p -> p.setClosedPositions(closed));
+		}
 	}
 
 	/**
