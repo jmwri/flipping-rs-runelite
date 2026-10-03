@@ -67,13 +67,13 @@ public class OfferTrackerTest
 		}
 
 		@Override
-		public int getPrice()
+		public long getPrice()
 		{
 			return price;
 		}
 
 		@Override
-		public int getSpent()
+		public long getSpent()
 		{
 			return spent;
 		}

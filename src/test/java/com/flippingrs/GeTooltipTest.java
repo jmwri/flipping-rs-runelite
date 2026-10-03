@@ -51,7 +51,7 @@ public class GeTooltipTest
 	{
 		final GrandExchangeOffer offer = mock(GrandExchangeOffer.class);
 		when(offer.getState()).thenReturn(state);
-		when(offer.getPrice()).thenReturn(price);
+		when(offer.getPrice()).thenReturn((long) price);
 		when(offer.getItemId()).thenReturn(4151);
 		return offer;
 	}

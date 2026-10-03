@@ -842,7 +842,7 @@ final class Watchlists
 	private FlippingRsPanel.WatchedItem describeItem(int itemId)
 	{
 		String name = "";
-		int price = 0;
+		long price = 0;
 		int limit = 0;
 		int alch = 0;
 		net.runelite.client.util.AsyncBufferedImage image = null;
