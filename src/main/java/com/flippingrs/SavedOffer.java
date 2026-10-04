@@ -15,11 +15,11 @@ import net.runelite.api.GrandExchangeOfferState;
 public class SavedOffer
 {
 	int itemId;
-	int price;
+	long price;
 	int totalQuantity;
 	int quantitySold;
 	/** Cumulative gp moved. See {@link OfferTracker} on why this can be wrong. */
-	int spent;
+	long spent;
 	GrandExchangeOfferState state;
 
 	/**

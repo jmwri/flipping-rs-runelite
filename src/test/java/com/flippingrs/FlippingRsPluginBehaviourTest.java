@@ -184,13 +184,13 @@ public class FlippingRsPluginBehaviourTest
 			}
 
 			@Override
-			public int getPrice()
+			public long getPrice()
 			{
 				return 1_000_000;
 			}
 
 			@Override
-			public int getSpent()
+			public long getSpent()
 			{
 				return spent;
 			}

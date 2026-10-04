@@ -157,7 +157,7 @@ public class OfferTracker
 	 * @param occurredAt    when, or null for a fill nobody watched
 	 */
 	private static GeTransaction fill(int slot, GrandExchangeOffer offer, String offerRef,
-		Supplier<String> itemName, int world, long filled, int previousSpent,
+		Supplier<String> itemName, int world, long filled, long previousSpent,
 		@Nullable String occurredAt, String source)
 	{
 		final GrandExchangeOfferState state = offer.getState();
@@ -189,8 +189,10 @@ public class OfferTracker
 	/**
 	 * The gp that moved in this fill, and whether it had to be estimated.
 	 *
-	 * <p>The client's running total is an {@code int}. The exchange caps what a
-	 * single offer can move at max cash, which is also the largest int, so in
+	 * <p>The client's running total is a 32-bit counter. (RuneLite widened the
+	 * getter to a {@code long}, which does not change what the game keeps.) The
+	 * exchange caps what a single offer can move at max cash, which is also the
+	 * largest int, so in
 	 * practice the total cannot wrap -- but a figure that becomes somebody's
 	 * profit is not something to leave to "in practice". Three defences:
 	 *
@@ -212,7 +214,7 @@ public class OfferTracker
 	 *
 	 * @return {@code [grossValue, estimatedFlag]}
 	 */
-	private static long[] grossValue(GrandExchangeOffer offer, int previousSpent, long filled, boolean buy)
+	private static long[] grossValue(GrandExchangeOffer offer, long previousSpent, long filled, boolean buy)
 	{
 		final long price = offer.getPrice();
 		// Compare totals rather than a per-item average, so an offer that filled
@@ -224,7 +226,13 @@ public class OfferTracker
 		{
 			return fallback;
 		}
-		final long spent = Integer.toUnsignedLong(offer.getSpent() - previousSpent);
+		// Subtracted as 32 bits on purpose. RuneLite now hands the total back as a
+		// long, but the game's counter is the one that wraps, and what is known to
+		// be exact is the difference modulo 2^32: the guard above keeps a single
+		// fill under 2^31, so that is the true difference whether the client's
+		// number wrapped or not. A stale baseline gives a huge value, which the
+		// check below sends to the estimate.
+		final long spent = Integer.toUnsignedLong((int) (offer.getSpent() - previousSpent));
 		if (spent == 0 || spent > Integer.MAX_VALUE)
 		{
 			return fallback;

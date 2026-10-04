@@ -97,7 +97,7 @@ public class FlippingRsPanel extends PluginPanel
 		@Nullable
 		final AsyncBufferedImage image;
 		/** RuneLite's current exchange price for the item, or 0 if it has none. */
-		final int price;
+		final long price;
 		/** The four-hour buy limit, or 0 if unknown. */
 		final int limit;
 		/** High alchemy value, or 0. */
@@ -110,7 +110,7 @@ public class FlippingRsPanel extends PluginPanel
 		final Quote quote;
 
 		WatchedItem(int itemId, String name, @Nullable AsyncBufferedImage image,
-			int price, int limit, int alch, @Nullable String offer, @Nullable Quote quote)
+			long price, int limit, int alch, @Nullable String offer, @Nullable Quote quote)
 		{
 			this.itemId = itemId;
 			this.name = name;
