@@ -677,7 +677,7 @@ final class Watchlists
 			final String key = FlippingRsApi.trimmedKey(config.apiKey());
 			if (key.isEmpty())
 			{
-				panel.onPanel(p -> p.setWatchlistNotice("Add your API key in the plugin settings to use watchlists.",
+				panel.onPanel(p -> p.setWatchlistNotice("Add your plugin key in the plugin settings to use watchlists.",
 					ColorScheme.BRAND_ORANGE));
 				return;
 			}

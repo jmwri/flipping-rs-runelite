@@ -21,8 +21,8 @@ public interface FlippingRsConfig extends Config
 
 	@ConfigItem(
 		keyName = "apiKey",
-		name = "API key",
-		description = "Paste the key from flippingrs.com. On the site, go to Account, then API keys, and create one for the RuneLite plugin.",
+		name = "Plugin key",
+		description = "Paste your plugin key from flippingrs.com. On the site, go to Settings, find the RuneLite plugin section and press Create plugin key. It works on every plan, including Free.",
 		position = 1,
 		secret = true,
 		section = connectionSection

@@ -67,7 +67,7 @@ final class ActivityTab extends SidebarTab
 
 		retrySetAside.addActionListener(e -> actions.retrySetAside());
 		retrySetAside.setToolTipText("Put the trades flippingrs.com refused back in the queue and send them again. "
-			+ "Worth doing after fixing your API key or picking a different journal.");
+			+ "Worth doing after fixing your plugin key or picking a different journal.");
 		retrySetAside.setAlignmentX(Component.LEFT_ALIGNMENT);
 		retrySetAside.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		setAsideLine.setFont(FontManager.getRunescapeSmallFont());
@@ -143,7 +143,7 @@ final class ActivityTab extends SidebarTab
 		retrySetAside.setVisible(any);
 		if (any)
 		{
-			setWrappedText(setAsideLine, count + " trade(s) set aside. If you have since fixed your API key or "
+			setWrappedText(setAsideLine, count + " trade(s) set aside. If you have since fixed your plugin key or "
 				+ "picked a different journal, try them again.");
 		}
 	}

@@ -376,9 +376,9 @@ final class PanelReads
 			{
 				panel.onPanel(p -> {
 					p.setAccounts(Collections.emptyList(), null);
-					p.setStatus("Add your API key in the plugin settings. You can create one on flippingrs.com "
-						+ "under Account, then API keys.", ColorScheme.LIGHT_GRAY_COLOR);
-					p.setPaused("Add an API key to see your journal here.");
+					p.setStatus("Add your plugin key in the plugin settings. You can create one on flippingrs.com "
+						+ "under Settings, in the RuneLite plugin section.", ColorScheme.LIGHT_GRAY_COLOR);
+					p.setPaused("Add a plugin key to see your journal here.");
 				});
 				knownAccounts = null;
 				watchlists.forget();

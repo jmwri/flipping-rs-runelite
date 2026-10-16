@@ -76,7 +76,7 @@ final class AccountTab extends SidebarTab
 		body.add(Box.createVerticalStrut(10));
 
 		reconnect.addActionListener(e -> actions.reconnect());
-		reconnect.setToolTipText("Check your API key again and reload everything from flippingrs.com.");
+		reconnect.setToolTipText("Check your plugin key again and reload everything from flippingrs.com.");
 		reconnect.setAlignmentX(Component.LEFT_ALIGNMENT);
 		reconnect.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		body.add(reconnect);
