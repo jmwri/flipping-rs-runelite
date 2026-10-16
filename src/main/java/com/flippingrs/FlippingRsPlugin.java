@@ -128,6 +128,13 @@ public class FlippingRsPlugin extends Plugin
 	static final long QUOTE_REFRESH_SECONDS = 30;
 
 	/**
+	 * How often the Suggestions tab is asked whether it is due a read. A local
+	 * check that sends nothing; the request itself is made at most once a minute,
+	 * and only while that tab is on screen.
+	 */
+	static final long SUGGESTION_CHECK_SECONDS = 5;
+
+	/**
 	 * Ticks after login during which offer deltas are the client replaying
 	 * what the exchange did while nobody was watching. Two, the window
 	 * RuneLite's own Grand Exchange plugin uses for the same burst.
@@ -213,6 +220,7 @@ public class FlippingRsPlugin extends Plugin
 	private ProfileStore store;
 	private TransactionSender sender;
 	private PanelReads reads;
+	private SuggestionReads suggestions;
 	private Watchlists watchlists;
 	private CatchUp catchUp;
 	private PositionActions positions;
@@ -232,6 +240,9 @@ public class FlippingRsPlugin extends Plugin
 	 * without the user having to trade to shake them loose.
 	 */
 	private ScheduledFuture<?> panelTask;
+
+	/** Checks, a few seconds apart, whether the Suggestions tab is on screen and due a read. */
+	private ScheduledFuture<?> suggestionTask;
 	private int loggedInTick = -1;
 
 	/**
@@ -298,6 +309,8 @@ public class FlippingRsPlugin extends Plugin
 			QUOTE_REFRESH_SECONDS, QUOTE_REFRESH_SECONDS, TimeUnit.SECONDS);
 		panelTask = sendExecutor.scheduleWithFixedDelay(reads::panelTick,
 			PanelReads.panelRefreshSeconds(), PanelReads.panelRefreshSeconds(), TimeUnit.SECONDS);
+		suggestionTask = sendExecutor.scheduleWithFixedDelay(suggestions::tick,
+			SUGGESTION_CHECK_SECONDS, SUGGESTION_CHECK_SECONDS, TimeUnit.SECONDS);
 		submit(sendExecutor, reads::connect);
 	}
 
@@ -322,6 +335,10 @@ public class FlippingRsPlugin extends Plugin
 		if (reads != null)
 		{
 			reads.newSession();
+		}
+		if (suggestions != null)
+		{
+			suggestions.newSession();
 		}
 		if (sender != null)
 		{
@@ -403,15 +420,29 @@ public class FlippingRsPlugin extends Plugin
 		}
 
 		@Override
+		public void suggestionsShowing(boolean showing)
+		{
+			suggestions.tabShowing(showing);
+		}
+
+		@Override
+		public void refreshSuggestions()
+		{
+			suggestions.refreshNow();
+		}
+
+		@Override
 		public void shown()
 		{
 			reads.sidebarShown(true);
+			suggestions.sidebarShown(true);
 		}
 
 		@Override
 		public void hidden()
 		{
 			reads.sidebarShown(false);
+			suggestions.sidebarShown(false);
 		}
 	}
 
@@ -442,6 +473,9 @@ public class FlippingRsPlugin extends Plugin
 			sender::queueFor,
 			work -> submit(sendExecutor, work), this::scheduleOnce,
 			work -> submit(diskExecutor, work), recordedThisSession::get);
+		suggestions = new SuggestionReads(config, () -> api, this::onPanel,
+			work -> submit(sendExecutor, work), work -> clientThread.invoke(work),
+			itemId -> itemManager.getImage(itemId), System::nanoTime);
 	}
 
 	/**
@@ -501,6 +535,11 @@ public class FlippingRsPlugin extends Plugin
 		{
 			panelTask.cancel(false);
 			panelTask = null;
+		}
+		if (suggestionTask != null)
+		{
+			suggestionTask.cancel(false);
+			suggestionTask = null;
 		}
 		// One last attempt, so someone who disables the plugin mid-session does
 		// not leave the evening's last few trades unsent. If it fails they are

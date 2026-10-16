@@ -124,6 +124,27 @@ public interface FlippingRsConfig extends Config
 	}
 
 	@ConfigSection(
+		name = "Suggestions",
+		description = "The Suggestions tab in the sidebar",
+		position = 14
+	)
+	String suggestionsSection = "suggestions";
+
+	@ConfigItem(
+		keyName = "suggestionsBudget",
+		name = "Suggestions budget",
+		description = "How much gp the Suggestions tab should plan around. 0 uses your FlippingRS default. "
+			+ "Only this number and your plugin key are sent when suggestions are read; nothing about your trades.",
+		position = 14,
+		section = suggestionsSection
+	)
+	@Range(min = 0)
+	default int suggestionsBudget()
+	{
+		return 0;
+	}
+
+	@ConfigSection(
 		name = "Notifications",
 		description = "When the plugin should get your attention",
 		position = 15

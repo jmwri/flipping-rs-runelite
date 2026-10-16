@@ -4,7 +4,8 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.GridLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -31,7 +32,7 @@ import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.util.AsyncBufferedImage;
 
 /**
- * The side panel, in five tabs.
+ * The side panel, in seven tabs.
  *
  * <ul>
  *   <li><b>Watchlists</b> is one of the owner's watchlists on the site, each
@@ -196,6 +197,7 @@ public class FlippingRsPanel extends PluginPanel
 	private final AnalyticsTab analytics;
 	private final AccountTab account;
 	private final ActivityTab activity;
+	private final SuggestionsTab suggestions;
 
 	private final MaterialTabGroup tabs;
 	private final MaterialTab watchlistTab;
@@ -204,6 +206,7 @@ public class FlippingRsPanel extends PluginPanel
 	private final MaterialTab analyticsTab;
 	private final MaterialTab accountTab;
 	private final MaterialTab activityTab;
+	private final MaterialTab suggestionsTab;
 
 	/**
 	 * Set while the plugin is not reading from the server at all: recording
@@ -225,6 +228,7 @@ public class FlippingRsPanel extends PluginPanel
 		analytics = new AnalyticsTab();
 		account = new AccountTab(actions);
 		activity = new ActivityTab(actions);
+		suggestions = new SuggestionsTab(actions, this::showAccountTab);
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(PANEL_PADDING, PANEL_PADDING, PANEL_PADDING, PANEL_PADDING));
 
@@ -240,8 +244,9 @@ public class FlippingRsPanel extends PluginPanel
 		analyticsTab = new Tab("Analytics", tabs, analytics.body());
 		accountTab = new Tab("Account", tabs, account.body());
 		activityTab = new Tab("Activity", tabs, activity.body());
+		suggestionsTab = new Tab("Suggestions", tabs, suggestions.body());
 		for (MaterialTab tab : new MaterialTab[]{
-			watchlistTab, journalTab, positionsTab, analyticsTab, accountTab, activityTab})
+			watchlistTab, journalTab, positionsTab, analyticsTab, accountTab, activityTab, suggestionsTab})
 		{
 			tabs.addTab(tab);
 		}
@@ -250,7 +255,30 @@ public class FlippingRsPanel extends PluginPanel
 		// which wraps what does not fit onto a second row and then reports the
 		// height of one, so anything past the first row was laid out below
 		// the visible strip and never painted.
-		tabs.setLayout(new GridLayout(2, 3, 2, 2));
+		//
+		// Suggestions is the seventh, on a row of its own across the full width:
+		// its name is the longest, and a cell a third of the strip wide cuts it.
+		final GridBagLayout strip = new GridBagLayout();
+		final MaterialTab[] cells = {
+			watchlistTab, journalTab, positionsTab, analyticsTab, accountTab, activityTab};
+		for (int i = 0; i < cells.length; i++)
+		{
+			final GridBagConstraints at = new GridBagConstraints();
+			at.gridx = i % 3;
+			at.gridy = i / 3;
+			at.weightx = 1;
+			at.fill = GridBagConstraints.BOTH;
+			at.insets = new java.awt.Insets(0, 0, 2, i % 3 == 2 ? 0 : 2);
+			strip.setConstraints(cells[i], at);
+		}
+		final GridBagConstraints last = new GridBagConstraints();
+		last.gridx = 0;
+		last.gridy = 2;
+		last.gridwidth = 3;
+		last.weightx = 1;
+		last.fill = GridBagConstraints.BOTH;
+		strip.setConstraints(suggestionsTab, last);
+		tabs.setLayout(strip);
 		tabs.setAlignmentX(Component.LEFT_ALIGNMENT);
 		tabs.setMaximumSize(new Dimension(Integer.MAX_VALUE, tabs.getPreferredSize().height));
 		top.add(tabs);
@@ -270,7 +298,8 @@ public class FlippingRsPanel extends PluginPanel
 		setWatchlists(new ArrayList<>(), null);
 		// Every tab is now holding data it has not drawn. Selecting the first
 		// draws that one; the other four draw when they are selected.
-		for (SidebarTab tab : new SidebarTab[]{watchlist, journal, positions, analytics, account, activity})
+		for (SidebarTab tab : new SidebarTab[]{
+			watchlist, journal, positions, analytics, account, activity, suggestions})
 		{
 			tab.refresh();
 		}
@@ -278,6 +307,12 @@ public class FlippingRsPanel extends PluginPanel
 		// opened on Activity while that was the first tab; that is the tab you
 		// go to when something looks wrong, not the one to greet you with.
 		tabs.select(journalTab);
+	}
+
+	/** The Suggestions tab's pointer to where the plugin key is checked. */
+	private void showAccountTab()
+	{
+		tabs.select(accountTab);
 	}
 
 	static JPanel column()
@@ -307,6 +342,7 @@ public class FlippingRsPanel extends PluginPanel
 		analytics.showing(showing == analyticsTab);
 		account.showing(showing == accountTab);
 		activity.showing(showing == activityTab);
+		suggestions.showing(showing == suggestionsTab);
 		// At once as well as on the tick, or a tab picked halfway through a
 		// second would show the count as it stood when it was last on screen.
 		tickFreshness();
@@ -345,6 +381,10 @@ public class FlippingRsPanel extends PluginPanel
 		if (showing == accountTab)
 		{
 			return account;
+		}
+		if (showing == suggestionsTab)
+		{
+			return suggestions;
 		}
 		return showing == activityTab ? activity : null;
 	}
@@ -536,6 +576,25 @@ public class FlippingRsPanel extends PluginPanel
 	void setWatchlistNotice(@Nullable String text, Color colour)
 	{
 		watchlist.setWatchlistNotice(text, colour);
+	}
+
+	// ------------------------------------------------------------ suggestions
+
+	void setSuggestions(List<Suggestion> items, Map<Integer, AsyncBufferedImage> images, long budget)
+	{
+		suggestions.setSuggestions(items, images, budget);
+	}
+
+	/** A read failed. The key being refused gets a pointer to the Account tab. */
+	void setSuggestionsProblem(String why, boolean keyRefused)
+	{
+		suggestions.setProblem(why, keyRefused);
+	}
+
+	/** Nothing is being read, and why: no key, or recording off. */
+	void setSuggestionsNotice(String why)
+	{
+		suggestions.setNotice(why);
 	}
 
 	// ---------------------------------------------------------------- account
@@ -1338,6 +1397,8 @@ public class FlippingRsPanel extends PluginPanel
 				return journal.listForTest().getComponents();
 			case "Watchlists":
 				return watchlist.listForTest().getComponents();
+			case "Suggestions":
+				return suggestions.listForTest().getComponents();
 			default:
 				return positions.listForTest().getComponents();
 		}
@@ -1363,6 +1424,8 @@ public class FlippingRsPanel extends PluginPanel
 	{
 		switch (tab)
 		{
+			case "Suggestions":
+				return suggestions;
 			case "Watchlists":
 				return watchlist;
 			case "Journal":
@@ -1376,6 +1439,16 @@ public class FlippingRsPanel extends PluginPanel
 			default:
 				return activity;
 		}
+	}
+
+	List<Suggestion> suggestionsForTest()
+	{
+		return suggestions.rowsForTest();
+	}
+
+	void clipboardForTest(java.util.function.Consumer<String> to)
+	{
+		suggestions.clipboardForTest(to);
 	}
 
 	/** The tab strip's preferred width, to check it fits the sidebar. */
@@ -1407,6 +1480,10 @@ public class FlippingRsPanel extends PluginPanel
 		{
 			return "Activity";
 		}
+		if (suggestionsTab.isSelected())
+		{
+			return "Suggestions";
+		}
 		return "Journal";
 	}
 
@@ -1428,6 +1505,9 @@ public class FlippingRsPanel extends PluginPanel
 				break;
 			case "Activity":
 				tabs.select(activityTab);
+				break;
+			case "Suggestions":
+				tabs.select(suggestionsTab);
 				break;
 			default:
 				tabs.select(journalTab);

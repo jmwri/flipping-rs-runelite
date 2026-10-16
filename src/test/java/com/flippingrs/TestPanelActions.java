@@ -44,6 +44,12 @@ final class TestPanelActions implements PanelActions
 	Consumer<String> deletePosition = id ->
 	{
 	};
+	java.util.function.Consumer<Boolean> suggestionsShowing = showing ->
+	{
+	};
+	Runnable refreshSuggestions = () ->
+	{
+	};
 	Runnable shown = () ->
 	{
 	};
@@ -115,6 +121,18 @@ final class TestPanelActions implements PanelActions
 	public void deletePosition(String positionId)
 	{
 		deletePosition.accept(positionId);
+	}
+
+	@Override
+	public void suggestionsShowing(boolean showing)
+	{
+		suggestionsShowing.accept(showing);
+	}
+
+	@Override
+	public void refreshSuggestions()
+	{
+		refreshSuggestions.run();
 	}
 
 	@Override
