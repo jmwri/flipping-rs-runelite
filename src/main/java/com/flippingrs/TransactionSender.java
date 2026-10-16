@@ -177,7 +177,7 @@ final class TransactionSender
 			if (key.isEmpty())
 			{
 				panel.onPanel(p -> p.setStatus(
-					"No API key yet. Add one in the plugin settings. Your trades are being kept safe until you do.",
+					"No plugin key yet. Add one in the plugin settings. Your trades are being kept safe until you do.",
 					ColorScheme.BRAND_ORANGE));
 				return;
 			}

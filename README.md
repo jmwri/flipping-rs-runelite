@@ -9,7 +9,9 @@ instead of what you remembered to type in.
 Every time one of your Grand Exchange offers buys or sells something, the
 plugin sends that trade to flippingrs.com. The site pairs your sales with
 your purchases, works out the profit after tax, and keeps track of your buy
-limits. There is nothing to click: buying and selling is the whole job.
+limits. There is nothing to click: buying and selling is the whole job. The
+sidebar shows your watchlists, recent trades and open flips, and the plugin
+adds the site's prices to the Grand Exchange screens.
 
 The plugin never does the maths itself. Profit, tax and which sale belongs to
 which purchase are all worked out on the site, from the trades the plugin
@@ -17,15 +19,39 @@ sends. That means the numbers can be corrected and recalculated over your
 whole history if the rules change, instead of being stuck in whatever version
 of the plugin you installed months ago.
 
+It works on every plan, including Free. The journal is unlimited on Free; some
+of the site's analytics need a paid plan, but recording trades and the sidebar
+do not.
+
 ## Getting started
 
 1. Install **FlippingRS** from the RuneLite Plugin Hub.
-2. On flippingrs.com, go to **Account**, then **API keys**, and create a key
-   for the RuneLite plugin. Copy it; it is only shown once.
-3. Paste it into the plugin's **API key** setting.
-4. Log in. The **Account** tab in the FlippingRS sidebar will have picked
-   your default journal for this character on its own; change it there if
-   this character should file somewhere else.
+2. Create an account at [flippingrs.com](https://flippingrs.com).
+3. On the site, open **Settings**, find the **RuneLite plugin** section and
+   press **Create plugin key**. Copy the key; it is only shown once.
+4. Paste it into the **Plugin key** setting of the FlippingRS plugin in
+   RuneLite.
+5. Log in to the game. The **Account** tab in the FlippingRS sidebar picks your
+   default journal for this character on its own; change it there if this
+   character should file somewhere else.
+
+The plugin key is not the same thing as the **API keys** section on the site,
+which is a separate feature for the Elite plan. You do not need it for the
+plugin.
+
+If something does not work, the **Account** tab shows whether the plugin is
+connected, and the **Activity** tab shows anything it could not send. For
+anything else see the [help page](https://flippingrs.com/help) or open an
+issue in this repository.
+
+## What is sent, in short
+
+Your Grand Exchange trades and open offers: the item, buy or sell, quantity,
+price, slot, world and time. Your IP address reaches the server, as it does
+with any website. The plugin never sees your RuneScape password, and your
+character name is not sent. The full list is under "What is sent, and to whom"
+below, and the site's privacy notice is at
+[flippingrs.com/privacy](https://flippingrs.com/privacy).
 
 Each character remembers its own journal, so an alt can have its own without
 you changing a setting every time you log in. That matters for more than
@@ -43,13 +69,13 @@ sidebar shows. What it cannot do is anything larger than that picture — no
 paging, no filtering, no export of your journal, no changes to your account,
 and no market data beyond prices for the items already in front of you. Anyone
 who took the key would get your sidebar and no more, which is a much smaller
-problem than a full key would be. Plugin keys are available on every plan.
+problem than a full API key would be. Plugin keys are available on every plan.
 
 ## Settings
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| API key | — | The key from flippingrs.com |
+| Plugin key | — | The key from Settings, in the RuneLite plugin section on flippingrs.com |
 | Record trades | on | Switch off to stop recording and stop talking to flippingrs.com |
 | Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
 | Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
@@ -271,7 +297,7 @@ team. The plugin sends it:
 - which journal you picked for this character
 - how far your computer's clock is from UTC, so the site's daily totals fall
   on your calendar day rather than somebody else's
-- your API key, so the site knows the trades are yours
+- your plugin key, so the site knows the trades are yours
 
 It also reads back what the sidebar shows: your journals, your plan, your
 recent trades, your open positions and weekly summary, your watchlists, and
@@ -285,7 +311,7 @@ is never sent, and neither is anything about other players, your inventory,
 your bank, where you are, or your chat. Opening an item page is an ordinary
 visit in your browser.
 
-Nothing is sent until you enter an API key, and nothing is sent while
+Nothing is sent until you enter a plugin key, and nothing is sent while
 **Record trades** is off. Trades made while it is off are not recorded as
 they happen; anything already waiting is sent when you switch it back on.
 Switching it off is not a way to keep a trade out of your journal for good:

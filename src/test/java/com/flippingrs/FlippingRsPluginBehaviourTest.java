@@ -2955,7 +2955,7 @@ public class FlippingRsPluginBehaviourTest
 
 			assertTrue("a key of [" + key + "] must be treated as no key at all: "
 					+ support.panel.journalNoticeForTest(),
-				support.panel.journalNoticeForTest().contains("Add your API key"));
+				support.panel.journalNoticeForTest().contains("Add your plugin key"));
 		}
 		verify(support.api, never()).closePosition(anyString(), anyString(),
 			org.mockito.ArgumentMatchers.anyLong(), any());
