@@ -53,6 +53,12 @@ interface PanelActions
 	/** "Delete" on an open position. The panel has already asked the user. */
 	void deletePosition(String positionId);
 
+	/** The Suggestions tab came on screen, or went off it. */
+	void suggestionsShowing(boolean showing);
+
+	/** "Refresh" on the Suggestions tab. */
+	void refreshSuggestions();
+
 	/** The sidebar opened on this panel. */
 	void shown();
 

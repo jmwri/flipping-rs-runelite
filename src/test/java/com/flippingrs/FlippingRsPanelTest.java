@@ -1102,7 +1102,7 @@ public class FlippingRsPanelTest
 	 * is where you go when something looks wrong.
 	 */
 	@Test
-	public void thePanelOpensOnTheJournalAndCarriesTheSitesSixTabs() throws Exception
+	public void thePanelOpensOnTheJournalAndCarriesTheSitesSixTabsAndSuggestions() throws Exception
 	{
 		onEdt(() ->
 		{
@@ -1110,7 +1110,8 @@ public class FlippingRsPanelTest
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
 			assertEquals("Journal", panel.selectedTabForTest());
 
-			for (String tab : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
+			for (String tab : new String[]{
+				"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity", "Suggestions"})
 			{
 				panel.selectTabForTest(tab);
 				assertEquals(tab, panel.selectedTabForTest());
@@ -1124,7 +1125,7 @@ public class FlippingRsPanelTest
 	 * to what the panel actually has.
 	 */
 	@Test
-	public void allSixTabsFitTheSidebar() throws Exception
+	public void allSevenTabsFitTheSidebar() throws Exception
 	{
 		onEdt(() ->
 		{
@@ -1974,13 +1975,14 @@ public class FlippingRsPanelTest
 		{
 			final TestPanelActions actions = new TestPanelActions();
 			final FlippingRsPanel panel = new FlippingRsPanel(actions);
-			for (String name : new String[]{"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity"})
+			for (String name : new String[]{
+				"Watchlists", "Journal", "Positions", "Analytics", "Account", "Activity", "Suggestions"})
 			{
 				panel.selectTabForTest(name);
 
 				final List<MaterialTab> tabs = new ArrayList<>();
 				collectTabs(panel.getWrappedPanel(), tabs);
-				assertEquals("all six tabs", 6, tabs.size());
+				assertEquals("all seven tabs", 7, tabs.size());
 
 				final List<MaterialTab> others = new ArrayList<>();
 				MaterialTab chosen = null;

@@ -80,6 +80,7 @@ problem than a full API key would be. Plugin keys are available on every plan.
 | Send every | 30 seconds | How long to wait between sends. Trades are grouped up; nothing is lost while it waits |
 | Right-click entries | on | Adds "View item" and "Add to watchlist" to items in the Grand Exchange |
 | Prices when you examine | on | Adds the site's prices to the end of an item's examine line |
+| Suggestions budget | 0 | gp the Suggestions tab plans around; 0 uses your FlippingRS default |
 | Prices in the exchange | on | Shows the site's prices on the offer screen and on each of your open offers |
 | Trades that couldn't be recorded | on | Tells you when flippingrs.com would not record a trade |
 | An offer finishing | off | Tells you when one of your offers finishes |
@@ -87,9 +88,10 @@ problem than a full API key would be. Plugin keys are available on every plan.
 
 ## The sidebar
 
-Six tabs, named and ordered the way flippingrs.com names and orders its own
-screens, so moving between the site and the sidebar is not two vocabularies
-for one journal. It opens on **Journal**.
+Seven tabs. Six are named and ordered the way flippingrs.com names and orders
+its own screens, so moving between the site and the sidebar is not two
+vocabularies for one journal; the seventh, **Suggestions**, has its own section
+below. It opens on **Journal**.
 
 - **Watchlists** shows one of your flippingrs.com watchlists; the dropdown at
   the top picks which. Each item shows the exact price you can buy and sell at
@@ -152,6 +154,36 @@ the most confident thing on a tab that has just said it is not reading.
 
 Positions and Analytics are two tabs from one read: the server answers with the
 week and the open lots together, so keeping them apart costs no extra request.
+
+## Suggestions
+
+The **Suggestions** tab lists up to fifteen items that flippingrs.com thinks are
+worth flipping right now, in the order the site sends them. Each row has the
+item, the price to buy at and the price to sell at, the margin after tax and
+the return, the buy limit, the profit if you filled that limit, and the day's
+volume. Items the site has no figure for leave that figure out rather than
+showing zero.
+
+It is free for everyone with a plugin key, on every plan, and it has no
+limits of its own.
+
+It only shows things. It adds no menu entries, does not change or highlight
+anything in the game, does not place or edit offers, and reads nothing from the
+game that the plugin does not already read. The one thing a row can do is copy
+the item's name to the clipboard, which is the **Copy name** button.
+
+Asking for suggestions is a single read-only request carrying your plugin key
+and, if you have set one, your budget. Nothing about your trades, offers or
+character is in it. It is made when the tab comes on screen, once a minute
+while it stays there, and when you press **Refresh**; nothing is requested
+while the sidebar is closed, while another tab is showing, while **Record
+trades** is off or before you have entered a plugin key.
+
+The budget is the **Suggestions budget** setting, in gp. At 0, the default, the
+site uses the budget from your FlippingRS account.
+
+Prices come from the Grand Exchange feed and can move before you trade. The
+tab suggests; you decide.
 
 ## In the Grand Exchange
 
@@ -298,6 +330,8 @@ team. The plugin sends it:
 - how far your computer's clock is from UTC, so the site's daily totals fall
   on your calendar day rather than somebody else's
 - your plugin key, so the site knows the trades are yours
+- your Suggestions budget, if you set one, when the Suggestions tab asks for
+  suggestions
 
 It also reads back what the sidebar shows: your journals, your plan, your
 recent trades, your open positions and weekly summary, your watchlists, and
@@ -544,6 +578,10 @@ One read per tab, each capped and unfilterable by design:
   Connecting, picking a journal and logging in on another character read them
   whether it is open or not, because each of those changes what they would
   say.
+- `GET /api/plugin/suggestions?budget=&limit=`: items worth flipping now. The
+  budget is sent only when set; the sidebar asks for ten. Read when the
+  Suggestions tab comes on screen, once a minute while it stays there, and on
+  Refresh, and never while the sidebar is closed or another tab is showing.
 - `GET /api/plugin/watchlists?watchlistId=`: every watchlist, and the quotes
   for the items of one of them. Re-read every thirty seconds for the quotes,
   while the sidebar or the exchange is open.

@@ -80,6 +80,28 @@ public class FlippingRsApi
 	}
 
 	/**
+	 * Thrown when the server did not accept the plugin key: a 401 or a 403.
+	 * Separate so the Suggestions tab can point at the Account tab rather than
+	 * show a message about a request.
+	 */
+	public static class KeyRefusedException extends IOException
+	{
+		KeyRefusedException(String message)
+		{
+			super(message);
+		}
+	}
+
+	/** Thrown on a 429: the server asked the plugin to slow down. */
+	public static class RateLimitedException extends IOException
+	{
+		RateLimitedException(String message)
+		{
+			super(message);
+		}
+	}
+
+	/**
 	 * The one instance this plugin talks to, over TLS, and not configurable in
 	 * a normal install. The exception is a client started in developer mode,
 	 * which is how the plugin is run against a local server; the plugin
@@ -239,6 +261,51 @@ public class FlippingRsApi
 			}
 		}
 		return read(apiKey, url);
+	}
+
+	/**
+	 * The Suggestions tab: items the server thinks are worth flipping now.
+	 *
+	 * <p>A read-only GET. It carries the plugin key and, when the user has set
+	 * one, a budget; nothing about the user's trades.
+	 *
+	 * @param budget gp to spend, sent only when above zero
+	 * @throws KeyRefusedException on 401 or 403
+	 * @throws RateLimitedException on 429
+	 */
+	public Suggestions suggestions(String apiKey, long budget, int limit) throws IOException
+	{
+		final HttpUrl.Builder url = url("api", "plugin", "suggestions").newBuilder();
+		if (budget > 0)
+		{
+			url.addQueryParameter("budget", Long.toString(budget));
+		}
+		url.addQueryParameter("limit", Integer.toString(limit));
+		final Request request = new Request.Builder()
+			.url(url.build())
+			.header("X-Api-Key", apiKey)
+			.get()
+			.build();
+
+		try (Response response = http.newCall(request).execute())
+		{
+			final String body = bodyOf(response);
+			if (response.code() == 401 || response.code() == 403)
+			{
+				throw new KeyRefusedException(messageIn(body, response.code()));
+			}
+			if (response.code() == 429)
+			{
+				throw new RateLimitedException(messageIn(body, response.code()));
+			}
+			check(response, body);
+			final Suggestions suggestions = gson.fromJson(body, Suggestions.class);
+			return suggestions == null ? new Suggestions() : suggestions;
+		}
+		catch (JsonParseException e)
+		{
+			throw new IOException("flippingrs.com returned something that is not JSON", e);
+		}
 	}
 
 	/**

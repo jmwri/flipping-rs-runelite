@@ -80,11 +80,17 @@ abstract class SidebarTab
 	final void showing(boolean nowShowing)
 	{
 		showing = nowShowing;
+		onShowingChanged(nowShowing);
 		if (nowShowing && stale)
 		{
 			stale = false;
 			redraw();
 		}
+	}
+
+	/** A tab that reads on its own while it is on screen hears about it here. */
+	void onShowingChanged(boolean nowShowing)
+	{
 	}
 
 	/**
