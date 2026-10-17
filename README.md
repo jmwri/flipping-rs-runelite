@@ -246,7 +246,7 @@ box gains the same numbers: the site's buy price, its sell price, the margin
 between them after tax, the buy limit and how old the prices are. Buy above
 sell whichever way you are trading. If the item is one of your eight open
 offers, one more line says what you asked for and how that compares —
-`Yours 436 (2 over sell)`. It compares your price with the last traded price on
+`Yours 436 (2 over buy)`. It compares your price with the last traded price on
 your side of the trade. It is green when yours is at or past that price in the
 direction that tends to fill sooner (a buy at or above the buy price, a sale at
 or below the sell price) and red when it is on the other side, where an offer
