@@ -452,7 +452,7 @@ public class FlippingRsPanelTest
 		week.realisedProfit = 1_200_000;
 		week.winRate = 0.75;
 		week.gpPerHour = 45_000;
-		assertEquals("+1.20M from 12 flips · 75.0% wins · 45.0K gp/h", FlippingRsPanel.summarise(week));
+		assertEquals("+1.20M from 12 flips · 75.0% wins · 45.0K gp per held hour", FlippingRsPanel.summarise(week));
 
 		week.completedFlips = 1;
 		week.realisedProfit = -3_000;

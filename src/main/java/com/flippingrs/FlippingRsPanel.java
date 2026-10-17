@@ -44,7 +44,7 @@ import net.runelite.client.util.AsyncBufferedImage;
  *       server, with the two actions the site's own Positions page has, and
  *       under it what has been sold and what each of those made.
  *   <li><b>Analytics</b> is the last week's verdict: realised profit, flips,
- *       win rate and gp per hour, all worked out on the site.
+ *       win rate and gp per held hour, all worked out on the site.
  *   <li><b>Account</b> is the connection: whether the key works, what plan it
  *       is on, and which journal this RuneScape account files under.
  *   <li><b>Activity</b> is the plugin's own doing, and the one tab with no
@@ -755,7 +755,7 @@ public class FlippingRsPanel extends PluginPanel
 	// The words a journal row is made of. Static and stateless, so the
 	// tab that draws them and the tests that pin them share one copy.
 
-/** "+1.20M from 12 flips · 75.0% wins · 45.0K gp/h", or a quiet week. */
+/** "+1.20M from 12 flips · 75.0% wins · 45.0K gp per held hour", or a quiet week. */
 	static String summarise(Analytics week)
 	{
 		if (week.getCompletedFlips() == 0)
@@ -765,7 +765,7 @@ public class FlippingRsPanel extends PluginPanel
 		return signed(week.getRealisedProfit()) + " from " + week.getCompletedFlips()
 			+ (week.getCompletedFlips() == 1 ? " flip" : " flips")
 			+ " · " + pct(week.getWinRate()) + " wins"
-			+ (week.getGpPerHour() != 0 ? " · " + gp(week.getGpPerHour()) + " gp/h" : "");
+			+ (week.getGpPerHour() != 0 ? " · " + gp(week.getGpPerHour()) + " gp per held hour" : "");
 	}
 
 	/**

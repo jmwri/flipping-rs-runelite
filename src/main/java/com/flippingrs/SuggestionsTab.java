@@ -290,7 +290,7 @@ final class SuggestionsTab extends SidebarTab
 		if (!prices.isEmpty())
 		{
 			final JLabel line = small(prices);
-			line.setToolTipText("The price to place a buy offer at and the price to list at, from flippingrs.com.");
+			line.setToolTipText("The last traded buy and sell prices, from flippingrs.com.");
 			card.add(line);
 		}
 		final String margin = marginText(s);

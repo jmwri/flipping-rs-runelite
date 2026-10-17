@@ -77,7 +77,7 @@ final class PositionsTab extends SidebarTab
 	{
 		this.actions = actions;
 		final JPanel body = column();
-		body.add(hint("What you are holding, what it cost you, and what it is worth right now."));
+		body.add(hint("What you are holding, what it cost you, and what it is marked at: the last traded price, after tax. A large stack may sell for less."));
 		body.add(header("Open positions"));
 		body.add(Box.createVerticalStrut(4));
 		openSummary.setFont(FontManager.getRunescapeSmallFont());
@@ -91,7 +91,7 @@ final class PositionsTab extends SidebarTab
 		body.add(Box.createVerticalStrut(4));
 		positionList.setLayout(new BoxLayout(positionList, BoxLayout.Y_AXIS));
 		positionList.setAlignmentX(Component.LEFT_ALIGNMENT);
-		positionList.setToolTipText("What you're holding, what it cost you, and what it's worth right now.");
+		positionList.setToolTipText("What you're holding, what it cost you, and what it is marked at: the last traded price, after tax. A large stack may sell for less.");
 		body.add(positionList);
 
 		// Under the open ones, because the open book is the thing somebody
