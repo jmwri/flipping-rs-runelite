@@ -33,12 +33,12 @@ public class OfferTrackerTest
 	{
 		private final GrandExchangeOfferState state;
 		private final int itemId;
-		private final int price;
+		private final long price;
 		private final int total;
 		private final int sold;
-		private final int spent;
+		private final long spent;
 
-		Offer(GrandExchangeOfferState state, int itemId, int price, int total, int sold, int spent)
+		Offer(GrandExchangeOfferState state, int itemId, long price, int total, int sold, long spent)
 		{
 			this.state = state;
 			this.itemId = itemId;
@@ -301,16 +301,16 @@ public class OfferTrackerTest
 	}
 
 	/**
-	 * The client's running total is an int, and a big enough offer overflows it.
-	 * A wrapped total must not become a wrong profit.
+	 * A negative running total cannot come from a client that reports longs, but
+	 * a stale or damaged one is not a trade. It must not become a wrong profit.
 	 */
 	@Test
-	public void anImpossibleRunningTotalFallsBackToPriceTimesQuantity()
+	public void aNegativeRunningTotalFallsBackToPriceTimesQuantity()
 	{
 		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 3_000_000, 1000, 0, 0), "ref-1", false);
-		// 800 whips at 3M is 2.4 billion, past what an int holds, so the client
-		// reports a wrapped negative.
-		final int wrapped = (int) (800L * 3_000_000L);
+		// What a 32-bit counter would have shown for 800 whips at 3M.
+		final long wrapped = (int) (800L * 3_000_000L);
+		assertTrue("the premise: it wrapped negative", wrapped < 0);
 
 		final OfferTracker.Observation seen =
 			observe(previous, new Offer(BUYING, WHIP, 3_000_000, 1000, 800, wrapped));
@@ -322,44 +322,104 @@ public class OfferTrackerTest
 	}
 
 	/**
-	 * A total that wrapped once between two observations. The difference
-	 * modulo 2^32 is exact, and it used to be discarded as negative.
+	 * Since Beyond Max Cash a fill can pass 2^31. 2000 whips at 3M is 6.0B, and
+	 * the client reports it as a long. It used to be discarded and replaced by
+	 * an estimate, and a total that had crossed 2^31 between two looks was
+	 * reduced modulo 2^32 to a different number.
 	 */
 	@Test
-	public void aTotalThatWrappedOnceIsRecoveredExactly()
+	public void aFillPastAnIntIsReportedExactly()
 	{
-		final SavedOffer previous = SavedOffer.of(
-			new Offer(BUYING, WHIP, 2_000_000, 1100, 1000, 2_000_000_000), "ref-1", false);
-		final int wrapped = (int) 2_200_000_000L;
+		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 3_000_000, 2000, 0, 0), "ref-1", false);
 
 		final OfferTracker.Observation seen =
-			observe(previous, new Offer(BOUGHT, WHIP, 2_000_000, 1100, 1100, wrapped));
+			observe(previous, new Offer(BOUGHT, WHIP, 3_000_000, 2000, 2000, 5_999_000_000L));
+
+		assertNotNull(seen.transaction);
+		assertEquals(2000, seen.transaction.quantity);
+		assertEquals("the exact gp, 1,000,000 under price times quantity", 5_999_000_000L,
+			seen.transaction.grossValue);
+		assertFalse("exact, so not flagged", seen.transaction.estimated);
+		assertEquals("the baseline keeps the whole total", 5_999_000_000L, seen.saved.spent);
+	}
+
+	/** A total that crosses 2^31 between two looks, with the second fill small. */
+	@Test
+	public void aTotalThatCrossesAnIntBetweenLooksIsDifferencedAsALong()
+	{
+		final SavedOffer previous = SavedOffer.of(
+			new Offer(BUYING, WHIP, 2_000_000, 1100, 1000, 2_000_000_000L), "ref-1", false);
+
+		final OfferTracker.Observation seen =
+			observe(previous, new Offer(BOUGHT, WHIP, 2_000_000, 1100, 1100, 2_200_000_000L));
 
 		assertNotNull(seen.transaction);
 		assertEquals(100, seen.transaction.quantity);
 		assertEquals(200_000_000L, seen.transaction.grossValue);
-		assertFalse("exact, so not flagged", seen.transaction.estimated);
+		assertFalse(seen.transaction.estimated);
 	}
 
 	/**
-	 * A wrap that lands positive. 2000 at 3M is 6.0B; the int reads 1.7B,
-	 * which is under the 6.0B asked and used to pass as a plausible buy. The
-	 * fill alone is bigger than the total could ever have tracked, so the
-	 * total is not consulted.
+	 * A fill adopted on first sight carries the whole total as its value, and
+	 * that can now be past an int as well.
 	 */
 	@Test
-	public void aFillTooLargeForTheRunningTotalIsEstimatedEvenWhenTheWrapLandsPositive()
+	public void anAdoptedOfferPastAnIntKeepsItsValue()
 	{
-		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 3_000_000, 2000, 0, 0), "ref-1", false);
-		final int wrapped = (int) 6_000_000_000L;
-		assertTrue("the premise: the wrap lands positive", wrapped > 0);
-
 		final OfferTracker.Observation seen =
-			observe(previous, new Offer(BOUGHT, WHIP, 3_000_000, 2000, 2000, wrapped));
+			observe(null, new Offer(BUYING, WHIP, 3_000_000, 2000, 1500, 4_400_000_000L));
+
+		assertTrue(seen.adopted);
+		assertNotNull(seen.transaction);
+		assertEquals(1500, seen.transaction.quantity);
+		assertEquals(4_400_000_000L, seen.transaction.grossValue);
+		assertFalse(seen.transaction.estimated);
+	}
+
+	/** The top of the range: one item at the most an offer can be worth. */
+	@Test
+	public void anOfferAtTheLargestValueIsReportedWithoutWrapping()
+	{
+		final long max = 2_149_631_130_647L;
+		final SavedOffer previous = SavedOffer.of(new Offer(SELLING, WHIP, max, 1, 0, 0), "ref-1", false);
+
+		final OfferTracker.Observation seen = observe(previous, new Offer(SOLD, WHIP, max, 1, 1, max));
 
 		assertNotNull(seen.transaction);
-		assertEquals(6_000_000_000L, seen.transaction.grossValue);
+		assertEquals(max, seen.transaction.grossValue);
+		assertEquals(max, seen.transaction.offerPrice);
+		assertFalse(seen.transaction.estimated);
+		assertTrue("positive, and not above what the server accepts",
+			seen.transaction.grossValue > 0 && seen.transaction.grossValue <= max);
+	}
+
+	/**
+	 * A total above what an offer can hold is not believed, and the estimate
+	 * that replaces it is held to the ceiling too, so nothing the server would
+	 * refuse is ever sent.
+	 */
+	@Test
+	public void aValueAboveTheCeilingIsNeverReported()
+	{
+		final long max = 2_149_631_130_647L;
+		final SavedOffer previous = SavedOffer.of(new Offer(BUYING, WHIP, 1_000_000_000L, 5, 0, 0), "ref-1", false);
+
+		final OfferTracker.Observation seen =
+			observe(previous, new Offer(BOUGHT, WHIP, 1_000_000_000L, 5, 5, max + 1));
+
+		assertNotNull(seen.transaction);
+		assertEquals(5_000_000_000L, seen.transaction.grossValue);
 		assertTrue(seen.transaction.estimated);
+
+		// And a price times quantity past the ceiling, or past a long, is cut
+		// to the ceiling instead of going negative.
+		final SavedOffer huge = SavedOffer.of(
+			new Offer(BUYING, WHIP, Long.MAX_VALUE / 2, 2_000_000_000, 0, 0), "ref-2", false);
+		final OfferTracker.Observation clamped = observe(huge,
+			new Offer(BUYING, WHIP, Long.MAX_VALUE / 2, 2_000_000_000, 2_000_000_000, 0));
+		assertNotNull(clamped.transaction);
+		assertEquals(max, clamped.transaction.grossValue);
+		assertTrue(clamped.transaction.estimated);
 	}
 
 	@Test
@@ -695,7 +755,7 @@ public class OfferTrackerTest
 	 * to write down.
 	 *
 	 * <p>The offers generated stay inside the rules the exchange guarantees --
-	 * an offer never moves more than max cash, a buy fills at or under the
+	 * a buy fills at or under the
 	 * ask, a sale at or over it -- so nothing here should ever come back
 	 * flagged as approximate either.
 	 */
@@ -719,8 +779,8 @@ public class OfferTrackerTest
 				// Two or more, so a fill can never come to nothing; and small
 				// enough that one offer stays well inside max cash, which is
 				// what the exchange itself caps an offer at.
-				final int price = 2 + random.nextInt(1_000_000);
-				final int total = 1 + random.nextInt(Math.max(1, Math.min(1000, Integer.MAX_VALUE / 2 / price)));
+				final long price = 2 + random.nextInt(50_000_000);
+				final int total = 1 + random.nextInt(1000);
 
 				// Placed: nothing filled, so nothing to adopt.
 				OfferTracker.Observation seen = observe(saved, new Offer(running, WHIP, price, total, 0, 0));
@@ -728,7 +788,7 @@ public class OfferTrackerTest
 				assertNull("placing an offer is not a trade", seen.transaction);
 
 				int sold = 0;
-				int spent = 0;
+				long spent = 0;
 				final int looks = 1 + random.nextInt(8);
 				for (int look = 1; look <= looks; look++)
 				{
@@ -740,15 +800,9 @@ public class OfferTrackerTest
 					final long moved = buy
 						? (long) more * price - random.nextInt(Math.max(1, more))
 						: (long) more * price + random.nextInt(Math.max(1, more));
-					// The client's running total is an int, so this one has to
-					// be, and the narrowing has to be said out loud: the sizes
-					// chosen above keep price times quantity inside half an
-					// int, and if that ever stops being true this test would
-					// otherwise compare the tracker's answer against a total
-					// that quietly wrapped on the way in.
-					assertTrue("run " + run + ": the offer has to stay inside an int, as the exchange's own do",
-						spent + moved <= Integer.MAX_VALUE);
-					spent += (int) moved;
+					assertTrue("run " + run + ": the offer has to stay inside what the exchange allows",
+						spent + moved <= 2_149_631_130_647L);
+					spent += moved;
 
 					final GrandExchangeOfferState state;
 					if (look < looks)
