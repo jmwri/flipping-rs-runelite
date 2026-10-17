@@ -296,6 +296,31 @@ public class GeHistoryReaderTest
 		assertEquals(4_560_000L, rows.get(1).grossValue);
 	}
 
+	/** Since Beyond Max Cash a row can be worth more than an int holds. */
+	@Test
+	public void aRowWorthMoreThanAnIntIsRead()
+	{
+		item(0, 4151, 1);
+		text(0, "Sold");
+		text(0, "2,149,631,130,647 coins");
+
+		final List<HistoryRow> rows = GeHistoryReader.read(list(), GeHistoryReaderTest::name);
+
+		assertEquals(1, rows.size());
+		assertEquals(2_149_631_130_647L, rows.get(0).grossValue);
+	}
+
+	/** More than an offer can be worth is not a trade, and the server would refuse it. */
+	@Test
+	public void aRowWorthMoreThanAnOfferCanBeIsSkipped()
+	{
+		item(0, 4151, 1);
+		text(0, "Sold");
+		text(0, "2,149,631,130,648 coins");
+
+		assertEquals(0, GeHistoryReader.read(list(), GeHistoryReaderTest::name).size());
+	}
+
 	/** A quantity written in the text rather than on the icon still counts. */
 	@Test
 	public void aQuantityInTheTextIsUsedWhenTheIconHasNone()

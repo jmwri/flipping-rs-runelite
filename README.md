@@ -421,17 +421,26 @@ work is in the cases where that is not straightforward:
   and cancelled untouched, then a sell of the same item at the same price and
   size, both sitting at zero. Two identical *finished* offers cannot be told
   apart, and are not.
-- **A running total that is an `int`.** `GrandExchangeOffer#getSpent` is a
-  32-bit int. The exchange caps an offer at max cash, which is also the largest
-  int, so in practice it cannot wrap, but a figure that becomes profit is not
-  left to "in practice". The difference between two looks is taken modulo
-  2^32, which is exact across one wrap; a fill that price times quantity alone
-  puts beyond an int is not trusted to the total at all; and what is left is
-  checked against rules the exchange guarantees — a buy never fills above your
-  offer, a sale never fills below your ask, no offer moves more than max cash.
-  Anything that fails is replaced with price times quantity and flagged as
-  approximate. A figure known to be approximate is worth much more than one
-  that is exactly wrong.
+- **A running total that can pass an `int`.** `GrandExchangeOffer#getSpent` and
+  `#getPrice` return a `long`. They were ints until RuneLite's API update of
+  24 September 2026, six days before the "Beyond Max Cash" update (30 September
+  2026) let an offer go past 2,147,483,647 coins, paid in coins and platinum
+  tokens, up to 2,149,631,130,647 gp. A fill is the difference between two
+  looks at that total, taken as a `long`, so one worth 6 billion is reported
+  exactly. Two checks stay: the difference has to be positive and no more than
+  2,149,631,130,647, and it has to obey what the exchange guarantees (a buy
+  never fills above your offer, a sale never below your ask). A fill that fails
+  either is replaced with price times quantity, held to the same ceiling, and
+  flagged as approximate. Nothing the plugin sends is negative or above what
+  the server accepts.
+
+  What this does not know: the plugin trusts the client's total, so it cannot
+  tell a correct total from a wrong one that happens to look plausible. It
+  cannot see how an offer was paid (coins or tokens), which does not change the
+  gp value. It has not been tried against live fills above 2.147 billion, since
+  the tests build the offers by hand. A RuneLite older than the September API
+  update has an int `getSpent` and would not load a plugin built for the new
+  one.
 - **Region loads.** The client's state leaves `LOGGED_IN` briefly whenever a
   new area loads, and an offer can fill during that. Only the slot clears the
   client does on login and hop are ignored; a fill is a fill in any state. The

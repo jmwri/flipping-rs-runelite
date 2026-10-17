@@ -284,7 +284,11 @@ class GeHistoryReader
 			quantity = 1;
 		}
 
-		if (itemId <= 0 || side == null || quantity <= 0 || gross <= 0)
+		// An offer cannot be worth more than OfferTracker.MAX_OFFER_VALUE, so a
+		// larger figure is digits run together from two fields, not a trade, and
+		// the server would refuse the row.
+		if (itemId <= 0 || side == null || quantity <= 0 || gross <= 0
+			|| gross > OfferTracker.MAX_OFFER_VALUE)
 		{
 			if (!texts.isEmpty() || itemId > 0)
 			{

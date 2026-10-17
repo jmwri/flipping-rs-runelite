@@ -15,7 +15,7 @@ public class OfferState
 	long price;
 	long totalQuantity;
 	long quantitySold;
-	/** The client's running total, an int that can wrap; see spentEstimated. */
+	/** The client's running total, up to 2,149,631,130,647; see spentEstimated. */
 	long spent;
 	boolean spentEstimated;
 	String state;
