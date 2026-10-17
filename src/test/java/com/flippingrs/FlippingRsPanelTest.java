@@ -2336,23 +2336,23 @@ public class FlippingRsPanelTest
 	/** Content wide enough that every kind of line has to wrap. */
 	private static void fillWithWideContent(FlippingRsPanel panel)
 	{
-		// Ten-digit figures throughout, because that is what these lines can
-		// really carry: the exchange caps one offer at max cash, and a bow or a
-		// tbow-priced position is an ordinary thing for this panel to be shown.
-		// A price three characters wider is three characters closer to the edge.
+		// Thirteen-digit figures throughout, because that is what these lines can
+		// really carry: since Beyond Max Cash an offer can be worth up to
+		// 2,149,631,130,647 gp. Quantities stay at ten digits, the most items an
+		// offer can hold.
 		final GeTransaction tx = new GeTransaction();
 		tx.side = "buy";
 		tx.quantity = 2_147_483_647L;
 		tx.itemName = "Ancient ceremonial legs";
-		tx.grossValue = 2_147_483_647L;
+		tx.grossValue = 2_149_631_130_647L;
 		tx.estimated = true;
 		tx.occurredAt = "2026-08-31T16:10:12.482Z";
 		panel.setRecentTrades(Collections.singletonList(tx));
 		panel.setPending(Collections.singletonList(tx));
 
 		final Quote q = quote(4151);
-		q.instantSell = 1_234_567_890L;
-		q.instantBuy = 1_250_000_000L;
+		q.instantSell = 2_149_631_130_647L;
+		q.instantBuy = 2_149_631_130_647L;
 		q.netMargin = -12_345_678L;
 		q.profitPerLimit = 1_098_765_432L;
 		q.volume24h = 12_345_678L;
@@ -2364,10 +2364,10 @@ public class FlippingRsPanelTest
 		pos.id = "p1";
 		pos.itemId = 4151;
 		pos.itemName = "Ancient ceremonial legs";
-		pos.buyPrice = 1_234_567_890L;
+		pos.buyPrice = 2_149_631_130_647L;
 		pos.remainingQty = 123_456;
-		pos.currentBuy = 1_250_000_000L;
-		pos.currentSell = 1_249_999_999L;
+		pos.currentBuy = 2_149_631_130_647L;
+		pos.currentSell = 2_149_631_130_646L;
 		pos.unrealisedPnl = -1_234_567_890L;
 		pos.breakEvenSell = 1_234_567_890L;
 		pos.hoursHeld = 5.5;

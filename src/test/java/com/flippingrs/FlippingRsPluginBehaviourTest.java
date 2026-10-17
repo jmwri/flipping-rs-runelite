@@ -155,13 +155,13 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/** A Grand Exchange slot as the client reports it. */
-	private static GrandExchangeOffer offer(GrandExchangeOfferState state, int sold, int spent)
+	private static GrandExchangeOffer offer(GrandExchangeOfferState state, int sold, long spent)
 	{
 		return offerFor(4151, state, sold, spent);
 	}
 
 	/** The same, on another item, for the slots a watched item shares with. */
-	private static GrandExchangeOffer offerFor(int itemId, GrandExchangeOfferState state, int sold, int spent)
+	private static GrandExchangeOffer offerFor(int itemId, GrandExchangeOfferState state, int sold, long spent)
 	{
 		return new GrandExchangeOffer()
 		{
@@ -231,6 +231,25 @@ public class FlippingRsPluginBehaviourTest
 		assertEquals(4, queued.get(0).quantity);
 		assertEquals("the exact gp, not price times quantity", 3_800_000, queued.get(0).grossValue);
 		assertEquals("Abyssal whip", queued.get(0).itemName);
+	}
+
+	/**
+	 * A sale past 2^31, which the exchange has allowed since Beyond Max Cash.
+	 * A sale fills at the ask or better, so 2.9B for five whips asked at 1M
+	 * each is allowed. It reaches the queue as the exact long, positive
+	 * and not flagged as approximate.
+	 */
+	@Test
+	public void aFillPastAnIntReachesTheQueueExactly() throws Exception
+	{
+		fire(offer(GrandExchangeOfferState.SELLING, 0, 0));
+		fire(offer(GrandExchangeOfferState.SELLING, 5, 2_900_000_000L));
+
+		final List<GeTransaction> queued = support.queue().peek(10);
+		assertEquals(1, queued.size());
+		assertEquals(5, queued.get(0).quantity);
+		assertEquals(2_900_000_000L, queued.get(0).grossValue);
+		assertEquals(false, queued.get(0).estimated);
 	}
 
 	/**
@@ -2553,13 +2572,15 @@ public class FlippingRsPluginBehaviourTest
 	}
 
 	/**
-	 * A slot whose running total has wrapped is reported as an estimate.
+	 * A slot whose running total is unusable is reported as an estimate.
 	 *
-	 * <p>The client holds what an offer has spent in a signed int, and a big
-	 * offer runs past what that can hold. The figure is still sent, because
-	 * the server reconciles against it, but it has to arrive marked as
-	 * approximate -- a number known to be rough is useful, and the same number
-	 * believed to be exact is a wrong journal entry.
+	 * <p>A negative total is what a 32-bit counter shows once it wraps, and an
+	 * offer cannot be worth more than 2,149,631,130,647. The figure is still
+	 * sent, because the server reconciles against it, but it has to arrive
+	 * marked as approximate -- a number known to be rough is useful, and the
+	 * same number believed to be exact is a wrong journal entry. A total past
+	 * 2^31 and under that ceiling is real since Beyond Max Cash and is not
+	 * flagged.
 	 */
 	@Test
 	@SuppressWarnings("unchecked")
@@ -2569,6 +2590,8 @@ public class FlippingRsPluginBehaviourTest
 		fire(offer(GrandExchangeOfferState.BUYING, 0, 0));
 		final GrandExchangeOffer[] slots = new GrandExchangeOffer[8];
 		slots[2] = offer(GrandExchangeOfferState.BUYING, 3, Integer.MIN_VALUE + 1000);
+		slots[4] = offer(GrandExchangeOfferState.SELLING, 4, 3_000_000_000L);
+		slots[5] = offer(GrandExchangeOfferState.SELLING, 4, 2_149_631_130_648L);
 		slots[3] = offer(GrandExchangeOfferState.BUYING, 4, 4_000_000);
 		when(support.client.getGrandExchangeOffers()).thenReturn(slots);
 
@@ -2584,6 +2607,9 @@ public class FlippingRsPluginBehaviourTest
 		verify(support.api).submitOffers(anyString(), anyString(), sent.capture());
 		assertTrue("the wrapped slot must be flagged", reported(sent.getValue(), 2).spentEstimated);
 		assertTrue("and one that fits must not be", !reported(sent.getValue(), 3).spentEstimated);
+		assertTrue("nor one past an int", !reported(sent.getValue(), 4).spentEstimated);
+		assertEquals(3_000_000_000L, reported(sent.getValue(), 4).spent);
+		assertTrue("but one above the ceiling is", reported(sent.getValue(), 5).spentEstimated);
 	}
 
 	/**

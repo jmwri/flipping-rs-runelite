@@ -179,7 +179,7 @@ final class CatchUp
 			state.totalQuantity = offer.getTotalQuantity();
 			state.quantitySold = offer.getQuantitySold();
 			state.spent = offer.getSpent();
-			state.spentEstimated = offer.getSpent() < 0;
+			state.spentEstimated = offer.getSpent() < 0 || offer.getSpent() > OfferTracker.MAX_OFFER_VALUE;
 			state.state = offer.getState().name();
 			open.add(state);
 		}

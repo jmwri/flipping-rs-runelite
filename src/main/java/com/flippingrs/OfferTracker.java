@@ -31,7 +31,7 @@ import net.runelite.api.GrandExchangeOfferState;
  *   <li><b>Slot reuse.</b> A finished offer is collected and the slot re-used,
  *       possibly for an identical offer. {@link SavedOffer#isSameOfferAs} draws
  *       the line.
- *   <li><b>A running total that is an int.</b> See {@link #grossValue}.
+ *   <li><b>A running total that can pass an int.</b> See {@link #grossValue}.
  * </ul>
  *
  * <p>Deliberately stateless. The previous state of a slot is passed in and the
@@ -54,6 +54,14 @@ public class OfferTracker
 	{
 		this.refs = refs;
 	}
+
+	/**
+	 * The most gp one offer can move: 2,149,631,130,647, since the "GE
+	 * Improvements: Beyond Max Cash" update of 30 September 2026. Before it the
+	 * ceiling was max cash, 2,147,483,647. The server refuses a figure above
+	 * this, so nothing the tracker reports goes past it.
+	 */
+	static final long MAX_OFFER_VALUE = 2_149_631_130_647L;
 
 	/** What one observation of a slot means. */
 	public static class Observation
@@ -189,56 +197,62 @@ public class OfferTracker
 	/**
 	 * The gp that moved in this fill, and whether it had to be estimated.
 	 *
-	 * <p>The client's running total is a 32-bit counter. (RuneLite widened the
-	 * getter to a {@code long}, which does not change what the game keeps.) The
-	 * exchange caps what a single offer can move at max cash, which is also the
-	 * largest int, so in
-	 * practice the total cannot wrap -- but a figure that becomes somebody's
-	 * profit is not something to leave to "in practice". Three defences:
+	 * <p>RuneLite's {@code getSpent} and {@code getPrice} are longs. They were
+	 * ints until the API update of 24 September 2026, which came ahead of the
+	 * Beyond Max Cash update on 30 September. An offer can now be worth up to
+	 * {@link #MAX_OFFER_VALUE}, so a single fill can be well past 2^31 and the
+	 * difference between two looks is taken as a plain long. (An earlier version
+	 * took it modulo 2^32, which turned a real 3 billion gp fill into a
+	 * different number.)
+	 *
+	 * <p>The total is still checked, because it is the one input that is not
+	 * under our control:
 	 *
 	 * <ul>
-	 *   <li>If price times quantity for this fill alone is more than an int can
-	 *       hold, the total could not have tracked it and is not consulted.
-	 *   <li>The difference is taken modulo 2^32, which is exact across a single
-	 *       wrap rather than nonsense. (A signed subtraction was exact only when
-	 *       the wrap happened to land negative; one that landed positive passed
-	 *       the checks below as a plausible, wrong number.)
-	 *   <li>The result is checked against rules the exchange guarantees: a buy
-	 *       never fills above the offer, a sale never below the ask, and no
-	 *       offer moves more than max cash.
+	 *   <li>It must have moved forward and by no more than an offer can hold.
+	 *       A negative or zero difference is a stale baseline or a client that
+	 *       still wraps at 32 bits, and neither is a trade.
+	 *   <li>It must obey rules the exchange guarantees: a buy never fills above
+	 *       the offer, and a sale never below the ask.
 	 * </ul>
 	 *
 	 * <p>Anything that fails falls back to price times quantity and is flagged,
 	 * because a figure that is approximately right and known to be approximate
-	 * is worth far more than one that is exactly wrong.
+	 * is worth far more than one that is exactly wrong. The fallback is capped
+	 * at {@link #MAX_OFFER_VALUE} and cannot overflow, so a nonsense price never
+	 * produces a negative number or one the server would refuse.
 	 *
 	 * @return {@code [grossValue, estimatedFlag]}
 	 */
 	private static long[] grossValue(GrandExchangeOffer offer, long previousSpent, long filled, boolean buy)
 	{
 		final long price = offer.getPrice();
-		// Compare totals rather than a per-item average, so an offer that filled
-		// at a mix of prices is not rejected by integer division.
-		final long asked = filled * price;
+		final long asked = capped(filled, price);
 		final long[] fallback = {asked, 1};
 
-		if (asked > Integer.MAX_VALUE)
+		final long spent = offer.getSpent() - previousSpent;
+		if (spent <= 0 || spent > MAX_OFFER_VALUE)
 		{
 			return fallback;
 		}
-		// Subtracted as 32 bits on purpose. RuneLite now hands the total back as a
-		// long, but the game's counter is the one that wraps, and what is known to
-		// be exact is the difference modulo 2^32: the guard above keeps a single
-		// fill under 2^31, so that is the true difference whether the client's
-		// number wrapped or not. A stale baseline gives a huge value, which the
-		// check below sends to the estimate.
-		final long spent = Integer.toUnsignedLong((int) (offer.getSpent() - previousSpent));
-		if (spent == 0 || spent > Integer.MAX_VALUE)
-		{
-			return fallback;
-		}
+		// Compare totals rather than a per-item average, so an offer that filled
+		// at a mix of prices is not rejected by integer division.
 		final boolean plausible = buy ? spent <= asked : spent >= asked;
 		return plausible ? new long[]{spent, 0} : fallback;
+	}
+
+	/** quantity times price, held to {@code [0, MAX_OFFER_VALUE]} without overflowing a long. */
+	static long capped(long quantity, long price)
+	{
+		if (quantity <= 0 || price <= 0)
+		{
+			return 0;
+		}
+		if (price > MAX_OFFER_VALUE / quantity)
+		{
+			return MAX_OFFER_VALUE;
+		}
+		return quantity * price;
 	}
 
 }
