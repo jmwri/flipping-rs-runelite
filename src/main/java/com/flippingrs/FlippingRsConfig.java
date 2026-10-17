@@ -91,11 +91,11 @@ public interface FlippingRsConfig extends Config
 		keyName = "setupOverlay",
 		name = "Prices in the exchange",
 		description = "Shows flippingrs.com's prices where you need them. On the offer setup screen and on a "
-			+ "placed offer's status page: the exact buy "
+			+ "placed offer's status page: the last traded buy "
 			+ "and sell prices, the margin, how old the prices are, and how much of the buy limit you have left "
 			+ "if your plan tracks that. And on any item the exchange shows, point at it and the game's own "
 			+ "hover box gains the same, plus what you asked for and how it compares with the side you are "
-			+ "trading if the item is one of yours -- \"Yours 436 (2 over sell)\". Nothing the exchange draws "
+			+ "trading if the item is one of yours -- \"Yours 436 (2 over buy)\". Nothing the exchange draws "
 			+ "is replaced or moved. Works for "
 			+ "any item, not only the ones on your watchlist; nothing is shown for an item the site has no price "
 			+ "for. Buy limits count only the trades your journal knows about, so an item you bought before "

@@ -40,7 +40,7 @@ final class AnalyticsTab extends SidebarTab
 	AnalyticsTab()
 	{
 		final JPanel body = column();
-		body.add(hint("How your last seven days went, worked out by flippingrs.com."));
+		body.add(hint("How your last seven days went, worked out by flippingrs.com. Gp per held hour is your profit divided by the hours your flips were held, added together. Time with no flip open is not counted."));
 		body.add(header("Last 7 days"));
 		body.add(Box.createVerticalStrut(4));
 		week.setFont(FontManager.getRunescapeSmallFont());

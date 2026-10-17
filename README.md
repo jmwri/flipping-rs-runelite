@@ -4,16 +4,22 @@ Records your Grand Exchange trades to your [flippingrs.com](https://flippingrs.c
 journal as they happen, so your journal shows what you actually traded
 instead of what you remembered to type in.
 
+FlippingRS is an independent plugin. It is not affiliated with or endorsed by
+Jagex or RuneLite. It only shows information and never interacts with the game.
+
 ## What it does
 
 Every time one of your Grand Exchange offers buys or sells something, the
 plugin sends that trade to flippingrs.com. The site pairs your sales with
-your purchases, works out the profit after tax, and keeps track of your buy
+your purchases, works out the profit after the 2% Grand Exchange tax, and keeps track of your buy
 limits. There is nothing to click: buying and selling is the whole job. The
 sidebar shows your watchlists, recent trades and open flips, and the plugin
 adds the site's prices to the Grand Exchange screens.
 
-The plugin never does the maths itself. Profit, tax and which sale belongs to
+Prices come from the OSRS Wiki real-time prices and can move. You decide what
+to trade.
+
+The plugin does not work out profit itself. Profit, tax and which sale belongs to
 which purchase are all worked out on the site, from the trades the plugin
 sends. That means the numbers can be corrected and recalculated over your
 whole history if the rules change, instead of being stuck in whatever version
@@ -49,7 +55,8 @@ issue in this repository.
 Your Grand Exchange trades and open offers: the item, buy or sell, quantity,
 price, slot, world and time. Your IP address reaches the server, as it does
 with any website. The plugin never sees your RuneScape password, and your
-character name is not sent. The full list is under "What is sent, and to whom"
+character name is not sent. The Suggestions tab sends your plugin key and, if
+you set one, a budget, and nothing about your trades. The full list is under "What is sent, and to whom"
 below, and the site's privacy notice is at
 [flippingrs.com/privacy](https://flippingrs.com/privacy).
 
@@ -94,8 +101,8 @@ vocabularies for one journal; the seventh, **Suggestions**, has its own section
 below. It opens on **Journal**.
 
 - **Watchlists** shows one of your flippingrs.com watchlists; the dropdown at
-  the top picks which. Each item shows the exact price you can buy and sell at
-  right now, the profit per item after tax, the return on what you'd pay, the
+  the top picks which. Each item shows the last traded buy and sell prices, the
+  profit per item after tax, the return on what you'd pay, the
   buy limit and the profit across one limit, and the day's volume, refreshed
   every 30 seconds. The volume travels with the prices now: it is on the
   exchange's hover box, on both offer screens and on an examine line, because a
@@ -108,7 +115,8 @@ below. It opens on **Journal**.
   Journal page, which is the ledger rather than the analysis.
 - **Positions** is everything you are currently holding: what you paid, the
   price a sale lists at and what an instant sale would get, your profit or loss
-  so far, the price you need to sell at to break even, and a warning when
+  so far (marked at the last traded price, after tax; a large stack may sell for
+  less), the price you need to sell at to break even, and a warning when
   something has sat for much longer than it usually takes to flip. Each
   position has **Close**, to record a sale at a price you enter, and
   **Delete**, for a lot that was never a flip, such as supplies you bought to
@@ -120,7 +128,8 @@ below. It opens on **Journal**.
   before rather than a heading claiming you have never closed anything.
 
 - **Analytics** is your last seven days: profit, number of flips, win rate and
-  gp per hour.
+  gp per held hour, which is profit over the hours your flips were held, added
+  together.
 - **Account** is whether the plugin is connected, which plan you are on, and
   which journal this character uses.
 - **Activity** is the one tab with no page on the site, because it is about
@@ -159,7 +168,7 @@ week and the open lots together, so keeping them apart costs no extra request.
 
 The **Suggestions** tab lists up to fifteen items that flippingrs.com thinks are
 worth flipping right now, in the order the site sends them. Each row has the
-item, the price to buy at and the price to sell at, the margin after tax and
+item, the last traded buy and sell prices, the margin after tax and
 the return, the buy limit, the profit if you filled that limit, and the day's
 volume. Items the site has no figure for leave that figure out rather than
 showing zero.
@@ -182,8 +191,8 @@ trades** is off or before you have entered a plugin key.
 The budget is the **Suggestions budget** setting, in gp. At 0, the default, the
 site uses the budget from your FlippingRS account.
 
-Prices come from the Grand Exchange feed and can move before you trade. The
-tab suggests; you decide.
+Prices come from the OSRS Wiki real-time prices and can move before you
+trade. The tab suggests; you decide.
 
 ## In the Grand Exchange
 
@@ -196,7 +205,7 @@ inventory beside it all, another player's offers in a view-only exchange, and
 the price checker. Neither entry touches the game; they only open your browser
 or update your list on the site. Both can be turned off in the settings.
 
-When you set up a buy or sell offer, the site's exact buy and sell prices, the
+When you set up a buy or sell offer, the site's last traded buy and sell prices, the
 margin and how old the prices are are added to the offer screen itself, under
 the game's own lines — not drawn on top of it. How much of the buy limit you
 have left appears too, if your plan tracks buy limits; an item that has never
@@ -223,8 +232,8 @@ goes stale when Jagex moves the screen.
 The buy limit is counted from the trades your journal has, which is not
 necessarily every trade you have made: an item bought before you installed the
 plugin, or on a client that was not reporting, does not count against the
-window. The error only ever goes one way — it can show more room than you
-really have, never less — but it is worth knowing before you trust it.
+window. The error should only go one way: it can show more room than you
+really have, not less. It is worth knowing before you trust it.
 
 Your Grand Exchange history gains the same, on the end of each row's own text:
 the prices and the margin, so a list of what you did reads as a list of what
@@ -237,8 +246,11 @@ box gains the same numbers: the site's buy price, its sell price, the margin
 between them after tax, the buy limit and how old the prices are. Buy above
 sell whichever way you are trading. If the item is one of your eight open
 offers, one more line says what you asked for and how that compares —
-`Yours 436 (2 over sell)`, green when your offer is priced to fill sooner, red
-when it is priced to sit. That is what an offer box cannot tell you on its own:
+`Yours 436 (2 over buy)`. It compares your price with the last traded price on
+your side of the trade. It is green when yours is at or past that price in the
+direction that tends to fill sooner (a buy at or above the buy price, a sale at
+or below the sell price) and red when it is on the other side, where an offer
+tends to sit. It says nothing about whether the offer will fill. That is what an offer box cannot tell you on its own:
 whether the number you asked for is still the right one. Both prices rather
 than only your side, because a buy that has filled is a sale about to be
 listed, and the price to list it at is the other one.
@@ -264,7 +276,7 @@ it already leads with that item's name, so the prices go underneath it rather
 than being announced again beside it. Two boxes for one pointer is one too
 many.
 
-The prices are exact to the coin there, since the box is made as tall and as
+The prices are shown to the coin there, since the box is made as tall and as
 wide as they need and these are numbers somebody is about to type. It answers a
 question rather than asking one, too: eight boxes each carrying three lines is
 a wall of numbers about seven items nobody asked about, and pointing at one is
@@ -357,9 +369,9 @@ Trades on Deadman, Leagues, beta, no-save, tournament, speedrunning, PvP Arena
 and Fresh Start worlds are not recorded, since their prices and items have
 nothing to do with the main game.
 
-The plugin always talks to `https://flippingrs.com`. The **Server URL**
-setting only works when RuneLite is started in developer mode, so nothing can
-redirect your key or your trades anywhere else.
+The plugin talks to `https://flippingrs.com`. The **Server URL** setting only
+works when RuneLite is started in developer mode, so outside it the setting
+cannot send your key or your trades anywhere else.
 
 ## Three promises
 

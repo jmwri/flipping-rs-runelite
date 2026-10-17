@@ -297,7 +297,7 @@ final class WatchlistTab extends SidebarTab
 		if (item.quote != null)
 		{
 			final JLabel prices = small(pricesLine(item.quote));
-			prices.setToolTipText("The price you can buy at and the price you can sell at right now, from flippingrs.com.");
+			prices.setToolTipText("The last traded buy and sell prices, from flippingrs.com.");
 			card.add(prices);
 			final JLabel margin = small(marginLine(item.quote));
 			margin.setForeground(item.quote.getNetMargin() < 0
