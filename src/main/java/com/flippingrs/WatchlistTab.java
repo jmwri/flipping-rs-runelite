@@ -325,17 +325,20 @@ final class WatchlistTab extends SidebarTab
 		}
 		card.add(Box.createVerticalStrut(5));
 
-		final JPanel buttons = new JPanel(new GridLayout(1, 2, 4, 0));
+		final JPanel buttons = new JPanel(new GridLayout(1, 3, 4, 0));
 		buttons.setOpaque(false);
 		buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
 		buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+		final JButton search = new JButton("GE");
+		search.setToolTipText("Type " + name + " into the exchange's search box. Open it first: click Buy on an empty slot.");
+		search.addActionListener(e -> actions.searchInGe(item.itemId));
 		final JButton open = new JButton("Open");
 		open.setToolTipText("Open " + name + " in your browser.");
 		open.addActionListener(e -> actions.openItem(item.itemId));
 		final JButton remove = new JButton("Remove");
 		remove.setToolTipText("Remove from the watchlist.");
 		remove.addActionListener(e -> actions.removeItem(item.itemId));
-		for (JButton button : new JButton[]{open, remove})
+		for (JButton button : new JButton[]{search, open, remove})
 		{
 			button.setFont(FontManager.getRunescapeSmallFont());
 			button.setMargin(new Insets(1, 4, 1, 4));

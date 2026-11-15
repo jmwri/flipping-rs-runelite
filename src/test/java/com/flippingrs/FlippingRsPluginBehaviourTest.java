@@ -218,6 +218,50 @@ public class FlippingRsPluginBehaviourTest
 		support.settle();
 	}
 
+	// ------------------------------------------------------- search in the GE
+
+	private void exchangeSearchBox(boolean open)
+	{
+		final Widget prompt = mock(Widget.class);
+		when(prompt.isHidden()).thenReturn(!open);
+		when(support.client.getWidget(InterfaceID.Chatbox.MES_TEXT2)).thenReturn(prompt);
+		when(support.client.getWidget(InterfaceID.GeOffers.SETUP)).thenReturn(mock(Widget.class));
+	}
+
+	@Test
+	public void searchInGeTypesTheItemNameIntoAnOpenSearchBox() throws Exception
+	{
+		exchangeSearchBox(true);
+
+		support.plugin.new SidebarActions().searchInGe(4151);
+
+		verify(support.client).setVarcStrValue(net.runelite.api.VarClientStr.INPUT_TEXT, "Abyssal whip");
+		verify(support.client).runScript(net.runelite.api.ScriptID.CHAT_TEXT_INPUT_REBUILD, "Abyssal whip");
+		verify(support.chatMessageManager, never()).queue(any(net.runelite.client.chat.QueuedMessage.class));
+	}
+
+	@Test
+	public void searchInGeWithTheBoxClosedSaysHowToOpenItAndTypesNothing() throws Exception
+	{
+		exchangeSearchBox(false);
+
+		support.plugin.new SidebarActions().searchInGe(4151);
+
+		verify(support.client, never()).setVarcStrValue(anyInt(), anyString());
+		verify(support.client, never()).runScript(any(Object[].class));
+		verify(support.chatMessageManager).queue(any(net.runelite.client.chat.QueuedMessage.class));
+	}
+
+	@Test
+	public void searchInGeWithNoExchangeOpenSaysHowToOpenIt() throws Exception
+	{
+		// getWidget answers null for everything, as it does with no exchange up.
+		support.plugin.new SidebarActions().searchInGe(4151);
+
+		verify(support.client, never()).setVarcStrValue(anyInt(), anyString());
+		verify(support.chatMessageManager).queue(any(net.runelite.client.chat.QueuedMessage.class));
+	}
+
 	// ------------------------------------------------------------- capture
 
 	@Test

@@ -1837,6 +1837,29 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** The GE button searches for its own card's item, and only that. */
+	@Test
+	public void theGeButtonSearchesForThatCardsItem() throws Exception
+	{
+		onEdt(() ->
+		{
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			panel.selectTabForTest("Watchlists");
+			final List<Integer> searched = new ArrayList<>();
+			actions.searchInGe = searched::add;
+			panel.setWatchlistItems(Arrays.asList(
+				new FlippingRsPanel.WatchedItem(11802, "Armadyl godsword", null, 1_500_000, 70, 72_000,
+					null, quote(11802)),
+				new FlippingRsPanel.WatchedItem(13190, "Old school bond", null, 5_000_000, 10, 0,
+					null, quote(13190))));
+
+			press(panel, "Old school bond", "GE");
+
+			assertEquals(Arrays.asList(13190), searched);
+		});
+	}
+
 	/** Presses the named button on the watchlist card whose title names this item. */
 	private static void press(FlippingRsPanel panel, String itemName, String buttonText)
 	{

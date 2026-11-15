@@ -24,6 +24,7 @@ import javax.inject.Named;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
@@ -40,8 +41,11 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.ScriptID;
+import net.runelite.api.VarClientStr;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.Notifier;
 import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -396,6 +400,12 @@ public class FlippingRsPlugin extends Plugin
 		}
 
 		@Override
+		public void searchInGe(int itemId)
+		{
+			FlippingRsPlugin.this.searchInGe(itemId);
+		}
+
+		@Override
 		public void removeItem(int itemId)
 		{
 			submit(sendExecutor, () -> removeFromWatchlist(itemId));
@@ -661,6 +671,37 @@ public class FlippingRsPlugin extends Plugin
 	private void openItem(int itemId)
 	{
 		LinkBrowser.browse(api.itemUrl(itemId));
+	}
+
+	/**
+	 * Types the item's name into the exchange's offer search box.
+	 *
+	 * <p>Only fills the box; the player still clicks the result. Nothing is
+	 * sent to the game server, which is the line the third-party client
+	 * guidelines draw. If the box is not open there is nowhere to put the
+	 * name, so the player is told how to open it rather than left guessing.
+	 */
+	private void searchInGe(int itemId)
+	{
+		clientThread.invoke(() ->
+		{
+			final String name = itemName(itemId);
+			if (name.isEmpty())
+			{
+				return;
+			}
+			final Widget prompt = client.getWidget(InterfaceID.Chatbox.MES_TEXT2);
+			if (prompt == null || prompt.isHidden() || client.getWidget(InterfaceID.GeOffers.SETUP) == null)
+			{
+				chatMessageManager.queue(QueuedMessage.builder()
+					.type(ChatMessageType.GAMEMESSAGE)
+					.runeLiteFormattedMessage("FlippingRS: click Buy on an empty exchange slot, then search again for " + name + ".")
+					.build());
+				return;
+			}
+			client.setVarcStrValue(VarClientStr.INPUT_TEXT, name);
+			client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, name);
+		});
 	}
 
 	// ------------------------------------------------------ watchlist, positions
