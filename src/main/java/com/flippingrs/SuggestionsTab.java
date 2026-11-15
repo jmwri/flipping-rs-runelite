@@ -316,6 +316,14 @@ final class SuggestionsTab extends SidebarTab
 		copy.setAlignmentX(Component.LEFT_ALIGNMENT);
 		copy.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
 		copy.addActionListener(e -> clipboard.accept(name));
+		final JButton search = new JButton("Search GE");
+		search.setToolTipText("Type " + name + " into the exchange's search box. Open it first: click Buy on an empty slot.");
+		search.setFont(FontManager.getRunescapeSmallFont());
+		search.setMargin(new Insets(1, 4, 1, 4));
+		search.setAlignmentX(Component.LEFT_ALIGNMENT);
+		search.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+		search.addActionListener(e -> actions.searchInGe(s.id));
+		card.add(search);
 		card.add(copy);
 
 		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));

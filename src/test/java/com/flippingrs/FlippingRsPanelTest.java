@@ -1860,6 +1860,38 @@ public class FlippingRsPanelTest
 		});
 	}
 
+	/** An open position's GE button searches for that position's item. */
+	@Test
+	public void aPositionsGeButtonSearchesForItsItem() throws Exception
+	{
+		onEdt(() ->
+		{
+			final TestPanelActions actions = new TestPanelActions();
+			final FlippingRsPanel panel = new FlippingRsPanel(actions);
+			final List<Integer> searched = new ArrayList<>();
+			actions.searchInGe = searched::add;
+			final Position p = position();
+			p.itemId = 11802;
+			panel.selectTabForTest("Positions");
+			panel.setJournal(new Analytics(), holding(p));
+
+			final List<JButton> buttons = new ArrayList<>();
+			for (Component card : panel.cardsForTest("Positions"))
+			{
+				collectButtons(card, buttons);
+			}
+			for (JButton button : buttons)
+			{
+				if ("GE".equals(button.getText()))
+				{
+					button.doClick();
+				}
+			}
+
+			assertEquals(Arrays.asList(11802), searched);
+		});
+	}
+
 	/** Presses the named button on the watchlist card whose title names this item. */
 	private static void press(FlippingRsPanel panel, String itemName, String buttonText)
 	{

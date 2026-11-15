@@ -220,12 +220,42 @@ public class FlippingRsPluginBehaviourTest
 
 	// ------------------------------------------------------- search in the GE
 
-	private void exchangeSearchBox(boolean open)
+	private void exchangePrompt(String title, boolean hidden)
 	{
 		final Widget prompt = mock(Widget.class);
-		when(prompt.isHidden()).thenReturn(!open);
-		when(support.client.getWidget(InterfaceID.Chatbox.MES_TEXT2)).thenReturn(prompt);
+		when(prompt.isHidden()).thenReturn(hidden);
+		when(prompt.getText()).thenReturn(title);
+		when(support.client.getWidget(InterfaceID.Chatbox.MES_TEXT)).thenReturn(prompt);
 		when(support.client.getWidget(InterfaceID.GeOffers.SETUP)).thenReturn(mock(Widget.class));
+	}
+
+	private void exchangeSearchBox(boolean open)
+	{
+		exchangePrompt(FlippingRsPlugin.BUY_SEARCH_TITLE, !open);
+	}
+
+	@Test
+	public void searchInGeNeverTypesIntoAQuantityOrPricePrompt() throws Exception
+	{
+		for (String title : new String[]{"How many do you wish to buy?", "Set a price for each item:"})
+		{
+			exchangePrompt(title, false);
+
+			support.plugin.new SidebarActions().searchInGe(4151);
+		}
+
+		verify(support.client, never()).setVarcStrValue(anyInt(), anyString());
+		verify(support.chatMessageManager, times(2)).queue(any(net.runelite.client.chat.QueuedMessage.class));
+	}
+
+	@Test
+	public void searchInGeSeesThroughColourTagsOnTheTitle() throws Exception
+	{
+		exchangePrompt("<col=000000>What would you like to buy?</col>", false);
+
+		support.plugin.new SidebarActions().searchInGe(4151);
+
+		verify(support.client).setVarcStrValue(net.runelite.api.VarClientStr.INPUT_TEXT, "Abyssal whip");
 	}
 
 	@Test
