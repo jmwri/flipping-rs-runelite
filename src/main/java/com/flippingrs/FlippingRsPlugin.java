@@ -673,6 +673,26 @@ public class FlippingRsPlugin extends Plugin
 		LinkBrowser.browse(api.itemUrl(itemId));
 	}
 
+	/** The prompt the exchange shows over the chat while you choose what to buy. */
+	static final String BUY_SEARCH_TITLE = "What would you like to buy?";
+
+	/**
+	 * Whether the exchange's "what would you like to buy" search is the prompt
+	 * on screen. The quantity and price prompts on the same offer screen use
+	 * the same input line, so the line being visible says nothing; the title
+	 * above it does.
+	 */
+	private boolean itemSearchOpen()
+	{
+		final Widget title = client.getWidget(InterfaceID.Chatbox.MES_TEXT);
+		if (title == null || title.isHidden() || client.getWidget(InterfaceID.GeOffers.SETUP) == null)
+		{
+			return false;
+		}
+		final String text = title.getText();
+		return text != null && text.replaceAll("<[^>]*>", "").trim().startsWith(BUY_SEARCH_TITLE);
+	}
+
 	/**
 	 * Types the item's name into the exchange's offer search box.
 	 *
@@ -690,8 +710,7 @@ public class FlippingRsPlugin extends Plugin
 			{
 				return;
 			}
-			final Widget prompt = client.getWidget(InterfaceID.Chatbox.MES_TEXT2);
-			if (prompt == null || prompt.isHidden() || client.getWidget(InterfaceID.GeOffers.SETUP) == null)
+			if (!itemSearchOpen())
 			{
 				chatMessageManager.queue(QueuedMessage.builder()
 					.type(ChatMessageType.GAMEMESSAGE)

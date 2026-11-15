@@ -109,7 +109,7 @@ below. It opens on **Journal**.
   wide spread on an item that trades twice a day is not an opportunity — it is
   the reason the spread is wide, and nothing the game shows says so. An item
   the site has no volume for says nothing rather than saying none. If you have an offer on the item, that is shown too and
-  updates as it fills. **Open** goes to the item's page on the site, **Remove**
+  updates as it fills. **GE** types the item's name into the exchange's search box (click Buy on an empty slot first; it only fills the box, you pick the result), **Open** goes to the item's page on the site, **Remove**
   takes it off the watchlist, and **Find flips** opens the site's flip finder.
 - **Journal** is your most recent trades, as your journal has them — the site's
   Journal page, which is the ledger rather than the analysis.

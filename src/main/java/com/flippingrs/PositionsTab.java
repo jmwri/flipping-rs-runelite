@@ -329,17 +329,20 @@ final class PositionsTab extends SidebarTab
 		if (!p.getId().isEmpty())
 		{
 			card.add(Box.createVerticalStrut(5));
-			final JPanel buttons = new JPanel(new GridLayout(1, 2, 4, 0));
+			final JPanel buttons = new JPanel(new GridLayout(1, 3, 4, 0));
 			buttons.setOpaque(false);
 			buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
 			buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+			final JButton search = new JButton("GE");
+			search.setToolTipText("Type this item into the exchange's search box. Open it first: click Buy on an empty slot.");
+			search.addActionListener(e -> actions.searchInGe(p.getItemId()));
 			final JButton close = new JButton("Close");
 			close.setToolTipText("Record a sale of this position at a price you enter.");
 			close.addActionListener(e -> promptClose(p));
 			final JButton delete = new JButton("Delete");
 			delete.setToolTipText("Not a flip? Delete this record so later sales of the item are not counted against it.");
 			delete.addActionListener(e -> promptDelete(p));
-			for (JButton button : new JButton[]{close, delete})
+			for (JButton button : new JButton[]{search, close, delete})
 			{
 				button.setFont(FontManager.getRunescapeSmallFont());
 				button.setMargin(new Insets(1, 4, 1, 4));

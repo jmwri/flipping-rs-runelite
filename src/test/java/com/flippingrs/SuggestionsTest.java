@@ -617,6 +617,19 @@ public class SuggestionsTest
 	}
 
 	@Test
+	public void aRowCanSearchTheExchangeForItsItem() throws Exception
+	{
+		final Rig rig = new Rig();
+		answer(GOLDEN);
+		final List<Integer> searched = new ArrayList<>();
+		rig.actions.searchInGe = searched::add;
+		rig.openTab();
+		final JButton search = buttonNamed(rig.panel.getWrappedPanel(), "Search GE");
+		onEdt(search::doClick);
+		assertEquals(Collections.singletonList(4151), searched);
+	}
+
+	@Test
 	public void aRowCanCopyItsNameAndDoesNothingElse() throws Exception
 	{
 		final Rig rig = new Rig();
