@@ -14,6 +14,9 @@ import javax.annotation.Nullable;
  */
 final class TestPanelActions implements PanelActions
 {
+	IntConsumer searchInGe = id ->
+	{
+	};
 	Runnable sendNow = () ->
 	{
 	};
@@ -97,6 +100,12 @@ final class TestPanelActions implements PanelActions
 	public void openItem(int itemId)
 	{
 		openItem.accept(itemId);
+	}
+
+	@Override
+	public void searchInGe(int itemId)
+	{
+		searchInGe.accept(itemId);
 	}
 
 	@Override

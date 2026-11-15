@@ -37,6 +37,12 @@ interface PanelActions
 	/** "View item", or an item's name on the Watchlists tab. */
 	void openItem(int itemId);
 
+	/**
+	 * "Search GE" on a watchlist item: put its name in the exchange's offer
+	 * search box, if that box is open.
+	 */
+	void searchInGe(int itemId);
+
 	/** "Remove" beside a watchlist item. */
 	void removeItem(int itemId);
 

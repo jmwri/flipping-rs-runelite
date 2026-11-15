@@ -55,6 +55,8 @@ final class FlippingRsPluginTestSupport
 	final FlippingRsApi api = mock(FlippingRsApi.class);
 	final FlippingRsConfig config = mock(FlippingRsConfig.class);
 	final Gson gson = new Gson();
+	final net.runelite.client.chat.ChatMessageManager chatMessageManager =
+		mock(net.runelite.client.chat.ChatMessageManager.class);
 
 	/**
 	 * A real panel, because which journal it shows is part of what is under
@@ -197,6 +199,7 @@ final class FlippingRsPluginTestSupport
 
 		set("notifier", notifier);
 		set("client", client);
+		set("chatMessageManager", chatMessageManager);
 		set("clientThread", clientThread);
 		set("configManager", configManager);
 		set("itemManager", itemManager);
